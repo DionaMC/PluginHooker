@@ -1,1 +1,1 @@
-# Diona-AnticheatCore
+# Diona-AnticheatManager
