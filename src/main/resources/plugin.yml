@@ -1,7 +1,7 @@
 name: AnticheatManager
 version: '${project.version}'
-main: io.github.dionatestserver.anticheatmanager.AnticheatManager
-load: STARTUP
-authors: [ Loyisa, HellXD ]
+main: io.github.dionatestserver.anticheatmanager.Diona
+loadbefore: [ProtocolLib]
+authors: [ Loyisa, Hellxd ]
 description: The AnticheatManager Core
 website: https://diona-testserver.github.io/
