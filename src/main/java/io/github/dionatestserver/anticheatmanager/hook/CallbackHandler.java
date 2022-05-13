@@ -4,23 +4,38 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.anticheatmanager.Diona;
 import io.github.dionatestserver.anticheatmanager.anticheat.DionaPlayer;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
+import org.bukkit.event.block.*;
+import org.bukkit.event.enchantment.EnchantItemEvent;
+import org.bukkit.event.enchantment.PrepareItemEnchantEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.inventory.FurnaceExtractEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryInteractEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.vehicle.*;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.projectiles.ProjectileSource;
 
 import java.lang.reflect.Field;
 
 public class CallbackHandler {
 
     public boolean handleBukkitEvent(Plugin plugin, Event event) {
+        // Don't handle those events
+        if (event instanceof AsyncPlayerPreLoginEvent
+                || event instanceof PlayerPreLoginEvent
+                || event instanceof PlayerJoinEvent
+                || event instanceof PlayerQuitEvent
+                || event instanceof PlayerLoginEvent)
+            return false;
         DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) return false;
-
-        if (event instanceof AsyncPlayerPreLoginEvent || event instanceof PlayerJoinEvent || event instanceof PlayerQuitEvent || event instanceof PlayerLoginEvent)
-            return false;
 
         if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream().noneMatch(anticheat -> anticheat.getPlugin() == plugin))
             return false;
@@ -37,36 +52,111 @@ public class CallbackHandler {
 
     }
 
-//    private boolean isPlayerEvent(Event event) {
-//        if (event instanceof PlayerEvent) return true;
-//        return this.hasField(event.getClass(), "player");
-//    }
-
     private Player getPlayerByEvent(Event event) {
-        try {
-            if (event instanceof PlayerEvent) return ((PlayerEvent) event).getPlayer();
+        // return player from PlayerEvent
+        if (event instanceof PlayerEvent)
+            return ((PlayerEvent) event).getPlayer();
 
-            if (event instanceof EntityDamageEvent) {
-                if (event instanceof EntityDamageByEntityEvent) {
-                    EntityDamageByEntityEvent damageByEntityEvent = (EntityDamageByEntityEvent) event;
-                    if ((damageByEntityEvent).getDamager() instanceof Player)
-                        return ((Player) (damageByEntityEvent).getDamager());
-                } else {
-                    EntityDamageEvent entityDamageEvent = (EntityDamageEvent) event;
-                    if ((entityDamageEvent).getEntity() instanceof Player)
-                        return ((Player) (entityDamageEvent).getEntity());
-                }
+        if (event instanceof BlockBreakEvent) {
+            return ((BlockBreakEvent) event).getPlayer();
+        }
+
+        if (event instanceof BlockDamageEvent) {
+            return ((BlockDamageEvent) event).getPlayer();
+        }
+
+        if (event instanceof BlockIgniteEvent) {
+            return ((BlockIgniteEvent) event).getPlayer();
+        }
+
+        if (event instanceof BlockPlaceEvent) {
+            return ((BlockPlaceEvent) event).getPlayer();
+        }
+
+        if (event instanceof SignChangeEvent) {
+            return ((SignChangeEvent) event).getPlayer();
+        }
+
+        if (event instanceof EnchantItemEvent) {
+            return ((EnchantItemEvent) event).getEnchanter();
+        }
+        if (event instanceof PrepareItemEnchantEvent) {
+            return ((PrepareItemEnchantEvent) event).getEnchanter();
+        }
+
+        if (event instanceof EntityEvent) {
+            if (event instanceof EntityDamageByEntityEvent) {
+                Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
+                if (damager instanceof Player)
+                    return (Player) damager;
             }
+            Entity entity = ((EntityEvent) event).getEntity();
+            if (entity instanceof Player)
+                return (Player) entity;
+            else if (event instanceof ProjectileLaunchEvent) {
+                ProjectileSource shooter = ((ProjectileLaunchEvent) event).getEntity().getShooter();
+                return shooter instanceof Player ? (Player) shooter : null;
+            }
+        }
 
-            Field playerField = this.getField(event.getClass(), "player");
-            if (playerField != null) {
-                if (!playerField.isAccessible()) playerField.setAccessible(true);
-                return (Player) playerField.get(event);
+        if (event instanceof FurnaceExtractEvent) {
+            return ((FurnaceExtractEvent) event).getPlayer();
+        }
+
+        if (event instanceof InventoryCloseEvent) {
+            return (Player) ((InventoryCloseEvent) event).getPlayer();
+        }
+
+        if (event instanceof InventoryInteractEvent) {
+            return (Player) ((InventoryInteractEvent) event).getWhoClicked();
+        }
+
+        if (event instanceof InventoryOpenEvent) {
+            return (Player) ((InventoryOpenEvent) event).getPlayer();
+        }
+
+
+        if (event instanceof VehicleDamageEvent) {
+            Entity attacker = ((VehicleDamageEvent) event).getAttacker();
+            return attacker instanceof Player ? (Player) attacker : null;
+        }
+
+        if (event instanceof VehicleDestroyEvent) {
+            Entity attacker = ((VehicleDestroyEvent) event).getAttacker();
+            if (attacker instanceof Player) {
+                return (Player) attacker;
+            }
+        }
+
+        if (event instanceof VehicleEnterEvent) {
+            Entity enteredEntity = ((VehicleEnterEvent) event).getEntered();
+            return enteredEntity instanceof Player ? (Player) enteredEntity : null;
+        }
+
+        if (event instanceof VehicleEntityCollisionEvent) {
+            Entity entity = ((VehicleEntityCollisionEvent) event).getEntity();
+            return entity instanceof Player ? (Player) entity : null;
+        }
+
+        if (event instanceof VehicleExitEvent) {
+            Entity exitedEntity = ((VehicleExitEvent) event).getExited();
+            return exitedEntity instanceof Player ? (Player) exitedEntity : null;
+        }
+
+        // Try to get the player field from the event
+        try {
+            Field playerField = event.getClass().getDeclaredField("player");
+            if (!playerField.isAccessible()) playerField.setAccessible(true);
+            Object player = playerField.get(event);
+            if (player instanceof Player) {
+                return (Player) player;
+            } else {
+                return null;
             }
         } catch (Exception e) {
             return null;
         }
-        return null;
+
     }
 
 
