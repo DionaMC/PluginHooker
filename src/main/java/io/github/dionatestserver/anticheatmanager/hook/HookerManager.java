@@ -41,7 +41,7 @@ public class HookerManager {
         final String targetClassName = "org.bukkit.plugin.RegisteredListener";
 
         try {
-            Class<?> bukkitEventInjector =
+            Class<?> bukkitEventHooker =
                     DefineClassHelper.toClass(
                             BukkitEventHooker.class.getName(),
                             HookerManager.class,
@@ -51,7 +51,7 @@ public class HookerManager {
                     );
 
             BiPredicate<Plugin, Event> callback = (plugin, event) -> this.callbackHandler.handleBukkitEvent(plugin, event);
-            bukkitEventInjector.getConstructor(BiPredicate.class).newInstance(callback);
+            bukkitEventHooker.getConstructor(BiPredicate.class).newInstance(callback);
 
             CtClass registeredListener = classPool.get(targetClassName);
             CtMethod callEvent = this.getMethodByName(registeredListener.getMethods(), "callEvent");
