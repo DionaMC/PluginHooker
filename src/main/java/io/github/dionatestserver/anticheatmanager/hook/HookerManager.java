@@ -19,25 +19,15 @@ public class HookerManager {
     @Getter
     private CallbackHandler callbackHandler;
 
+    private ClassPool classPool;
+
     public void init() {
         this.callbackHandler = new CallbackHandler();
-
-        ClassPool classPool = ClassPool.getDefault();
-        classPool.appendClassPath(new LoaderClassPath(Diona.class.getClassLoader()));
-
-        this.injectEventHandler(classPool);
-
-
-        try {
-            Class<?> packetFilterBuilder = Class.forName("com.comphenix.protocol.injector.packetFilterBuilder");
-            classPool.appendClassPath(new LoaderClassPath(packetFilterBuilder.getClassLoader()));
-            this.injectPacketHandler(classPool);
-        } catch (Exception e) {
-
-        }
+        this.classPool = ClassPool.getDefault();
     }
 
-    private void injectEventHandler(ClassPool classPool) {
+    public void injectEventHandler() {
+        classPool.appendClassPath(new LoaderClassPath(Diona.class.getClassLoader()));
         final String targetClassName = "org.bukkit.plugin.RegisteredListener";
 
         try {
@@ -56,7 +46,7 @@ public class HookerManager {
             CtClass registeredListener = classPool.get(targetClassName);
             CtMethod callEvent = this.getMethodByName(registeredListener.getMethods(), "callEvent");
             callEvent.insertBefore(
-                     "if("+ BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
+                    "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
             );
 //
             DefineClassHelper.toClass(targetClassName, Plugin.class, Plugin.class.getClassLoader(), null, registeredListener.toBytecode());
@@ -65,7 +55,8 @@ public class HookerManager {
         }
     }
 
-    private void injectPacketHandler(ClassPool classPool) {
+    public void injectPacketHandler() {
+        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
         final String targetClassName = "com.comphenix.protocol.injector.PacketFilterManager";
 
         try {
@@ -73,7 +64,7 @@ public class HookerManager {
 
             CtMethod postPacketToListeners = this.getMethodByName(packetFilterManager.getDeclaredMethods(), "handlePacket");
             postPacketToListeners.insertBefore(
-                    Diona.class.getName() + ".getInstance().getHookerManager().getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
+                    "$1=" + Diona.class.getName() + ".getInstance().getHookerManager().getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
             );
 
             DefineClassHelper.toClass(targetClassName, PacketFilterBuilder.class, PacketFilterBuilder.class.getClassLoader(), null, packetFilterManager.toBytecode());

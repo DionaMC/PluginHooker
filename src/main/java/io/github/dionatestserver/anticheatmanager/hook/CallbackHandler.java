@@ -1,6 +1,10 @@
 package io.github.dionatestserver.anticheatmanager.hook;
 
+import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.concurrency.SortedCopyOnWriteArray;
 import com.comphenix.protocol.events.PacketEvent;
+import com.comphenix.protocol.events.PacketListener;
+import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.anticheatmanager.Diona;
 import io.github.dionatestserver.anticheatmanager.anticheat.DionaPlayer;
@@ -23,6 +27,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.projectiles.ProjectileSource;
 
 import java.lang.reflect.Field;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CallbackHandler {
 
@@ -44,12 +49,54 @@ public class CallbackHandler {
             return false;
 
 
-        System.out.println(plugin.getName() + " | " + event.getEventName());
+//        System.out.println(plugin.getName() + " | " + event.getEventName());
         return true;
     }
 
-    public void handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
+    public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
+        SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
+        for (PrioritizedListener<PacketListener> value : newListeners.values()) {
+            PacketListener listener = value.getListener();
+            if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream()
+                    .noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin()))
+                continue;
+
+            DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(event.getPlayer());
+            if (dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
+                newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
+//                System.out.println(listener.getPlugin() + " " + listener.getClass().getSimpleName() + " removed " + types.size());
+            }
+        }
+
+//        System.out.println("listeners size " + Iterators.size(listenerList.values().iterator()) + "  newlisteners size " +  Iterators.size(newListeners.values().iterator()));
+
+        return newListeners;
+    }
+
+    private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
+        //TODO 需要优化
+        SortedPacketListenerList result = new SortedPacketListenerList();
+        try {
+            Field mapListeners = sortedPacketListenerList.getClass().getSuperclass().getDeclaredField("mapListeners");
+            mapListeners.setAccessible(true);
+            ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>> listeners
+                    = (ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>>) mapListeners.get(sortedPacketListenerList);
+
+            ConcurrentHashMap concurrentHashMap = new ConcurrentHashMap();
+
+            for (PacketType packetType : listeners.keySet()) {
+                SortedCopyOnWriteArray<PrioritizedListener<PacketListener>> listenerArray = listeners.get(packetType);
+                SortedCopyOnWriteArray<PrioritizedListener<PacketListener>> newListenerArray = new SortedCopyOnWriteArray<>(listenerArray);
+                concurrentHashMap.put(packetType, newListenerArray);
+            }
+
+            mapListeners.set(result, concurrentHashMap);
+            return result;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     private Player getPlayerByEvent(Event event) {
