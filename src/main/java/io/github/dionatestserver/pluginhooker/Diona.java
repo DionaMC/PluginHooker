@@ -42,9 +42,6 @@ public final class Diona extends JavaPlugin {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
-        // Provide apis
-        Bukkit.getServicesManager().register(PluginManager.class, this.pluginManager, this, ServicePriority.Normal);
-        Bukkit.getServicesManager().register(PlayerManager.class, this.playerManager, this, ServicePriority.Normal);
     }
 
     @Override
