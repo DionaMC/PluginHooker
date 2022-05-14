@@ -49,15 +49,18 @@ public class CallbackHandler {
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
+        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(event.getPlayer());
+        if (dionaPlayer == null) return listenerList;
+
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
             if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream()
-                    .noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin()))
+                    .noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
                 continue;
+            }
 
-            DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(event.getPlayer());
             if (dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
                 newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
 //                System.out.println(listener.getPlugin() + " " + listener.getClass().getSimpleName() + " removed " + types.size());
