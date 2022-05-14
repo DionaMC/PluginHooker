@@ -78,7 +78,7 @@ public class CallbackHandler {
             ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>> listeners
                     = (ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>>) mapListeners.get(sortedPacketListenerList);
 
-            ConcurrentHashMap concurrentHashMap = new ConcurrentHashMap();
+            ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>> concurrentHashMap = new ConcurrentHashMap<>();
 
             for (PacketType packetType : listeners.keySet()) {
                 SortedCopyOnWriteArray<PrioritizedListener<PacketListener>> listenerArray = listeners.get(packetType);
@@ -111,6 +111,10 @@ public class CallbackHandler {
             return ((BlockIgniteEvent) event).getPlayer();
         }
 
+        if (event instanceof BlockMultiPlaceEvent) {
+            return ((BlockMultiPlaceEvent) event).getPlayer();
+        }
+
         if (event instanceof BlockPlaceEvent) {
             return ((BlockPlaceEvent) event).getPlayer();
         }
@@ -126,19 +130,19 @@ public class CallbackHandler {
             return ((PrepareItemEnchantEvent) event).getEnchanter();
         }
 
+        if (event instanceof EntityDamageByEntityEvent) {
+            Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
+            return damager instanceof Player ? (Player) damager : null;
+        }
+
+        if (event instanceof ProjectileLaunchEvent) {
+            ProjectileSource shooter = ((ProjectileLaunchEvent) event).getEntity().getShooter();
+            return shooter instanceof Player ? (Player) shooter : null;
+        }
+
         if (event instanceof EntityEvent) {
-            if (event instanceof EntityDamageByEntityEvent) {
-                Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
-                if (damager instanceof Player)
-                    return (Player) damager;
-            }
             Entity entity = ((EntityEvent) event).getEntity();
-            if (entity instanceof Player)
-                return (Player) entity;
-            else if (event instanceof ProjectileLaunchEvent) {
-                ProjectileSource shooter = ((ProjectileLaunchEvent) event).getEntity().getShooter();
-                return shooter instanceof Player ? (Player) shooter : null;
-            }
+            return entity instanceof Player ? (Player) entity : null;
         }
 
         if (event instanceof FurnaceExtractEvent) {
@@ -165,9 +169,7 @@ public class CallbackHandler {
 
         if (event instanceof VehicleDestroyEvent) {
             Entity attacker = ((VehicleDestroyEvent) event).getAttacker();
-            if (attacker instanceof Player) {
-                return (Player) attacker;
-            }
+            return attacker instanceof Player ? (Player) attacker : null;
         }
 
         if (event instanceof VehicleEnterEvent) {
@@ -185,7 +187,10 @@ public class CallbackHandler {
             return exitedEntity instanceof Player ? (Player) exitedEntity : null;
         }
 
+        return null;
+
         // Try to get the player field from the event
+        /*
         try {
             Field playerField = event.getClass().getDeclaredField("player");
             if (!playerField.isAccessible()) playerField.setAccessible(true);
@@ -198,6 +203,7 @@ public class CallbackHandler {
         } catch (Exception e) {
             return null;
         }
+        **/
 
     }
 
