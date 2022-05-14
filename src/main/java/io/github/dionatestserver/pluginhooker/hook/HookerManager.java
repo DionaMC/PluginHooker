@@ -40,7 +40,7 @@ public class HookerManager {
                             classPool.get(BukkitEventHooker.class.getName()).toBytecode()
                     );
 
-            BiPredicate<Plugin, Event> callback = (plugin, event) -> this.callbackHandler.handleBukkitEvent(plugin, event);
+            BiPredicate<Plugin, Event> callback = this.callbackHandler::handleBukkitEvent;
             bukkitEventHooker.getConstructor(BiPredicate.class).newInstance(callback);
 
             CtClass registeredListener = classPool.get(targetClassName);

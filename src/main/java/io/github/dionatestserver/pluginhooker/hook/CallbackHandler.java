@@ -7,7 +7,10 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
+import io.github.dionatestserver.pluginhooker.events.DionaProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
@@ -46,13 +49,29 @@ public class CallbackHandler {
                 || event instanceof PlayerQuitEvent
                 || event instanceof PlayerLoginEvent)
             return false;
-        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
-        if (dionaPlayer == null) return false;
+
+        if (event.getClass().getClassLoader().equals(this.getClass().getClassLoader()))
+            return false;
 
         if (Diona.getInstance().getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
             return false;
 
-        return dionaPlayer.getEnabledDionaPlugins().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin);
+        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
+        if (dionaPlayer == null) {            //return false;
+            DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event);
+            Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
+
+            return bukkitListenerEvent.isCancelled();
+        } else {
+            if (dionaPlayer.getEnabledDionaPlugins().stream().anyMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin)) {
+                DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event, dionaPlayer);
+                Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
+
+                return bukkitListenerEvent.isCancelled();
+            } else {
+                return true;
+            }
+        }
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
@@ -68,11 +87,18 @@ public class CallbackHandler {
                 continue;
             }
 
-            if (dionaPlayer.getEnabledDionaPlugins().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
+            if (dionaPlayer.getEnabledDionaPlugins().stream().anyMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
+
+                DionaProtocolLibPacketEvent packetEvent = new DionaProtocolLibPacketEvent(listener, event, outbound);
+                Bukkit.getPluginManager().callEvent(packetEvent);
+
+                if (packetEvent.isCancelled()) {
+                    newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
+                }
+            } else {
                 newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
             }
         }
-
 
         return newListeners;
     }
