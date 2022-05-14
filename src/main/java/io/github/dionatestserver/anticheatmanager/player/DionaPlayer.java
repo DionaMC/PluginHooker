@@ -1,5 +1,6 @@
-package io.github.dionatestserver.anticheatmanager.anticheat;
+package io.github.dionatestserver.anticheatmanager.player;
 
+import io.github.dionatestserver.anticheatmanager.anticheat.Anticheat;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.entity.Player;

@@ -1,4 +1,4 @@
-package io.github.dionatestserver.anticheatmanager.anticheat;
+package io.github.dionatestserver.anticheatmanager.player;
 
 import lombok.Getter;
 import org.bukkit.entity.Player;
@@ -21,9 +21,6 @@ public class PlayerManager {
 
     public DionaPlayer getDionaPlayer(Player player) {
         if (player == null) return null;
-        return players.stream()
-                .filter(dionaPlayer -> dionaPlayer.getPlayer() == player)
-                .findFirst()
-                .orElse(null);
+        return players.stream().filter(dionaPlayer -> dionaPlayer.getPlayer() == player).findFirst().orElse(null);
     }
 }
