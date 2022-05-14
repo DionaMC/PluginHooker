@@ -1,4 +1,4 @@
-package io.github.dionatestserver.anticheatmanager.player;
+package io.github.dionatestserver.pluginhooker.player;
 
 import lombok.Getter;
 import org.bukkit.entity.Player;

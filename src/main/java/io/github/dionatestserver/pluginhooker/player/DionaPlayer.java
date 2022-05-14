@@ -1,6 +1,6 @@
-package io.github.dionatestserver.anticheatmanager.player;
+package io.github.dionatestserver.pluginhooker.player;
 
-import io.github.dionatestserver.anticheatmanager.anticheat.Anticheat;
+import io.github.dionatestserver.pluginhooker.plugin.DionaPlugin;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.entity.Player;
@@ -14,10 +14,10 @@ public class DionaPlayer {
     private final Player player;
 
     @Setter
-    private Set<Anticheat> enabledAnticheats;
+    private Set<DionaPlugin> enabledDionaPlugins;
 
     public DionaPlayer(Player player) {
         this.player = player;
-        this.enabledAnticheats = new HashSet<>();
+        this.enabledDionaPlugins = new HashSet<>();
     }
 }

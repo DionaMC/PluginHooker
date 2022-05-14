@@ -1,9 +1,9 @@
-package io.github.dionatestserver.anticheatmanager;
+package io.github.dionatestserver.pluginhooker;
 
-import io.github.dionatestserver.anticheatmanager.anticheat.AnticheatManager;
-import io.github.dionatestserver.anticheatmanager.hook.HookerManager;
-import io.github.dionatestserver.anticheatmanager.listeners.PlayerListener;
-import io.github.dionatestserver.anticheatmanager.player.PlayerManager;
+import io.github.dionatestserver.pluginhooker.hook.HookerManager;
+import io.github.dionatestserver.pluginhooker.listeners.PlayerListener;
+import io.github.dionatestserver.pluginhooker.player.PlayerManager;
+import io.github.dionatestserver.pluginhooker.plugin.PluginManager;
 import lombok.Getter;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.ServicePriority;
@@ -24,7 +24,7 @@ public final class Diona extends JavaPlugin {
     private static Diona instance;
 
     @Getter
-    private AnticheatManager anticheatManager;
+    private PluginManager pluginManager;
     @Getter
     private PlayerManager playerManager;
 
@@ -33,7 +33,7 @@ public final class Diona extends JavaPlugin {
     public void onLoad() {
         instance = this;
 
-        anticheatManager = new AnticheatManager();
+        pluginManager = new PluginManager();
         playerManager = new PlayerManager();
 
         hookerManager.injectPacketHandler();
@@ -43,7 +43,7 @@ public final class Diona extends JavaPlugin {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
         // Provide apis
-        Bukkit.getServicesManager().register(AnticheatManager.class, this.anticheatManager, this, ServicePriority.Normal);
+        Bukkit.getServicesManager().register(PluginManager.class, this.pluginManager, this, ServicePriority.Normal);
         Bukkit.getServicesManager().register(PlayerManager.class, this.playerManager, this, ServicePriority.Normal);
     }
 

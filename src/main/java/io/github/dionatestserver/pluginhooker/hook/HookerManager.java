@@ -1,7 +1,7 @@
-package io.github.dionatestserver.anticheatmanager.hook;
+package io.github.dionatestserver.pluginhooker.hook;
 
 import com.comphenix.protocol.injector.PacketFilterBuilder;
-import io.github.dionatestserver.anticheatmanager.Diona;
+import io.github.dionatestserver.pluginhooker.Diona;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtMethod;

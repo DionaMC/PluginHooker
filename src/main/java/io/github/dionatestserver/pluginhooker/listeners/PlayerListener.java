@@ -1,6 +1,6 @@
-package io.github.dionatestserver.anticheatmanager.listeners;
+package io.github.dionatestserver.pluginhooker.listeners;
 
-import io.github.dionatestserver.anticheatmanager.Diona;
+import io.github.dionatestserver.pluginhooker.Diona;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;

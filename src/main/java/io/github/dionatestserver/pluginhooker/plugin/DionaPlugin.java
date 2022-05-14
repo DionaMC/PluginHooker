@@ -1,15 +1,15 @@
-package io.github.dionatestserver.anticheatmanager.anticheat;
+package io.github.dionatestserver.pluginhooker.plugin;
 
-import io.github.dionatestserver.anticheatmanager.player.DionaPlayer;
+import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import lombok.Getter;
 import org.bukkit.plugin.Plugin;
 
 @Getter
-public abstract class Anticheat {
+public abstract class DionaPlugin {
 
     private final Plugin plugin;
 
-    public Anticheat(Plugin plugin) {
+    public DionaPlugin(Plugin plugin) {
         this.plugin = plugin;
     }
 

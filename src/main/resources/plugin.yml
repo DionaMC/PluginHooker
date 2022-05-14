@@ -1,7 +1,7 @@
-name: AnticheatManager
+name: PluginHooker
 version: '${project.version}'
-main: io.github.dionatestserver.anticheatmanager.Diona
+main: io.github.dionatestserver.pluginhooker.Diona
 loadbefore: [ProtocolLib]
 authors: [ Loyisa, Hellxd ]
-description: The AnticheatManager Core
+description: PluginHooker
 website: https://diona-testserver.github.io/

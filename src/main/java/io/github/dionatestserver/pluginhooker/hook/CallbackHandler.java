@@ -1,4 +1,4 @@
-package io.github.dionatestserver.anticheatmanager.hook;
+package io.github.dionatestserver.pluginhooker.hook;
 
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.concurrency.SortedCopyOnWriteArray;
@@ -6,8 +6,8 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
-import io.github.dionatestserver.anticheatmanager.Diona;
-import io.github.dionatestserver.anticheatmanager.player.DionaPlayer;
+import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
@@ -32,7 +32,7 @@ import java.util.function.Function;
 
 public class CallbackHandler {
 
-    private final Map<Class< ? extends Event>, Function<Event,Player>> eventMap = new LinkedHashMap<>();
+    private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
 
     public CallbackHandler() {
         this.initEventMap();
@@ -49,10 +49,10 @@ public class CallbackHandler {
         DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) return false;
 
-        if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream().noneMatch(anticheat -> anticheat.getPlugin() == plugin))
+        if (Diona.getInstance().getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
             return false;
 
-        return dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == plugin);
+        return dionaPlayer.getEnabledDionaPlugins().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin);
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
@@ -63,12 +63,12 @@ public class CallbackHandler {
 
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
-            if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream()
-                    .noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
+            if (Diona.getInstance().getPluginManager().getLoadedDionaPlugin().stream()
+                    .noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
                 continue;
             }
 
-            if (dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
+            if (dionaPlayer.getEnabledDionaPlugins().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
                 newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
             }
         }

@@ -1,1 +1,1 @@
-# Diona-AnticheatManager
+# Diona-PluginHooker

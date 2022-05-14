@@ -5,13 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.diona-testserver</groupId>
-    <artifactId>Diona-AnticheatManager</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <artifactId>Diona-PluginHooker</artifactId>
+    <version>0.2</version>
     <packaging>jar</packaging>
 
-    <name>AnticheatManager</name>
+    <name>PluginHooker</name>
 
-    <description>The AnticheatManager Core</description>
+    <description>PluginHooker</description>
     <properties>
         <java.version>1.8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
