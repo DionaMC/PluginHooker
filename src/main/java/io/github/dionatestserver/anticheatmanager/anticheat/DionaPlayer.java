@@ -10,7 +10,7 @@ import java.util.Set;
 @Getter
 public class DionaPlayer {
 
-    private Player player;
+    private final Player player;
 
     @Setter
     private Set<Anticheat> enabledAnticheats;

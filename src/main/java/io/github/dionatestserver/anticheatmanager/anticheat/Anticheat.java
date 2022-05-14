@@ -1,14 +1,16 @@
 package io.github.dionatestserver.anticheatmanager.anticheat;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.bukkit.plugin.Plugin;
 
 @Getter
-@AllArgsConstructor
 public abstract class Anticheat {
 
-    private Plugin plugin;
+    private final Plugin plugin;
+
+    public Anticheat(Plugin plugin) {
+        this.plugin = plugin;
+    }
 
     public abstract void onEnable(DionaPlayer dionaPlayer);
 

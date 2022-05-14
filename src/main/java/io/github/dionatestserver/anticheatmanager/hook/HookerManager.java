@@ -86,7 +86,7 @@ public class HookerManager {
         @Getter
         private static BukkitEventHooker instance;
 
-        private BiPredicate<Plugin, Event> callback;
+        private final BiPredicate<Plugin, Event> callback;
 
         public BukkitEventHooker(BiPredicate<Plugin, Event> callback) {
             instance = this;

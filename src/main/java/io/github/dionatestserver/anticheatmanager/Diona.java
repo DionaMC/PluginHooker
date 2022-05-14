@@ -14,7 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class Diona extends JavaPlugin {
 
     @Getter
-    private static HookerManager hookerManager;
+    private static final HookerManager hookerManager;
 
     static {
         //我真jb服了 某些反作弊这么喜欢在onload注册事件吗 啊？
@@ -42,20 +42,7 @@ public final class Diona extends JavaPlugin {
 
     @Override
     public void onEnable() {
-
-        Bukkit.getPluginManager().registerEvents(new PlayerListener(),this);
-        Anticheat noCheatPlus = new Anticheat(Bukkit.getPluginManager().getPlugin("Matrix")) {
-            @Override
-            public void onEnable(DionaPlayer dionaPlayer) {
-                System.out.println("AnticheatManager.onEnable");
-            }
-
-            @Override
-            public void onDisable(DionaPlayer dionaPlayer) {
-                System.out.println("AnticheatManager.onEnable");
-            }
-        };
-        this.getAnticheatManager().addAnticheat(noCheatPlus);
+        Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
     }
 
     @Override

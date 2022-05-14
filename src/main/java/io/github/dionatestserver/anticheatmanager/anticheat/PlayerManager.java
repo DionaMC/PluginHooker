@@ -9,7 +9,7 @@ import java.util.List;
 @Getter
 public class PlayerManager {
 
-    private List<DionaPlayer> players = new ArrayList<>();
+    private final List<DionaPlayer> players = new ArrayList<>();
 
     public void addPlayer(Player player) {
         players.add(new DionaPlayer(player));

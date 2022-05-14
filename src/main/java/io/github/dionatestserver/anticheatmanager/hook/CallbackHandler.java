@@ -45,12 +45,7 @@ public class CallbackHandler {
         if (Diona.getInstance().getAnticheatManager().getLoadedAnticheat().stream().noneMatch(anticheat -> anticheat.getPlugin() == plugin))
             return false;
 
-        if (dionaPlayer.getEnabledAnticheats().stream().anyMatch(anticheat -> anticheat.getPlugin() == plugin))
-            return false;
-
-
-//        System.out.println(plugin.getName() + " | " + event.getEventName());
-        return true;
+        return dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == plugin);
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
@@ -206,12 +201,4 @@ public class CallbackHandler {
 
     }
 
-
-    private Field getField(Class<?> aClass, String fieldName) {
-        try {
-            return aClass.getDeclaredField(fieldName);
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
 }
