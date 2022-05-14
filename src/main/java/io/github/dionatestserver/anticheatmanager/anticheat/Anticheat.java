@@ -1,5 +1,6 @@
 package io.github.dionatestserver.anticheatmanager.anticheat;
 
+import io.github.dionatestserver.anticheatmanager.player.DionaPlayer;
 import lombok.Getter;
 import org.bukkit.plugin.Plugin;
 

@@ -7,7 +7,7 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.anticheatmanager.Diona;
-import io.github.dionatestserver.anticheatmanager.anticheat.DionaPlayer;
+import io.github.dionatestserver.anticheatmanager.player.DionaPlayer;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;

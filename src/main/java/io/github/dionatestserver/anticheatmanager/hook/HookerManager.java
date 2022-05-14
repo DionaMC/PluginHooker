@@ -21,7 +21,7 @@ public class HookerManager {
 
     private ClassPool classPool;
 
-    public void init() {
+    public HookerManager() {
         this.callbackHandler = new CallbackHandler();
         this.classPool = ClassPool.getDefault();
     }
