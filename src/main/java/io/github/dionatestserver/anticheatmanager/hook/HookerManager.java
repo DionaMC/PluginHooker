@@ -17,9 +17,9 @@ import java.util.function.BiPredicate;
 public class HookerManager {
 
     @Getter
-    private CallbackHandler callbackHandler;
+    private final CallbackHandler callbackHandler;
 
-    private ClassPool classPool;
+    private final ClassPool classPool;
 
     public HookerManager() {
         this.callbackHandler = new CallbackHandler();
