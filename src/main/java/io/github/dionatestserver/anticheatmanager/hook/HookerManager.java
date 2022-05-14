@@ -48,7 +48,7 @@ public class HookerManager {
             callEvent.insertBefore(
                     "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
             );
-//
+
             DefineClassHelper.toClass(targetClassName, Plugin.class, Plugin.class.getClassLoader(), null, registeredListener.toBytecode());
         } catch (Exception e) {
             e.printStackTrace();

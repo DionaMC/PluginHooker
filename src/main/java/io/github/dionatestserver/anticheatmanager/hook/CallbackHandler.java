@@ -63,11 +63,9 @@ public class CallbackHandler {
 
             if (dionaPlayer.getEnabledAnticheats().stream().noneMatch(anticheat -> anticheat.getPlugin() == listener.getPlugin())) {
                 newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
-//                System.out.println(listener.getPlugin() + " " + listener.getClass().getSimpleName() + " removed " + types.size());
             }
         }
 
-//        System.out.println("listeners size " + Iterators.size(listenerList.values().iterator()) + "  newlisteners size " +  Iterators.size(newListeners.values().iterator()));
 
         return newListeners;
     }

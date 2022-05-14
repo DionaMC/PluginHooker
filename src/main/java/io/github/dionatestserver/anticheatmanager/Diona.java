@@ -1,8 +1,6 @@
 package io.github.dionatestserver.anticheatmanager;
 
-import io.github.dionatestserver.anticheatmanager.anticheat.Anticheat;
 import io.github.dionatestserver.anticheatmanager.anticheat.AnticheatManager;
-import io.github.dionatestserver.anticheatmanager.anticheat.DionaPlayer;
 import io.github.dionatestserver.anticheatmanager.anticheat.PlayerManager;
 import io.github.dionatestserver.anticheatmanager.hook.HookerManager;
 import io.github.dionatestserver.anticheatmanager.listeners.PlayerListener;
@@ -17,8 +15,6 @@ public final class Diona extends JavaPlugin {
     private static final HookerManager hookerManager;
 
     static {
-        //我真jb服了 某些反作弊这么喜欢在onload注册事件吗 啊？
-        System.out.println("Diona.static initializer");
         (hookerManager = new HookerManager()).init();
         hookerManager.injectEventHandler();
     }
