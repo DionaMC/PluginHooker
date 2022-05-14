@@ -1,6 +1,9 @@
 package io.github.dionatestserver.anticheatmanager.anticheat;
 
+import io.github.dionatestserver.anticheatmanager.Diona;
+import io.github.dionatestserver.anticheatmanager.player.DionaPlayer;
 import lombok.Getter;
+import org.bukkit.entity.Player;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -10,10 +13,6 @@ public class AnticheatManager {
 
     private final Set<Anticheat> loadedAnticheat = new LinkedHashSet<>();
 
-    public void init() {
-
-    }
-
     public void addAnticheat(Anticheat anticheat) {
         loadedAnticheat.add(anticheat);
     }
@@ -22,10 +21,10 @@ public class AnticheatManager {
         loadedAnticheat.remove(anticheat);
     }
 
-    public void switchAnticheat(DionaPlayer dionaPlayer, Set<Anticheat> anticheats) {
+    public void switchAnticheats(Player player, Set<Anticheat> anticheats) {
+        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(player);
         dionaPlayer.getEnabledAnticheats().forEach(anticheat -> anticheat.onDisable(dionaPlayer));
         anticheats.forEach(anticheat -> anticheat.onEnable(dionaPlayer));
-
         dionaPlayer.setEnabledAnticheats(anticheats);
     }
 }
