@@ -122,7 +122,10 @@ public class CallbackHandler {
             }
         }
 
-        return this.eventMap.get(event.getClass()).apply(event);
+        Function<Event, Player> function = this.eventMap.get(event.getClass());
+        if (function != null) return function.apply(event);
+
+        return null;
 
         // Try to get the player field from the event
         /*
