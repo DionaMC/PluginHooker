@@ -1,5 +1,9 @@
+#Hook options
 hook:
+  # Should we hook the Bukkit event?
   bukkit-event: true
+  # Should we hook the ProtocolLib packet event?
   protocollib-packet: true
 
+# Should we use reflection to get player in unknown events?
 use-reflection-to-get-event-player: true
