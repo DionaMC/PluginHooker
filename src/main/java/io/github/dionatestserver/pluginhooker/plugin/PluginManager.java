@@ -22,7 +22,7 @@ public class PluginManager {
     }
 
     public void switchPlugins(Player player, Set<DionaPlugin> dionaPlugins) {
-        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(player);
+        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(player);
         dionaPlayer.getEnabledDionaPlugins().forEach(dionaPlugin -> dionaPlugin.onDisable(dionaPlayer));
         dionaPlugins.forEach(dionaPlugin -> dionaPlugin.onEnable(dionaPlayer));
         dionaPlayer.setEnabledDionaPlugins(dionaPlugins);

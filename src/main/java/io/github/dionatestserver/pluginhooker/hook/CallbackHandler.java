@@ -7,6 +7,7 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
 import io.github.dionatestserver.pluginhooker.events.DionaProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
@@ -53,11 +54,11 @@ public class CallbackHandler {
         if (event.getClass().getClassLoader().equals(this.getClass().getClassLoader()))
             return false;
 
-        if (Diona.getInstance().getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
+        if (Diona.getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
             return false;
 
-        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
-        if (dionaPlayer == null) {            //return false;
+        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
+        if (dionaPlayer == null) {
             DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event);
             Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
 
@@ -75,14 +76,14 @@ public class CallbackHandler {
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
-        DionaPlayer dionaPlayer = Diona.getInstance().getPlayerManager().getDionaPlayer(event.getPlayer());
+        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
 
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
-            if (Diona.getInstance().getPluginManager().getLoadedDionaPlugin().stream()
+            if (Diona.getPluginManager().getLoadedDionaPlugin().stream()
                     .noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
                 continue;
             }
@@ -151,24 +152,21 @@ public class CallbackHandler {
         Function<Event, Player> function = this.eventMap.get(event.getClass());
         if (function != null) return function.apply(event);
 
-        return null;
-
         // Try to get the player field from the event
-        /*
-        try {
-            Field playerField = event.getClass().getDeclaredField("player");
-            if (!playerField.isAccessible()) playerField.setAccessible(true);
-            Object player = playerField.get(event);
-            if (player instanceof Player) {
-                return (Player) player;
-            } else {
-                return null;
-            }
-        } catch (Exception e) {
-            return null;
-        }
-        **/
 
+        if (DionaConfig.useReflectionToGetEventPlayer) {
+            try {
+                Field playerField = event.getClass().getDeclaredField("player");
+                if (!playerField.isAccessible()) playerField.setAccessible(true);
+                Object player = playerField.get(event);
+                if (player instanceof Player) {
+                    return (Player) player;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return null;
     }
 
     private void initEventMap() {

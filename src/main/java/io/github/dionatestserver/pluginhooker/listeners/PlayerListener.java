@@ -10,11 +10,11 @@ public class PlayerListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
-        Diona.getInstance().getPlayerManager().addPlayer(e.getPlayer());
+        Diona.getPlayerManager().addPlayer(e.getPlayer());
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent e) {
-        Diona.getInstance().getPlayerManager().removePlayer(e.getPlayer());
+        Diona.getPlayerManager().removePlayer(e.getPlayer());
     }
 }

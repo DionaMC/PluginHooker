@@ -1,5 +1,7 @@
 package io.github.dionatestserver.pluginhooker;
 
+import io.github.dionatestserver.pluginhooker.config.ConfigManager;
+import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.hook.HookerManager;
 import io.github.dionatestserver.pluginhooker.listeners.PlayerListener;
 import io.github.dionatestserver.pluginhooker.listeners.TestListener;
@@ -15,29 +17,32 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class Diona extends JavaPlugin {
 
     @Getter
-    private static final HookerManager hookerManager;
-
-    static {
-        hookerManager = new HookerManager();
-        hookerManager.injectEventHandler();
-    }
-
-    @Getter
     private static Diona instance;
 
     @Getter
-    private PluginManager pluginManager;
+    private static HookerManager hookerManager;
     @Getter
-    private PlayerManager playerManager;
+    private static PluginManager pluginManager;
+    @Getter
+    private static PlayerManager playerManager;
+    @Getter
+    private static ConfigManager configManager;
 
-
-    @Override
-    public void onLoad() {
+    public Diona() {
         instance = this;
+
+        configManager = new ConfigManager();
+        configManager.loadConfig(DionaConfig.class);
+
+        hookerManager = new HookerManager();
+        hookerManager.injectEventHandler();
 
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
+    }
 
+    @Override
+    public void onLoad() {
         hookerManager.injectPacketHandler();
     }
 
@@ -48,7 +53,7 @@ public final class Diona extends JavaPlugin {
         //测试代码
         Bukkit.getPluginManager().registerEvents(new TestListener(), this);
 
-        Diona.getInstance().getPluginManager().addPlugin(new DionaPlugin(Bukkit.getPluginManager().getPlugin("NoCheatPlus")) {
+        Diona.getPluginManager().addPlugin(new DionaPlugin(Bukkit.getPluginManager().getPlugin("Matrix")) {
             @Override
             public void onEnable(DionaPlayer dionaPlayer) {
 

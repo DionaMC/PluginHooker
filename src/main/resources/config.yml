@@ -1,0 +1,5 @@
+hook:
+  bukkit-event: true
+  protocollib-packet: true
+
+use-reflection-to-get-event-player: true
