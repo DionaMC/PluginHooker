@@ -6,7 +6,7 @@
 
     <groupId>io.github.diona-testserver</groupId>
     <artifactId>Diona-PluginHooker</artifactId>
-    <version>0.2</version>
+    <version>0.3</version>
     <packaging>jar</packaging>
 
     <name>PluginHooker</name>
