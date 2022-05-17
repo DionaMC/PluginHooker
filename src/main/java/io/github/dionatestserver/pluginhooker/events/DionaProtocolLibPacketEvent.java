@@ -14,11 +14,11 @@ public class DionaProtocolLibPacketEvent extends Event implements Cancellable {
     private boolean cancel;
 
     @Getter
-    private PacketListener packetListener;
+    private final PacketListener packetListener;
     @Getter
-    private PacketEvent packetEvent;
+    private final PacketEvent packetEvent;
     @Getter
-    private boolean outbound;
+    private final boolean outbound;
 
     public DionaProtocolLibPacketEvent(PacketListener packetListener, PacketEvent packetEvent, boolean outbound) {
         this.packetListener = packetListener;

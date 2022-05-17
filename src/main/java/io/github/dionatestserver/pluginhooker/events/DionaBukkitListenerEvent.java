@@ -14,11 +14,11 @@ public class DionaBukkitListenerEvent extends Event implements Cancellable {
     private boolean cancel;
 
     @Getter
-    private Plugin plugin;
+    private final Plugin plugin;
     @Getter
-    private Event event;
+    private final Event event;
     @Getter
-    private DionaPlayer dionaPlayer;
+    private final DionaPlayer dionaPlayer;
 
     public DionaBukkitListenerEvent(Plugin plugin, Event event) {
         this(plugin, event, null);
