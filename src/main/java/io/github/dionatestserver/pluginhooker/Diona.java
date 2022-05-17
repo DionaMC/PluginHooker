@@ -50,10 +50,9 @@ public final class Diona extends JavaPlugin {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
 
-        //测试代码
-        Bukkit.getPluginManager().registerEvents(new TestListener(), this);
-
-        Diona.getPluginManager().addPlugin(new DionaPlugin(Bukkit.getPluginManager().getPlugin("Matrix")) {
+        // Used for testing
+        /*Bukkit.getPluginManager().registerEvents(new TestListener(), this);*/
+        /*Diona.getPluginManager().addPlugin(new DionaPlugin(Bukkit.getPluginManager().getPlugin("Matrix")) {
             @Override
             public void onEnable(DionaPlayer dionaPlayer) {
 
@@ -63,7 +62,7 @@ public final class Diona extends JavaPlugin {
             public void onDisable(DionaPlayer dionaPlayer) {
 
             }
-        });
+        });*/
     }
 
     @Override
