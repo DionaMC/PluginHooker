@@ -19,6 +19,12 @@ public class PluginManager {
 
     public void removePlugin(DionaPlugin dionaPlugin) {
         loadedDionaPlugin.remove(dionaPlugin);
+        for (DionaPlayer dionaPlayer : DionaPluginHooker.getPlayerManager().getPlayers()) {
+            if (dionaPlayer.getEnabledDionaPlugins().contains(dionaPlugin)) {
+                dionaPlugin.onDisable(dionaPlayer);
+                dionaPlayer.getEnabledDionaPlugins().remove(dionaPlugin);
+            }
+        }
     }
 
     public void switchPlugins(Player player, Set<DionaPlugin> dionaPlugins) {

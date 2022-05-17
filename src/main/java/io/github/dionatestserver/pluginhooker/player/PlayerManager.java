@@ -9,6 +9,7 @@ import java.util.List;
 @Getter
 public class PlayerManager {
 
+    @Getter
     private final List<DionaPlayer> players = new ArrayList<>();
 
     public void addPlayer(Player player) {
