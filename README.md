@@ -11,3 +11,6 @@ PluginHooker is a Bukkit plugin that aims to provide a simple way to hook events
 ## Usage
 - Add PluginHooker to your `depend`  in your plugin.yml
 - check our example code in `src/main/java/io/github/dionatestserver/pluginhooker/example/`
+
+## Speical thanks
+- [Poke](https://github.com/Pokemonplatin) for his help with Event hook
