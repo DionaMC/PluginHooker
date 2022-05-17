@@ -4,20 +4,17 @@ import io.github.dionatestserver.pluginhooker.config.ConfigManager;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.hook.HookerManager;
 import io.github.dionatestserver.pluginhooker.listeners.PlayerListener;
-import io.github.dionatestserver.pluginhooker.listeners.TestListener;
-import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.github.dionatestserver.pluginhooker.player.PlayerManager;
-import io.github.dionatestserver.pluginhooker.plugin.DionaPlugin;
 import io.github.dionatestserver.pluginhooker.plugin.PluginManager;
 import lombok.Getter;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 @Getter
-public final class Diona extends JavaPlugin {
+public final class DionaPluginHooker extends JavaPlugin {
 
     @Getter
-    private static Diona instance;
+    private static DionaPluginHooker instance;
 
     @Getter
     private static HookerManager hookerManager;
@@ -28,7 +25,7 @@ public final class Diona extends JavaPlugin {
     @Getter
     private static ConfigManager configManager;
 
-    public Diona() {
+    public DionaPluginHooker() {
         instance = this;
 
         configManager = new ConfigManager();

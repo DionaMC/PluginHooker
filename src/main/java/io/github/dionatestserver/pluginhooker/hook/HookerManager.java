@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
 import com.comphenix.protocol.injector.PacketFilterBuilder;
-import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import javassist.ClassPool;
 import javassist.CtClass;
@@ -25,7 +25,7 @@ public class HookerManager {
     public HookerManager() {
         this.callbackHandler = new CallbackHandler();
         this.classPool = ClassPool.getDefault();
-        classPool.appendClassPath(new LoaderClassPath(Diona.class.getClassLoader()));
+        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
     }
 
     public void injectEventHandler() {
@@ -69,7 +69,7 @@ public class HookerManager {
 
             CtMethod postPacketToListeners = this.getMethodByName(packetFilterManager.getDeclaredMethods(), "handlePacket");
             postPacketToListeners.insertBefore(
-                    "$1=" + Diona.class.getName() + ".getHookerManager().getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
+                    "$1=" + DionaPluginHooker.class.getName() + ".getHookerManager().getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
             );
 
             DefineClassHelper.toClass(targetClassName, PacketFilterBuilder.class, PacketFilterBuilder.class.getClassLoader(), null, packetFilterManager.toBytecode());

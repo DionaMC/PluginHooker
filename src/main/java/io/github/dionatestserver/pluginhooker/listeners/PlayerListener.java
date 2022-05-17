@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.listeners;
 
-import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -10,11 +10,11 @@ public class PlayerListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
-        Diona.getPlayerManager().addPlayer(e.getPlayer());
+        DionaPluginHooker.getPlayerManager().addPlayer(e.getPlayer());
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent e) {
-        Diona.getPlayerManager().removePlayer(e.getPlayer());
+        DionaPluginHooker.getPlayerManager().removePlayer(e.getPlayer());
     }
 }

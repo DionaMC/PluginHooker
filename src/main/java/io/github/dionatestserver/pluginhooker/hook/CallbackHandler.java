@@ -6,7 +6,7 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
-import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
 import io.github.dionatestserver.pluginhooker.events.DionaProtocolLibPacketEvent;
@@ -54,10 +54,10 @@ public class CallbackHandler {
         if (event.getClass().getClassLoader().equals(this.getClass().getClassLoader()))
             return false;
 
-        if (Diona.getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
+        if (DionaPluginHooker.getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
             return false;
 
-        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
+        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) {
             DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event);
             Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
@@ -76,14 +76,14 @@ public class CallbackHandler {
     }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
-        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(event.getPlayer());
+        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
 
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
-            if (Diona.getPluginManager().getLoadedDionaPlugin().stream()
+            if (DionaPluginHooker.getPluginManager().getLoadedDionaPlugin().stream()
                     .noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
                 continue;
             }

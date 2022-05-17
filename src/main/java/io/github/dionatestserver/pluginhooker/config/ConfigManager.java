@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.config;
 
-import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
@@ -12,9 +12,9 @@ public class ConfigManager {
 
     public ConfigManager() {
         try {
-            File configFile = new File(Diona.getInstance().getDataFolder(), "config.yml");
+            File configFile = new File(DionaPluginHooker.getInstance().getDataFolder(), "config.yml");
             if (!configFile.exists()) {
-                Diona.getInstance().saveResource("config.yml", false);
+                DionaPluginHooker.getInstance().saveResource("config.yml", false);
             }
 
             config.load(configFile);

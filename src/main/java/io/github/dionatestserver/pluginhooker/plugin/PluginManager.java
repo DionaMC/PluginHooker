@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.plugin;
 
-import io.github.dionatestserver.pluginhooker.Diona;
+import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import lombok.Getter;
 import org.bukkit.entity.Player;
@@ -22,7 +22,7 @@ public class PluginManager {
     }
 
     public void switchPlugins(Player player, Set<DionaPlugin> dionaPlugins) {
-        DionaPlayer dionaPlayer = Diona.getPlayerManager().getDionaPlayer(player);
+        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
         dionaPlayer.getEnabledDionaPlugins().forEach(dionaPlugin -> dionaPlugin.onDisable(dionaPlayer));
         dionaPlugins.forEach(dionaPlugin -> dionaPlugin.onEnable(dionaPlayer));
         dionaPlayer.setEnabledDionaPlugins(dionaPlugins);
