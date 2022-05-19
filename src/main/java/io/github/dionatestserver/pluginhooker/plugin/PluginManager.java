@@ -3,6 +3,7 @@ package io.github.dionatestserver.pluginhooker.plugin;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import lombok.Getter;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.LinkedHashSet;
@@ -30,7 +31,15 @@ public class PluginManager {
     public void switchPlugins(Player player, Set<DionaPlugin> dionaPlugins) {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
         dionaPlayer.getEnabledDionaPlugins().forEach(dionaPlugin -> dionaPlugin.onDisable(dionaPlayer));
-        dionaPlugins.forEach(dionaPlugin -> dionaPlugin.onEnable(dionaPlayer));
+        // Check is the plugin in loadedDionaPlugin
+        dionaPlugins.forEach(dionaPlugin -> {
+            if (!this.loadedDionaPlugin.contains(dionaPlugin)) {
+                Bukkit.getLogger().warning("Warning: " + dionaPlugin.getPlugin().getName() + " is not in loaded plugin list! Skipping...");
+                dionaPlugins.remove(dionaPlugin);
+                return;
+            }
+            dionaPlugin.onEnable(dionaPlayer);
+        });
         dionaPlayer.setEnabledDionaPlugins(dionaPlugins);
     }
 }
