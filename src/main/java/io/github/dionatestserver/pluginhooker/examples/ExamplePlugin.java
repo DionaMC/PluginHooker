@@ -3,7 +3,6 @@ package io.github.dionatestserver.pluginhooker.examples;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.github.dionatestserver.pluginhooker.plugin.DionaPlugin;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
 
 public class ExamplePlugin extends DionaPlugin {
 

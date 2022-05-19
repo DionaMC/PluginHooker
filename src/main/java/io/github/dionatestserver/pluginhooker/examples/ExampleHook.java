@@ -2,11 +2,8 @@ package io.github.dionatestserver.pluginhooker.examples;
 
 import com.google.common.collect.Sets;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
-import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.github.dionatestserver.pluginhooker.plugin.DionaPlugin;
 import org.bukkit.entity.Player;
-
-import java.util.Set;
 
 public class ExampleHook {
 

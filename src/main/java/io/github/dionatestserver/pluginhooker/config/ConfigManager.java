@@ -8,7 +8,7 @@ import java.lang.reflect.Field;
 
 public class ConfigManager {
 
-    private YamlConfiguration config = new YamlConfiguration();
+    private final YamlConfiguration config = new YamlConfiguration();
 
     public ConfigManager() {
         try {

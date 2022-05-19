@@ -46,20 +46,6 @@ public final class DionaPluginHooker extends JavaPlugin {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
-
-        // Used for testing
-        /*Bukkit.getPluginManager().registerEvents(new TestListener(), this);*/
-        /*Diona.getPluginManager().addPlugin(new DionaPlugin(Bukkit.getPluginManager().getPlugin("Matrix")) {
-            @Override
-            public void onEnable(DionaPlayer dionaPlayer) {
-
-            }
-
-            @Override
-            public void onDisable(DionaPlayer dionaPlayer) {
-
-            }
-        });*/
     }
 
     @Override
