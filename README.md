@@ -16,7 +16,7 @@ PluginHooker is a Bukkit plugin that aims to provide a simple way to hook events
 
 ## Usage
 
-*   [https://jitpack.io/#Diona-testserver/Diona-PluginHooker](https://jitpack.io/#Diona-testserver/PluginHooker)
+*   [https://jitpack.io/#Diona-testserver/PluginHooker](https://jitpack.io/#Diona-testserver/PluginHooker)
 *   Add PluginHooker to your `depend`  in your plugin.yml
 *   check our example code in `src/main/java/io/github/dionatestserver/pluginhooker/example/`
 
