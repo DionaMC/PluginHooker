@@ -11,6 +11,7 @@ PluginHooker is a Bukkit plugin that aims to provide a simple way to hook events
 - Spigot 1.8.8 with ProtocolLib 4.8.0
 
 ## Usage
+- [https://jitpack.io/#Diona-testserver/Diona-PluginHooker](https://jitpack.io/#Diona-testserver/Diona-PluginHooker)
 - Add PluginHooker to your `depend`  in your plugin.yml
 - check our example code in `src/main/java/io/github/dionatestserver/pluginhooker/example/`
 ## Speical thanks
