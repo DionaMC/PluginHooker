@@ -30,10 +30,6 @@ public class DionaPlayer {
     }
 
     public void disablePlugin(Plugin plugin) {
-        if (!enabledPlugins.contains(plugin)) {
-            Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not enabled! Ignored!");
-            return;
-        }
         enabledPlugins.remove(plugin);
     }
 
