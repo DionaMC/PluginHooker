@@ -1,6 +1,6 @@
 ![!ntro.jpg](https://s2.loli.net/2022/05/21/2Ds3fyzdZVGvFrK.jpg)
 
-# Diona-PluginHooker
+# PluginHooker
 
 PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 
@@ -18,7 +18,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 
 ## 用法
 
-* [https://jitpack.io/#Diona-testserver/Diona-PluginHooker](https://jitpack.io/#Diona-testserver/Diona-PluginHooker)
+* [https://jitpack.io/#Diona-testserver/Diona-PluginHooker](https://jitpack.io/#Diona-testserver/PluginHooker)
 * 将 PluginHooker 添加到您插件 plugin.yml 的 `depend` 中
 * 查看我们的示例代码 `src/main/java/io/github/dionatestserver/pluginhooker/example/`
 
