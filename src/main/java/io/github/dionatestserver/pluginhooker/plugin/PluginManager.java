@@ -3,8 +3,7 @@ package io.github.dionatestserver.pluginhooker.plugin;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import lombok.Getter;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -12,34 +11,17 @@ import java.util.Set;
 @Getter
 public class PluginManager {
 
-    private final Set<DionaPlugin> loadedDionaPlugin = new LinkedHashSet<>();
+    private final Set<Plugin> PluginsToHook = new LinkedHashSet<>();
 
-    public void addPlugin(DionaPlugin dionaPlugin) {
-        loadedDionaPlugin.add(dionaPlugin);
+    public void addPlugin(Plugin plugin) {
+        PluginsToHook.add(plugin);
     }
 
-    public void removePlugin(DionaPlugin dionaPlugin) {
-        loadedDionaPlugin.remove(dionaPlugin);
+    public void removePlugin(Plugin plugin) {
+        PluginsToHook.remove(plugin);
         for (DionaPlayer dionaPlayer : DionaPluginHooker.getPlayerManager().getPlayers()) {
-            if (dionaPlayer.getEnabledDionaPlugins().contains(dionaPlugin)) {
-                dionaPlugin.onDisable(dionaPlayer);
-                dionaPlayer.getEnabledDionaPlugins().remove(dionaPlugin);
-            }
+            dionaPlayer.getEnabledPlugins().remove(plugin);
         }
     }
 
-    public void switchPlugins(Player player, Set<DionaPlugin> dionaPlugins) {
-        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
-        dionaPlayer.getEnabledDionaPlugins().forEach(dionaPlugin -> dionaPlugin.onDisable(dionaPlayer));
-        // Check is the plugin in loadedDionaPlugin
-        dionaPlugins.forEach(dionaPlugin -> {
-            if (!this.loadedDionaPlugin.contains(dionaPlugin)) {
-                Bukkit.getLogger().warning("Warning: " + dionaPlugin.getPlugin().getName() + " is not in loaded plugin list! Skipping...");
-                dionaPlugins.remove(dionaPlugin);
-                return;
-            }
-            dionaPlugin.onEnable(dionaPlayer);
-        });
-        dionaPlayer.setEnabledDionaPlugins(dionaPlugins);
-    }
 }

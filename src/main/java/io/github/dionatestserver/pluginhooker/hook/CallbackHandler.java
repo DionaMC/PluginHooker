@@ -54,7 +54,7 @@ public class CallbackHandler {
         if (event.getClass().getClassLoader().equals(this.getClass().getClassLoader()))
             return false;
 
-        if (DionaPluginHooker.getPluginManager().getLoadedDionaPlugin().stream().noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin))
+        if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin))
             return false;
 
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
@@ -64,10 +64,9 @@ public class CallbackHandler {
 
             return bukkitListenerEvent.isCancelled();
         } else {
-            if (dionaPlayer.getEnabledDionaPlugins().stream().anyMatch(dionaPlugin -> dionaPlugin.getPlugin() == plugin)) {
+            if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
                 DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event, dionaPlayer);
                 Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
-
                 return bukkitListenerEvent.isCancelled();
             } else {
                 return true;
@@ -83,12 +82,12 @@ public class CallbackHandler {
 
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
-            if (DionaPluginHooker.getPluginManager().getLoadedDionaPlugin().stream()
-                    .noneMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
+            Plugin plugin = listener.getPlugin();
+            if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
                 continue;
             }
 
-            if (dionaPlayer.getEnabledDionaPlugins().stream().anyMatch(dionaPlugin -> dionaPlugin.getPlugin() == listener.getPlugin())) {
+            if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
 
                 DionaProtocolLibPacketEvent packetEvent = new DionaProtocolLibPacketEvent(listener, event, outbound);
                 Bukkit.getPluginManager().callEvent(packetEvent);
