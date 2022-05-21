@@ -12,18 +12,18 @@ import java.util.Set;
 @Getter
 public class PluginManager {
 
-    private final Set<Plugin> PluginsToHook = new LinkedHashSet<>();
+    private final Set<Plugin> pluginsToHook = new LinkedHashSet<>();
 
     public void addPlugin(Plugin plugin) {
-        PluginsToHook.add(plugin);
+        pluginsToHook.add(plugin);
     }
 
     public void removePlugin(Plugin plugin) {
-        if (!PluginsToHook.contains(plugin)) {
+        if (!pluginsToHook.contains(plugin)) {
             Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in plugin hook list! Ignored!");
             return;
         }
-        PluginsToHook.remove(plugin);
+        pluginsToHook.remove(plugin);
         for (DionaPlayer dionaPlayer : DionaPluginHooker.getPlayerManager().getPlayers()) {
             dionaPlayer.getEnabledPlugins().remove(plugin);
         }
