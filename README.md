@@ -14,12 +14,12 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 
 ## Tested versions
 
-*   [Spigot 1.8.8](https://hub.spigotmc.org/stash/projects/SPIGOT/repos/spigot/browse?at=refs%2Fheads%2Fversion%2F1.8.8) with [ProtocolLib 4.8.0](https://github.com/aadnk/ProtocolLib/tree/master)
+*   [Spigot 1.8.8](https://hub.spigotmc.org/stash/projects/SPIGOT/repos/spigot/browse?at=refs%2Fheads%2Fversion%2F1.8.8) with [ProtocolLib 4.8.0](https://github.com/dmulloy2/ProtocolLib/tree/master)
 
 ## Usage
 
 *   [https://jitpack.io/#Diona-testserver/PluginHooker](https://jitpack.io/#Diona-testserver/PluginHooker)
-*   Add `PluginHooker` to your `depend`  in the server `plugin.yml` file
+*   Add `PluginHooker` to your `depend`  in the `plugin.yml` file
 *   Furthermore, you can check out our example code in `src/main/java/io/github/dionatestserver/pluginhooker/example/`
 
 ## Speical thanks
