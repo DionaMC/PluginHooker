@@ -20,7 +20,7 @@ public class PluginManager {
 
     public void removePlugin(Plugin plugin) {
         if (!pluginsToHook.contains(plugin)) {
-            Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in plugin hook list! Ignored!");
+            Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in the plugin hook list! Ignored!");
             return;
         }
         pluginsToHook.remove(plugin);

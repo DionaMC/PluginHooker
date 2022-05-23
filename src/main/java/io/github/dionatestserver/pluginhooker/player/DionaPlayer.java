@@ -23,7 +23,7 @@ public class DionaPlayer {
 
     public void enablePlugin(Plugin plugin) {
         if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
-            Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in plugin hook list! Ignored!");
+            Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in the plugin hook list! Ignored!");
             return;
         }
         enabledPlugins.add(plugin);
