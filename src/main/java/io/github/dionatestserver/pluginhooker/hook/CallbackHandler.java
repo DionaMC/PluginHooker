@@ -104,23 +104,19 @@ public class CallbackHandler {
     }
 
     private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
-        //TODO 需要优化
         SortedPacketListenerList result = new SortedPacketListenerList();
         try {
             Field mapListeners = sortedPacketListenerList.getClass().getSuperclass().getDeclaredField("mapListeners");
             mapListeners.setAccessible(true);
-            ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>> listeners
-                    = (ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>>) mapListeners.get(sortedPacketListenerList);
 
-            ConcurrentHashMap<PacketType, SortedCopyOnWriteArray<PrioritizedListener<PacketListener>>> concurrentHashMap = new ConcurrentHashMap<>();
+            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
+            ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
+                    ConcurrentHashMap::new,
+                    (map, packetType) -> map.put(packetType, listeners.get(packetType)),
+                    ConcurrentHashMap::putAll
+            );
 
-            for (PacketType packetType : listeners.keySet()) {
-                SortedCopyOnWriteArray<PrioritizedListener<PacketListener>> listenerArray = listeners.get(packetType);
-                SortedCopyOnWriteArray<PrioritizedListener<PacketListener>> newListenerArray = new SortedCopyOnWriteArray<>(listenerArray);
-                concurrentHashMap.put(packetType, newListenerArray);
-            }
-
-            mapListeners.set(result, concurrentHashMap);
+            mapListeners.set(result, resultMap);
             return result;
         } catch (Exception e) {
             e.printStackTrace();
