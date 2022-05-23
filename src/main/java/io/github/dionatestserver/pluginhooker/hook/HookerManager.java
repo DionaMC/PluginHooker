@@ -67,7 +67,7 @@ public class HookerManager {
         try {
             CtClass packetFilterManager = classPool.get(targetClassName);
 
-            CtMethod postPacketToListeners = this.getMethodByName(packetFilterManager.getDeclaredMethods(), "handlePacket");
+            CtMethod postPacketToListeners = this.getMethodBySignature(packetFilterManager.getDeclaredMethods(), "(Lcom/comphenix/protocol/injector/SortedPacketListenerList;Lcom/comphenix/protocol/events/PacketEvent;Z)V");
             postPacketToListeners.insertBefore(
                     "$1=" + DionaPluginHooker.class.getName() + ".getHookerManager().getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
             );
@@ -81,6 +81,14 @@ public class HookerManager {
     private CtMethod getMethodByName(CtMethod[] methods, String targetName) {
         for (CtMethod method : methods) {
             if (method.getName().equals(targetName))
+                return method;
+        }
+        return null;
+    }
+
+    private CtMethod getMethodBySignature(CtMethod[] methods, String signature) {
+        for (CtMethod method : methods) {
+            if (method.getSignature().equals(signature))
                 return method;
         }
         return null;
