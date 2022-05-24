@@ -1,15 +1,8 @@
-package io.github.dionatestserver.pluginhooker.hook;
+package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 
-import com.comphenix.protocol.PacketType;
-import com.comphenix.protocol.concurrency.SortedCopyOnWriteArray;
-import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.events.PacketListener;
-import com.comphenix.protocol.injector.PrioritizedListener;
-import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
-import io.github.dionatestserver.pluginhooker.events.DionaProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -31,14 +24,12 @@ import org.bukkit.projectiles.ProjectileSource;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-public class CallbackHandler {
-
+public class BukkitCallbackHandler {
     private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
 
-    public CallbackHandler() {
+    public BukkitCallbackHandler() {
         this.initEventMap();
     }
 
@@ -72,56 +63,6 @@ public class CallbackHandler {
                 return true;
             }
         }
-    }
-
-    public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
-        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
-        if (dionaPlayer == null) return listenerList;
-
-        SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
-
-        for (PrioritizedListener<PacketListener> value : newListeners.values()) {
-            PacketListener listener = value.getListener();
-            Plugin plugin = listener.getPlugin();
-            if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
-                continue;
-            }
-
-            if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
-
-                DionaProtocolLibPacketEvent packetEvent = new DionaProtocolLibPacketEvent(listener, event, outbound);
-                Bukkit.getPluginManager().callEvent(packetEvent);
-
-                if (packetEvent.isCancelled()) {
-                    newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
-                }
-            } else {
-                newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
-            }
-        }
-
-        return newListeners;
-    }
-
-    private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
-        SortedPacketListenerList result = new SortedPacketListenerList();
-        try {
-            Field mapListeners = sortedPacketListenerList.getClass().getSuperclass().getDeclaredField("mapListeners");
-            mapListeners.setAccessible(true);
-
-            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
-            ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
-                    ConcurrentHashMap::new,
-                    (map, packetType) -> map.put(packetType, listeners.get(packetType)),
-                    ConcurrentHashMap::putAll
-            );
-
-            mapListeners.set(result, resultMap);
-            return result;
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
     }
 
     private Player getPlayerByEvent(Event event) {
@@ -215,5 +156,4 @@ public class CallbackHandler {
             return exitedEntity instanceof Player ? (Player) exitedEntity : null;
         });
     }
-
 }

@@ -32,8 +32,6 @@ public final class DionaPluginHooker extends JavaPlugin {
         configManager.loadConfig(DionaConfig.class);
 
         hookerManager = new HookerManager();
-        hookerManager.injectEventHandler();
-        hookerManager.injectPacketHandler();
 
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
