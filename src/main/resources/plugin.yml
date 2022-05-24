@@ -1,7 +1,7 @@
 name: PluginHooker
 version: '${project.version}'
 main: io.github.dionatestserver.pluginhooker.DionaPluginHooker
-loadbefore: [ProtocolLib]
+depend: [ProtocolLib]
 authors: [ Loyisa, Hellxd ]
 description: PluginHooker
 website: https://diona-testserver.github.io/

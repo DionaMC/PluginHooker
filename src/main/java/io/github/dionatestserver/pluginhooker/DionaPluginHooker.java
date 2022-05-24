@@ -33,14 +33,11 @@ public final class DionaPluginHooker extends JavaPlugin {
 
         hookerManager = new HookerManager();
         hookerManager.injectEventHandler();
+        hookerManager.injectPacketHandler();
 
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
-    }
 
-    @Override
-    public void onLoad() {
-        hookerManager.injectPacketHandler();
     }
 
     @Override
