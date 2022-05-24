@@ -16,12 +16,13 @@ public class ProtocolLibInjector extends Injector {
 
     public ProtocolLibInjector() {
         super("com.comphenix.protocol.injector.PacketFilterManager");
-        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
     }
 
     @Override
     public void predefineClass() {
         if (!DionaConfig.hookProtocolLibPacket) return;
+
+        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
 
         try {
             CtClass packetFilterManager = classPool.get(targetClass);
