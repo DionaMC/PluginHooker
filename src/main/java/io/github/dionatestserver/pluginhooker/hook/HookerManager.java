@@ -14,6 +14,6 @@ public class HookerManager {
         injectors.add(new BukkitEventInjector());
         injectors.add(new ProtocolLibInjector());
 
-        injectors.forEach(Injector::predefineClass);
+        injectors.stream().filter(Injector::canHook).forEach(Injector::predefineClass);
     }
 }

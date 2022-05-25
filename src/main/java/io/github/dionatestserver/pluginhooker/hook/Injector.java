@@ -18,4 +18,6 @@ public abstract class Injector {
     }
 
     public abstract void predefineClass();
+
+    public abstract boolean canHook();
 }

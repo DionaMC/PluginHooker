@@ -3,6 +3,7 @@ package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.hook.HookerManager;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
+import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.util.proxy.DefineClassHelper;
@@ -24,8 +25,6 @@ public class BukkitEventInjector extends Injector {
 
     @Override
     public void predefineClass() {
-        if (!DionaConfig.hookBukkitEvent) return;
-
         try {
             Class<?> bukkitEventHooker =
                     DefineClassHelper.toClass(
@@ -40,7 +39,7 @@ public class BukkitEventInjector extends Injector {
             bukkitEventHooker.getConstructor(BiPredicate.class).newInstance(callback);
 
             CtClass registeredListener = classPool.get(targetClass);
-            CtMethod callEvent = this.getMethodByName(registeredListener.getMethods(), "callEvent");
+            CtMethod callEvent = ClassUtils.getMethodByName(registeredListener.getMethods(), "callEvent");
             callEvent.insertBefore(
                     "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
             );
@@ -51,12 +50,9 @@ public class BukkitEventInjector extends Injector {
         }
     }
 
-    private CtMethod getMethodByName(CtMethod[] methods, String targetName) {
-        for (CtMethod method : methods) {
-            if (method.getName().equals(targetName))
-                return method;
-        }
-        return null;
+    @Override
+    public boolean canHook() {
+        return DionaConfig.hookBukkitEvent;
     }
 
     public static class BukkitEventHooker {
