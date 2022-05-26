@@ -1,5 +1,6 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.protocollib;
 
+import com.comphenix.protocol.concurrency.SortedCopyOnWriteArray;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
@@ -11,6 +12,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.Field;
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibCallbackHandler {
@@ -52,7 +54,7 @@ public class ProtocolLibCallbackHandler {
             ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
             ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
                     ConcurrentHashMap::new,
-                    (map, packetType) -> map.put(packetType, listeners.get(packetType)),
+                    (map, packetType) -> map.put(packetType, new SortedCopyOnWriteArray((Collection) listeners.get(packetType))),
                     ConcurrentHashMap::putAll
             );
 
