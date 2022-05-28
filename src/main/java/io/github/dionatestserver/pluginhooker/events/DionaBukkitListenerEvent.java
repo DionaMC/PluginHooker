@@ -25,6 +25,7 @@ public class DionaBukkitListenerEvent extends Event implements Cancellable {
     }
 
     public DionaBukkitListenerEvent(Plugin plugin, Event event, DionaPlayer dionaPlayer) {
+        super(event.isAsynchronous());
         this.plugin = plugin;
         this.event = event;
         this.dionaPlayer = dionaPlayer;

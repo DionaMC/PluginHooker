@@ -21,6 +21,7 @@ public class DionaProtocolLibPacketEvent extends Event implements Cancellable {
     private final boolean outbound;
 
     public DionaProtocolLibPacketEvent(PacketListener packetListener, PacketEvent packetEvent, boolean outbound) {
+        super(packetEvent.isAsynchronous());
         this.packetListener = packetListener;
         this.packetEvent = packetEvent;
         this.outbound = outbound;
