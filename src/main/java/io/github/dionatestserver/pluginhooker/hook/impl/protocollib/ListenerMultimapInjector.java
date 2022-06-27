@@ -6,6 +6,7 @@ import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
+import javassist.LoaderClassPath;
 
 public class ListenerMultimapInjector extends Injector {
 
@@ -15,6 +16,8 @@ public class ListenerMultimapInjector extends Injector {
 
     @Override
     public CtClass generateHookedClass() {
+        classPool.appendClassPath(new LoaderClassPath(PacketTypeSet.class.getClassLoader()));
+
         try {
             CtClass targetClass = classPool.get(this.targetClass);
             CtMethod addListener = ClassUtils.getMethodByName(targetClass.getMethods(), "addListener");

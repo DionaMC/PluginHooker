@@ -17,18 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibCallbackHandler {
 
-    private final Field mapListeners;
-
     private SortedPacketListenerList cachedListeners = null;
 
-    public ProtocolLibCallbackHandler() {
-        try {
-            this.mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
-            this.mapListeners.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException(e);
-        }
-    }
+    private Field mapListeners;
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
@@ -65,6 +56,12 @@ public class ProtocolLibCallbackHandler {
     private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
         SortedPacketListenerList result = new SortedPacketListenerList();
         try {
+
+            if (this.mapListeners == null) {
+                this.mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
+                this.mapListeners.setAccessible(true);
+            }
+
             ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
             ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
                     ConcurrentHashMap::new,
