@@ -20,11 +20,8 @@ public class BukkitEventInjector extends Injector {
     private BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
 
     public BukkitEventInjector() {
-        super("org.bukkit.plugin.RegisteredListener");
-    }
+        super("org.bukkit.plugin.RegisteredListener", Plugin.class);
 
-    @Override
-    public void predefineClass() {
         try {
             Class<?> bukkitEventHooker =
                     DefineClassHelper.toClass(
@@ -37,17 +34,24 @@ public class BukkitEventInjector extends Injector {
 
             BiPredicate<Plugin, Event> callback = this.callbackHandler::handleBukkitEvent;
             bukkitEventHooker.getConstructor(BiPredicate.class).newInstance(callback);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
+    @Override
+    public CtClass generateHookedClass() {
+        try {
             CtClass registeredListener = classPool.get(targetClass);
             CtMethod callEvent = ClassUtils.getMethodByName(registeredListener.getMethods(), "callEvent");
             callEvent.insertBefore(
                     "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
             );
-
-            DefineClassHelper.toClass(targetClass, Plugin.class, Plugin.class.getClassLoader(), null, registeredListener.toBytecode());
+            return registeredListener;
         } catch (Exception e) {
             e.printStackTrace();
         }
+        return null;
     }
 
     @Override

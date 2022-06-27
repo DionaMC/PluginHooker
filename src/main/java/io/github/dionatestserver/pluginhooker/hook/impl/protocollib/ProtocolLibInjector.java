@@ -7,7 +7,6 @@ import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
-import javassist.util.proxy.DefineClassHelper;
 import lombok.Getter;
 
 public class ProtocolLibInjector extends Injector {
@@ -16,11 +15,11 @@ public class ProtocolLibInjector extends Injector {
     private static ProtocolLibCallbackHandler callbackHandler = new ProtocolLibCallbackHandler();
 
     public ProtocolLibInjector() {
-        super("com.comphenix.protocol.injector.PacketFilterManager");
+        super("com.comphenix.protocol.injector.PacketFilterManager", PacketFilterBuilder.class);
     }
 
     @Override
-    public void predefineClass() {
+    public CtClass generateHookedClass() {
         classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
 
         try {
@@ -30,11 +29,11 @@ public class ProtocolLibInjector extends Injector {
             postPacketToListeners.insertBefore(
                     "$1=" + ProtocolLibInjector.class.getName() + ".getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
             );
-
-            DefineClassHelper.toClass(targetClass, PacketFilterBuilder.class, PacketFilterBuilder.class.getClassLoader(), null, packetFilterManager.toBytecode());
+            return packetFilterManager;
         } catch (Exception e) {
             e.printStackTrace();
         }
+        return null;
     }
 
     @Override
