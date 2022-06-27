@@ -16,9 +16,25 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibCallbackHandler {
+
+    private final Field mapListeners;
+
+    private SortedPacketListenerList cachedListeners = null;
+
+    public ProtocolLibCallbackHandler() {
+        try {
+            this.mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
+            this.mapListeners.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
+
+        if (cachedListeners != null) return cachedListeners;
 
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
@@ -42,15 +58,13 @@ public class ProtocolLibCallbackHandler {
             }
         }
 
+        cachedListeners = newListeners;
         return newListeners;
     }
 
     private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
         SortedPacketListenerList result = new SortedPacketListenerList();
         try {
-            Field mapListeners = sortedPacketListenerList.getClass().getSuperclass().getDeclaredField("mapListeners");
-            mapListeners.setAccessible(true);
-
             ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
             ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
                     ConcurrentHashMap::new,
@@ -64,5 +78,9 @@ public class ProtocolLibCallbackHandler {
             e.printStackTrace();
         }
         return null;
+    }
+
+    public void removeListenersCache() {
+        this.cachedListeners = null;
     }
 }
