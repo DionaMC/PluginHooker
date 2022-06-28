@@ -33,6 +33,7 @@ public final class DionaPluginHooker extends JavaPlugin {
 
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
+        this.getLogger().info("PluginManager loaded! start hooking...");
         hookerManager = new HookerManager();
     }
 

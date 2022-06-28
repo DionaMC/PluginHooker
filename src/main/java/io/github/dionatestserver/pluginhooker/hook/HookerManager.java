@@ -15,10 +15,12 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class HookerManager {
 
+    private final Logger logger = DionaPluginHooker.getInstance().getLogger();
     private static final String AGENT_CLASS = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
 
     public HookerManager() {
@@ -28,20 +30,38 @@ public class HookerManager {
                 .filter(Injector::canHook)
                 .filter(injector -> {
                     if (injector.isTargetClassDefined()) {
+                        logger.info( injector.getClassNameWithoutPackage() + " is already defined! Skipping...");
                         return true;
                     }
-                    injector.predefineClass();
+                    try {
+                        injector.predefineClass();
+                        logger.info( injector.getClassNameWithoutPackage() + " is now predefined!");
+                    } catch (Exception e) {
+                        logger.severe("Error while predefining " + injector.getClassNameWithoutPackage());
+                        e.printStackTrace();
+                        return true;
+                    }
                     return false;
                 })
                 .collect(Collectors.toList());
 
-        if (definedClasses.size() <= 0) return;
+        if (definedClasses.size() == 0) return;
 
         //init instrumentation field
         File agentFile = this.generateAgentFile();
+
         this.attachAgent(agentFile);
 
-        definedClasses.forEach(injector -> injector.redefineClass(PluginHookerAgent.instrumentation));
+        definedClasses.forEach(injector -> {
+            try {
+                logger.info("Redefining " + injector.getClassNameWithoutPackage());
+                injector.redefineClass(PluginHookerAgent.instrumentation);
+                logger.info( injector.getClassNameWithoutPackage() + " is now redefined!");
+            } catch (Exception e) {
+                logger.severe("Error while redefining " + injector.getClassNameWithoutPackage());
+                e.printStackTrace();
+            }
+        });
     }
 
     private List<Injector> getInjectorList() {
@@ -99,6 +119,7 @@ public class HookerManager {
             vm.loadAgent(agentFile.getAbsolutePath());
             vm.detach();
         } catch (Exception e) {
+            logger.severe("Error while attaching agent");
             e.printStackTrace();
         }
     }
