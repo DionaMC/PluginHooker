@@ -1,7 +1,9 @@
 package io.github.dionatestserver.pluginhooker.player;
 
+import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import lombok.Getter;
+import lombok.Setter;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -16,6 +18,10 @@ public class DionaPlayer {
 
     private final Set<Plugin> enabledPlugins;
 
+    // cached Protocollib listener list
+    @Setter
+    private SortedPacketListenerList cachedListeners;
+
     public DionaPlayer(Player player) {
         this.player = player;
         this.enabledPlugins = new HashSet<>();
@@ -27,10 +33,16 @@ public class DionaPlayer {
             return;
         }
         enabledPlugins.add(plugin);
+        removeCachedListener();
     }
 
     public void disablePlugin(Plugin plugin) {
         enabledPlugins.remove(plugin);
+        removeCachedListener();
+    }
+
+    public void removeCachedListener() {
+        cachedListeners = null;
     }
 
 

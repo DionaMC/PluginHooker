@@ -17,15 +17,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibCallbackHandler {
 
-    private SortedPacketListenerList cachedListeners = null;
-
     private Field mapListeners;
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
 
+        SortedPacketListenerList cachedListeners = dionaPlayer.getCachedListeners();
         if (cachedListeners != null) return cachedListeners;
+
 
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
 
@@ -49,7 +49,7 @@ public class ProtocolLibCallbackHandler {
             }
         }
 
-        cachedListeners = newListeners;
+        dionaPlayer.setCachedListeners(newListeners);
         return newListeners;
     }
 
@@ -77,7 +77,4 @@ public class ProtocolLibCallbackHandler {
         return null;
     }
 
-    public void removeListenersCache() {
-        this.cachedListeners = null;
-    }
 }

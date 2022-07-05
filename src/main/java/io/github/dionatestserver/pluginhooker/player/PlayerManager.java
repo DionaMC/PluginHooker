@@ -24,4 +24,8 @@ public class PlayerManager {
         if (player == null) return null;
         return players.stream().filter(dionaPlayer -> dionaPlayer.getPlayer() == player).findFirst().orElse(null);
     }
+
+    public void removeAllPlayerCachedListener() {
+        players.forEach(DionaPlayer::removeCachedListener);
+    }
 }
