@@ -1,6 +1,5 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.protocollib;
 
-import com.comphenix.protocol.concurrency.AbstractConcurrentListenerMultimap;
 import com.comphenix.protocol.concurrency.SortedCopyOnWriteArray;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
@@ -12,17 +11,13 @@ import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 public class ProtocolLibCallbackHandler {
 
-    private MethodHandle listenersGetter;
-    private MethodHandle listenersSetter;
+    private Field mapListeners;
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
@@ -62,28 +57,21 @@ public class ProtocolLibCallbackHandler {
         SortedPacketListenerList result = new SortedPacketListenerList();
         try {
 
-            if (this.listenersGetter == null) {
-                Field mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
-                mapListeners.setAccessible(true);
-
-                MethodHandles.Lookup lookup = MethodHandles.lookup();
-                this.listenersGetter = lookup.unreflectGetter(mapListeners);
-                this.listenersSetter = lookup.unreflectSetter(mapListeners);
+            if (this.mapListeners == null) {
+                this.mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
+                this.mapListeners.setAccessible(true);
             }
 
-//            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
-            ConcurrentMap<Object, Object> listeners =
-                    (ConcurrentMap<Object, Object>) listenersGetter.invokeExact(((AbstractConcurrentListenerMultimap) sortedPacketListenerList));
-            ConcurrentMap<Object, Object> resultMap = listeners.keySet().stream().collect(
+            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
+            ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
                     ConcurrentHashMap::new,
                     (map, packetType) -> map.put(packetType, new SortedCopyOnWriteArray((Collection) listeners.get(packetType))),
                     ConcurrentHashMap::putAll
             );
 
-//            mapListeners.set(result, resultMap);
-            listenersSetter.invokeExact((AbstractConcurrentListenerMultimap) result, resultMap);
+            mapListeners.set(result, resultMap);
             return result;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
