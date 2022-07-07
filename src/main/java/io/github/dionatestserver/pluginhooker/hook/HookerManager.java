@@ -54,7 +54,6 @@ public class HookerManager {
 
         definedClasses.forEach(injector -> {
             try {
-                logger.info("Redefining " + injector.getClassNameWithoutPackage());
                 injector.redefineClass(PluginHookerAgent.instrumentation);
                 logger.info( injector.getClassNameWithoutPackage() + " is now redefined!");
             } catch (Exception e) {
