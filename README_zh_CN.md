@@ -18,9 +18,73 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 
 ## 用法
 
-* [https://jitpack.io/#Diona-testserver/PluginHooker](https://jitpack.io/#Diona-testserver/PluginHooker)
-* 将 PluginHooker 添加到您插件 plugin.yml 的 `depend` 中
-* 查看我们的示例代码 `src/main/java/io/github/dionatestserver/pluginhooker/example/`
+将PluginHooker作为Maven依赖项 ([Jitpack](https://jitpack.io/#Diona-testserver/PluginHooker))
+````xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+    ...
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.Diona-testserver</groupId>
+        <artifactId>PluginHooker</artifactId>
+        <version>0.5.1</version>
+    </dependency>
+    ...
+</dependencies>
+
+````
+
+
+添加/移除需要被hook的插件
+````java
+public void hookPlugin() {
+    DionaPluginHooker.getPluginManager().addPlugin(pluginToHook);
+}
+
+public void unHookPlugin() {
+    DionaPluginHooker.getPluginManager().removePlugin(pluginToHook);
+}
+````
+
+为玩家启用/禁用指定的插件
+````java
+public void enablePluginForPlayer(Player player) {
+    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    if (dionaPlayer == null) {
+        return;
+    }
+    dionaPlayer.enablePlugin(pluginToHook);
+}
+
+public void disablePluginForPlayer(Player player) {
+    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    if (dionaPlayer == null) {
+        return;
+    }
+    dionaPlayer.disablePlugin(pluginToHook);
+}
+````
+
+如果要拦截或在事件被执行时执行自定义的操作,请添加一个事件监听器:
+````java
+public class ExampleListener implements Listener {
+
+    @EventHandler
+    public void onBukkitEvent(DionaBukkitListenerEvent event) {
+        // do something
+    }
+
+    @EventHandler
+    public void onProtocolLibEvent(DionaProtocolLibPacketEvent event) {
+        // do something
+    }
+}
+````
 
 ## 特别感谢
 
