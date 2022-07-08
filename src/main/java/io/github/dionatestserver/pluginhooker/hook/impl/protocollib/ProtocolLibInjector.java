@@ -20,8 +20,6 @@ public class ProtocolLibInjector extends Injector {
 
     @Override
     public void hookClass() throws Exception {
-        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
-
         CtClass packetFilterManager = classPool.get(targetClassName);
 
         CtMethod postPacketToListeners = ClassUtils.getMethodBySignature(packetFilterManager.getDeclaredMethods(), "(Lcom/comphenix/protocol/injector/SortedPacketListenerList;Lcom/comphenix/protocol/events/PacketEvent;Z)V");
@@ -33,6 +31,11 @@ public class ProtocolLibInjector extends Injector {
     @Override
     public boolean canHook() {
         return DionaConfig.hookProtocolLibPacket;
+    }
+
+    @Override
+    protected void initClassPath() {
+        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
     }
 
 }

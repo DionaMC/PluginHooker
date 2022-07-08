@@ -17,8 +17,6 @@ public class ListenerMultimapInjector extends Injector {
 
     @Override
     public void hookClass() throws Exception {
-        classPool.appendClassPath(new LoaderClassPath(PacketTypeSet.class.getClassLoader()));
-
         CtClass targetClass = classPool.get(this.targetClassName);
         CtMethod addListener = ClassUtils.getMethodByName(targetClass.getMethods(), "addListener");
         CtMethod removeListener = ClassUtils.getMethodByName(targetClass.getMethods(), "removeListener");
@@ -31,5 +29,10 @@ public class ListenerMultimapInjector extends Injector {
     @Override
     public boolean canHook() {
         return DionaConfig.hookProtocolLibPacket;
+    }
+
+    @Override
+    protected void initClassPath() {
+        classPool.appendClassPath(new LoaderClassPath(PacketTypeSet.class.getClassLoader()));
     }
 }

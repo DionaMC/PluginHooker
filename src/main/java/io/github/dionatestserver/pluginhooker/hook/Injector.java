@@ -16,6 +16,10 @@ public abstract class Injector {
 
     protected static final ClassPool classPool = ClassPool.getDefault();
 
+    static {
+        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
+    }
+
     protected final Class<?> neighbor;
 
     protected final CtClass targetClass;
@@ -35,9 +39,9 @@ public abstract class Injector {
         classNameWithoutPackage = className[className.length - 1];
         this.neighbor = neighbor;
 
-        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
 
         try {
+            this.initClassPath();
             this.targetClass = classPool.get(targetClassName);
             this.hookClass();
         } catch (Exception e) {
@@ -75,4 +79,7 @@ public abstract class Injector {
     public abstract void hookClass() throws Exception;
 
     public abstract boolean canHook();
+
+    protected abstract void initClassPath();
+
 }

@@ -52,6 +52,11 @@ public class BukkitEventInjector extends Injector {
         return DionaConfig.hookBukkitEvent;
     }
 
+    @Override
+    protected void initClassPath() {
+        // empty
+    }
+
     public static class BukkitEventHooker {
 
         @Getter
