@@ -1,27 +1,18 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
-import com.sun.tools.attach.VirtualMachine;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
-import javassist.ClassPool;
+import io.github.dionatestserver.pluginhooker.utils.AgentUtils;
 import org.reflections.Reflections;
 
 import java.io.File;
-import java.io.OutputStream;
-import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
-import java.nio.file.Files;
 import java.util.List;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
+import java.util.Objects;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class HookerManager {
 
     private final Logger logger = DionaPluginHooker.getInstance().getLogger();
-    private static final String AGENT_CLASS = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
 
     public HookerManager() {
         List<Injector> injectors = this.getInjectorList();
@@ -47,15 +38,21 @@ public class HookerManager {
 
         if (definedClasses.size() == 0) return;
 
-        //init instrumentation field
-        File agentFile = this.generateAgentFile();
 
-        this.attachAgent(agentFile);
+        //init instrumentation field
+        try {
+            String agentClass = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
+            File agentFile = AgentUtils.generateAgentFile(agentClass);
+            AgentUtils.attachSelf(Objects.requireNonNull(agentFile));
+        } catch (Exception e) {
+            logger.severe("Error while attaching agent");
+            e.printStackTrace();
+        }
 
         definedClasses.forEach(injector -> {
             try {
                 injector.redefineClass(PluginHookerAgent.instrumentation);
-                logger.info( injector.getClassNameWithoutPackage() + " is now redefined!");
+                logger.info(injector.getClassNameWithoutPackage() + " is now redefined!");
             } catch (Exception e) {
                 logger.severe("Error while redefining " + injector.getClassNameWithoutPackage());
                 e.printStackTrace();
@@ -72,54 +69,5 @@ public class HookerManager {
                 throw new RuntimeException(e);
             }
         }).collect(Collectors.toList());
-    }
-
-    private File generateAgentFile() {
-        Manifest manifest = new Manifest();
-        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        manifest.getMainAttributes().put(new Attributes.Name("Agent-Class"), AGENT_CLASS);
-        manifest.getMainAttributes().put(new Attributes.Name("Can-Redefine-Classes"), "true");
-
-        try {
-            File agentFile = new File(DionaPluginHooker.getInstance().getDataFolder(), "agent.jar");
-            if (!agentFile.exists()) {
-                agentFile.createNewFile();
-            }
-
-            OutputStream outputStream = Files.newOutputStream(agentFile.toPath());
-            JarOutputStream jarOutputStream = new JarOutputStream(outputStream, manifest);
-            jarOutputStream.putNextEntry(new JarEntry(AGENT_CLASS.replace(".", "/") + ".class"));
-
-
-            ClassPool pool = ClassPool.getDefault();
-            jarOutputStream.write(pool.get(AGENT_CLASS).toBytecode());
-
-            jarOutputStream.finish();
-            return agentFile;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    private String getPid() {
-        RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
-        String pid = bean.getName();
-        if (pid.contains("@")) {
-            pid = pid.substring(0, pid.indexOf("@"));
-        }
-        return pid;
-    }
-
-    private void attachAgent(File agentFile) {
-        try {
-            System.loadLibrary("attach");
-            VirtualMachine vm = VirtualMachine.attach(this.getPid());
-            vm.loadAgent(agentFile.getAbsolutePath());
-            vm.detach();
-        } catch (Exception e) {
-            logger.severe("Error while attaching agent");
-            e.printStackTrace();
-        }
     }
 }
