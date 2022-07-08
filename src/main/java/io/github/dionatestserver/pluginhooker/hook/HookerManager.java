@@ -27,12 +27,12 @@ public class HookerManager {
                     try {
                         injector.predefineClass();
                         logger.info( injector.getClassNameWithoutPackage() + " is now predefined!");
+                        return false;
                     } catch (Exception e) {
                         logger.severe("Error while predefining " + injector.getClassNameWithoutPackage());
                         e.printStackTrace();
                         return true;
                     }
-                    return false;
                 })
                 .collect(Collectors.toList());
 
