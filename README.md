@@ -41,7 +41,7 @@ Then add the following dependency
         <artifactId>PluginHooker</artifactId>
         <version>0.6.0</version>
     </dependency>
-...
+    ...
 </dependencies>
 ```
 
