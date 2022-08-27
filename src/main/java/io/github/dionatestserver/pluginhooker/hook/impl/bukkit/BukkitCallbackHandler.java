@@ -2,12 +2,13 @@ package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
-import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
+import io.github.dionatestserver.pluginhooker.events.BukkitListenerEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.*;
 import org.bukkit.event.enchantment.EnchantItemEvent;
@@ -22,12 +23,18 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.projectiles.ProjectileSource;
 
 import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 public class BukkitCallbackHandler {
     private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
+
+    private final Map<Class<? extends Event>, Field> eventFieldCache = new LinkedHashMap<>();
+
+    private final Set<Class<? extends Event>> failedFieldCache = new HashSet<>();
 
     public BukkitCallbackHandler() {
         this.initEventMap();
@@ -50,13 +57,13 @@ public class BukkitCallbackHandler {
 
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) {
-            DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event);
+            BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event);
             Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
 
             return bukkitListenerEvent.isCancelled();
         } else {
             if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
-                DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event, dionaPlayer);
+                BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event, dionaPlayer);
                 Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
                 return bukkitListenerEvent.isCancelled();
             } else {
@@ -75,6 +82,12 @@ public class BukkitCallbackHandler {
                 Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
                 if (damager instanceof Player)
                     return (Player) damager;
+                if (damager instanceof Projectile) {
+                    Projectile projectile = (Projectile) damager;
+                    ProjectileSource projectileSource = projectile.getShooter();
+                    if (projectileSource instanceof Player)
+                        return (Player) projectileSource;
+                }
             }
             Entity entity = ((EntityEvent) event).getEntity();
             if (entity instanceof Player)
@@ -91,15 +104,29 @@ public class BukkitCallbackHandler {
         // Try to get the player field from the event
 
         if (DionaConfig.useReflectionToGetEventPlayer) {
-            try {
-                Field playerField = event.getClass().getDeclaredField("player");
-                if (!playerField.isAccessible()) playerField.setAccessible(true);
-                Object player = playerField.get(event);
-                if (player instanceof Player) {
-                    return (Player) player;
-                }
-            } catch (Exception ignored) {
+            if (this.failedFieldCache.contains(event.getClass())) {
+                return null;
             }
+            Field playerField = this.eventFieldCache.getOrDefault(event.getClass(), null);
+            if (playerField == null) {
+                try {
+                    playerField = event.getClass().getDeclaredField("player");
+                    playerField.setAccessible(true);
+                    Player player = (Player) playerField.get(event);
+                    this.eventFieldCache.put(event.getClass(), playerField);
+                    return player;
+                } catch (Exception e) {
+                    this.failedFieldCache.add(event.getClass());
+                    return null;
+                }
+            }
+
+            try {
+                return (Player) playerField.get(event);
+            } catch (Exception e) {
+                return null;
+            }
+
         }
 
         return null;

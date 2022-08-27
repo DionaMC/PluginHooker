@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 @Getter
@@ -16,7 +17,7 @@ public class DionaPlayer {
 
     private final Player player;
 
-    private final Set<Plugin> enabledPlugins;
+    private final Set<Plugin> enabledPlugins = new HashSet<>();
 
     // cached Protocollib listener list
     @Setter
@@ -24,7 +25,6 @@ public class DionaPlayer {
 
     public DionaPlayer(Player player) {
         this.player = player;
-        this.enabledPlugins = new HashSet<>();
     }
 
     public void enablePlugin(Plugin plugin) {
@@ -45,5 +45,16 @@ public class DionaPlayer {
         cachedListeners = null;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        DionaPlayer that = (DionaPlayer) o;
+        return player.equals(that.player);
+    }
 
+    @Override
+    public int hashCode() {
+        return Objects.hash(player);
+    }
 }

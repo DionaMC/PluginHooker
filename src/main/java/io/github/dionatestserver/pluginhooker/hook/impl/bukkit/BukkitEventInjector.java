@@ -4,7 +4,7 @@ import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.hook.HookerManager;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
-import javassist.CtClass;
+import javassist.CannotCompileException;
 import javassist.CtMethod;
 import javassist.util.proxy.DefineClassHelper;
 import lombok.Getter;
@@ -17,7 +17,7 @@ import java.util.function.BiPredicate;
 public class BukkitEventInjector extends Injector {
 
     @Getter
-    private BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
+    private final BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
 
     public BukkitEventInjector() {
         super("org.bukkit.plugin.RegisteredListener", Plugin.class);
@@ -40,23 +40,21 @@ public class BukkitEventInjector extends Injector {
     }
 
     @Override
-    public CtClass generateHookedClass() {
-        try {
-            CtClass registeredListener = classPool.get(targetClass);
-            CtMethod callEvent = ClassUtils.getMethodByName(registeredListener.getMethods(), "callEvent");
-            callEvent.insertBefore(
-                    "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
-            );
-            return registeredListener;
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
+    public void hookClass() throws CannotCompileException {
+        CtMethod callEvent = ClassUtils.getMethodByName(targetClass.getMethods(), "callEvent");
+        callEvent.insertBefore(
+                "if(" + BukkitEventHooker.class.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
+        );
     }
 
     @Override
     public boolean canHook() {
         return DionaConfig.hookBukkitEvent;
+    }
+
+    @Override
+    protected void initClassPath() {
+        // empty
     }
 
     public static class BukkitEventHooker {

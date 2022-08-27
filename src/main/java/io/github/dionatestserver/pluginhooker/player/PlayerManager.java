@@ -3,14 +3,15 @@ package io.github.dionatestserver.pluginhooker.player;
 import lombok.Getter;
 import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Getter
 public class PlayerManager {
 
     @Getter
-    private final List<DionaPlayer> players = new ArrayList<>();
+    private final Set<DionaPlayer> players = new HashSet<>();
 
     public void addPlayer(Player player) {
         players.add(new DionaPlayer(player));
@@ -22,7 +23,12 @@ public class PlayerManager {
 
     public DionaPlayer getDionaPlayer(Player player) {
         if (player == null) return null;
-        return players.stream().filter(dionaPlayer -> dionaPlayer.getPlayer() == player).findFirst().orElse(null);
+        for (DionaPlayer dionaPlayer : players) {
+            if (dionaPlayer.getPlayer().equals(player)) {
+                return dionaPlayer;
+            }
+        }
+        return null;
     }
 
     public void removeAllPlayerCachedListener() {

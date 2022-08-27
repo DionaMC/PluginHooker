@@ -12,33 +12,30 @@ import lombok.Getter;
 public class ProtocolLibInjector extends Injector {
 
     @Getter
-    private static ProtocolLibCallbackHandler callbackHandler = new ProtocolLibCallbackHandler();
+    private static final ProtocolLibCallbackHandler callbackHandler = new ProtocolLibCallbackHandler();
 
     public ProtocolLibInjector() {
         super("com.comphenix.protocol.injector.PacketFilterManager", PacketFilterBuilder.class);
     }
 
     @Override
-    public CtClass generateHookedClass() {
-        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
+    public void hookClass() throws Exception {
+        CtClass packetFilterManager = classPool.get(targetClassName);
 
-        try {
-            CtClass packetFilterManager = classPool.get(targetClass);
-
-            CtMethod postPacketToListeners = ClassUtils.getMethodBySignature(packetFilterManager.getDeclaredMethods(), "(Lcom/comphenix/protocol/injector/SortedPacketListenerList;Lcom/comphenix/protocol/events/PacketEvent;Z)V");
-            postPacketToListeners.insertBefore(
-                    "$1=" + ProtocolLibInjector.class.getName() + ".getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
-            );
-            return packetFilterManager;
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
+        CtMethod postPacketToListeners = ClassUtils.getMethodBySignature(packetFilterManager.getDeclaredMethods(), "(Lcom/comphenix/protocol/injector/SortedPacketListenerList;Lcom/comphenix/protocol/events/PacketEvent;Z)V");
+        postPacketToListeners.insertBefore(
+                "$1=" + ProtocolLibInjector.class.getName() + ".getCallbackHandler().handleProtocolLibPacket($1,$2,$3);"
+        );
     }
 
     @Override
     public boolean canHook() {
         return DionaConfig.hookProtocolLibPacket;
+    }
+
+    @Override
+    protected void initClassPath() {
+        classPool.appendClassPath(new LoaderClassPath(PacketFilterBuilder.class.getClassLoader()));
     }
 
 }
