@@ -39,7 +39,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>0.6.0</version>
+        <version>1.0.0</version>
     </dependency>
 ...
 </dependencies>
@@ -83,12 +83,12 @@ To intercept or perform a custom action when an event is executed, add an event 
 public class ExampleListener implements Listener {
 
     @EventHandler
-    public void onBukkitEvent(DionaBukkitListenerEvent event) {
+    public void onBukkitEvent(BukkitListenerEvent event) {
         // do something
     }
 
     @EventHandler
-    public void onProtocolLibEvent(DionaProtocolLibPacketEvent event) {
+    public void onProtocolLibEvent(ProtocolLibPacketEvent event) {
         // do something
     }
 }
