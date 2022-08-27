@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.*;
 import org.bukkit.event.enchantment.EnchantItemEvent;
@@ -22,12 +23,15 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.projectiles.ProjectileSource;
 
 import java.lang.reflect.Field;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 
 public class BukkitCallbackHandler {
     private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
+
+    private final Map<Class<? extends Event>, Field> eventFieldCache = new LinkedHashMap<>();
+
+    private final Set<Class<? extends Event>> failedFieldCache = new HashSet<>();
 
     public BukkitCallbackHandler() {
         this.initEventMap();
@@ -75,6 +79,12 @@ public class BukkitCallbackHandler {
                 Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
                 if (damager instanceof Player)
                     return (Player) damager;
+                if (damager instanceof Projectile) {
+                    Projectile projectile = (Projectile) damager;
+                    ProjectileSource projectileSource = projectile.getShooter();
+                    if (projectileSource instanceof Player)
+                        return (Player) projectileSource;
+                }
             }
             Entity entity = ((EntityEvent) event).getEntity();
             if (entity instanceof Player)
@@ -91,14 +101,35 @@ public class BukkitCallbackHandler {
         // Try to get the player field from the event
 
         if (DionaConfig.useReflectionToGetEventPlayer) {
-            try {
-                Field playerField = event.getClass().getDeclaredField("player");
-                if (!playerField.isAccessible()) playerField.setAccessible(true);
-                Object player = playerField.get(event);
-                if (player instanceof Player) {
-                    return (Player) player;
+            if (this.failedFieldCache.contains(event.getClass())) {
+                return null;
+            }
+            Field playerField = this.eventFieldCache.getOrDefault(event.getClass(), null);
+            if (playerField != null) {
+                try {
+                    Object player = playerField.get(event);
+                    if (player instanceof Player) {
+                        return (Player) player;
+                    }
+                } catch (Exception e) {
+                    return null;
                 }
-            } catch (Exception ignored) {
+            } else {
+                try {
+                    Field tryToGetField = event.getClass().getDeclaredField("player");
+                    tryToGetField.setAccessible(true);
+                    Object player = tryToGetField.get(event);
+                    if (player instanceof Player) {
+                        this.eventFieldCache.put(event.getClass(), tryToGetField);
+                        return (Player) player;
+                    } else {
+                        this.failedFieldCache.add(event.getClass());
+                        return null;
+                    }
+                } catch (Exception e) {
+                    this.failedFieldCache.add(event.getClass());
+                    return null;
+                }
             }
         }
 
