@@ -1,34 +1,30 @@
 package io.github.dionatestserver.pluginhooker.events;
 
-import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
+import com.comphenix.protocol.events.PacketEvent;
+import com.comphenix.protocol.events.PacketListener;
 import lombok.Getter;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
-import org.bukkit.plugin.Plugin;
 
-public class DionaBukkitListenerEvent extends Event implements Cancellable {
+public class ProtocolLibPacketEvent extends Event implements Cancellable {
 
     private static final HandlerList handlers = new HandlerList();
 
     private boolean cancel;
 
     @Getter
-    private final Plugin plugin;
+    private final PacketListener packetListener;
     @Getter
-    private final Event event;
+    private final PacketEvent packetEvent;
     @Getter
-    private final DionaPlayer dionaPlayer;
+    private final boolean outbound;
 
-    public DionaBukkitListenerEvent(Plugin plugin, Event event) {
-        this(plugin, event, null);
-    }
-
-    public DionaBukkitListenerEvent(Plugin plugin, Event event, DionaPlayer dionaPlayer) {
-        super(event.isAsynchronous());
-        this.plugin = plugin;
-        this.event = event;
-        this.dionaPlayer = dionaPlayer;
+    public ProtocolLibPacketEvent(PacketListener packetListener, PacketEvent packetEvent, boolean outbound) {
+        super(packetEvent.isAsynchronous());
+        this.packetListener = packetListener;
+        this.packetEvent = packetEvent;
+        this.outbound = outbound;
     }
 
     @Override

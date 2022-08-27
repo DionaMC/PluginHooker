@@ -2,7 +2,7 @@ package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
 import io.github.dionatestserver.pluginhooker.config.DionaConfig;
-import io.github.dionatestserver.pluginhooker.events.DionaBukkitListenerEvent;
+import io.github.dionatestserver.pluginhooker.events.BukkitListenerEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -57,13 +57,13 @@ public class BukkitCallbackHandler {
 
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) {
-            DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event);
+            BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event);
             Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
 
             return bukkitListenerEvent.isCancelled();
         } else {
             if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
-                DionaBukkitListenerEvent bukkitListenerEvent = new DionaBukkitListenerEvent(plugin, event, dionaPlayer);
+                BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event, dionaPlayer);
                 Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
                 return bukkitListenerEvent.isCancelled();
             } else {
