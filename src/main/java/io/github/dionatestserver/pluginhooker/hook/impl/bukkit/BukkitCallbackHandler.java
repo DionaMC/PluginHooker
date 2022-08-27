@@ -112,11 +112,9 @@ public class BukkitCallbackHandler {
                 try {
                     playerField = event.getClass().getDeclaredField("player");
                     playerField.setAccessible(true);
-                    Object player = playerField.get(event);
-                    if (player instanceof Player) {
-                        this.eventFieldCache.put(event.getClass(), playerField);
-                        return (Player) player;
-                    }
+                    Player player = (Player) playerField.get(event);
+                    this.eventFieldCache.put(event.getClass(), playerField);
+                    return player;
                 } catch (Exception e) {
                     this.failedFieldCache.add(event.getClass());
                     return null;
