@@ -32,7 +32,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>0.6.0</version>
+        <version>1.0.0</version>
     </dependency>
     ...
 </dependencies>
@@ -75,12 +75,12 @@ public void disablePluginForPlayer(Player player) {
 public class ExampleListener implements Listener {
 
     @EventHandler
-    public void onBukkitEvent(DionaBukkitListenerEvent event) {
+    public void onBukkitEvent(BukkitListenerEvent event) {
         // do something
     }
 
     @EventHandler
-    public void onProtocolLibEvent(DionaProtocolLibPacketEvent event) {
+    public void onProtocolLibEvent(ProtocolLibPacketEvent event) {
         // do something
     }
 }
