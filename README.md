@@ -15,7 +15,7 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 ## Tested Versions
 
 * [Spigot 1.8.8](https://hub.spigotmc.org/stash/projects/SPIGOT/repos/spigot/browse?at=refs%2Fheads%2Fversion%2F1.8.8)
-  with [ProtocolLib 4.8.0](https://github.com/dmulloy2/ProtocolLib/tree/master)
+  with Latest ProtocolLib
 
 ## Usage
 
@@ -39,7 +39,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.0</version>
+        <version>1.0.1</version>
     </dependency>
     ...
 </dependencies>

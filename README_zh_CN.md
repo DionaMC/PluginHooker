@@ -14,7 +14,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 
 ## 已测试版本
 
-* Spigot 1.8.8 + ProtocolLib 4.8.0
+* Spigot 1.8.8 + 最新版ProtocolLib
 
 ## 用法
 
@@ -32,7 +32,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.0</version>
+        <version>1.0.1</version>
     </dependency>
     ...
 </dependencies>
