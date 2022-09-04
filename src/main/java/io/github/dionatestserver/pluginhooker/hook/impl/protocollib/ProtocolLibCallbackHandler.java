@@ -6,7 +6,7 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
-import io.github.dionatestserver.pluginhooker.events.DionaProtocolLibPacketEvent;
+import io.github.dionatestserver.pluginhooker.events.ProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
@@ -38,7 +38,7 @@ public class ProtocolLibCallbackHandler {
 
             if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
 
-                DionaProtocolLibPacketEvent packetEvent = new DionaProtocolLibPacketEvent(listener, event, outbound);
+                ProtocolLibPacketEvent packetEvent = new ProtocolLibPacketEvent(listener, event, outbound);
                 Bukkit.getPluginManager().callEvent(packetEvent);
 
                 if (packetEvent.isCancelled()) {

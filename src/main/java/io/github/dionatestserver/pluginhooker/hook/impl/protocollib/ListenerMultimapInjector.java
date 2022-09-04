@@ -16,26 +16,23 @@ public class ListenerMultimapInjector extends Injector {
     }
 
     @Override
-    public CtClass generateHookedClass() {
-        classPool.appendClassPath(new LoaderClassPath(PacketTypeSet.class.getClassLoader()));
+    public void hookClass() throws Exception {
+        CtClass targetClass = classPool.get(this.targetClassName);
+        CtMethod addListener = ClassUtils.getMethodByName(targetClass.getMethods(), "addListener");
+        CtMethod removeListener = ClassUtils.getMethodByName(targetClass.getMethods(), "removeListener");
 
-        try {
-            CtClass targetClass = classPool.get(this.targetClass);
-            CtMethod addListener = ClassUtils.getMethodByName(targetClass.getMethods(), "addListener");
-            CtMethod removeListener = ClassUtils.getMethodByName(targetClass.getMethods(), "removeListener");
-
-            String src = DionaPluginHooker.class.getName() + ".getPlayerManager().removeAllPlayerCachedListener();";
-            addListener.insertBefore(src);
-            removeListener.insertBefore(src);
-
-            return targetClass;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        String src = DionaPluginHooker.class.getName() + ".getPlayerManager().removeAllPlayerCachedListener();";
+        addListener.insertBefore(src);
+        removeListener.insertBefore(src);
     }
 
     @Override
     public boolean canHook() {
         return DionaConfig.hookProtocolLibPacket;
+    }
+
+    @Override
+    protected void initClassPath() {
+        classPool.appendClassPath(new LoaderClassPath(PacketTypeSet.class.getClassLoader()));
     }
 }

@@ -1,14 +1,12 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
-import javassist.CannotCompileException;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.LoaderClassPath;
 import javassist.util.proxy.DefineClassHelper;
 import lombok.Getter;
 
-import java.io.IOException;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
@@ -18,24 +16,37 @@ public abstract class Injector {
 
     protected static final ClassPool classPool = ClassPool.getDefault();
 
+    static {
+        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
+    }
+
+    protected final Class<?> neighbor;
+
+    protected final CtClass targetClass;
+
     @Getter
-    protected final String targetClass;
+    protected final String targetClassName;
 
     @Getter
     protected final String classNameWithoutPackage;
 
-    protected final Class<?> neighbor;
 
-
-    public Injector(String targetClass, Class<?> neighbor) {
-        this.targetClass = targetClass;
+    public Injector(String targetClassName, Class<?> neighbor) {
+        this.targetClassName = targetClassName;
         // split the class name
-        String[] className = this.getTargetClass().split("\\.");
+        String[] className = this.getTargetClassName().split("\\.");
         // get the class name without the package
         classNameWithoutPackage = className[className.length - 1];
         this.neighbor = neighbor;
 
-        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
+
+        try {
+            this.initClassPath();
+            this.targetClass = classPool.get(targetClassName);
+            this.hookClass();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public boolean isTargetClassDefined() {
@@ -43,25 +54,32 @@ public abstract class Injector {
             Field classesField = ClassLoader.class.getDeclaredField("classes");
             classesField.setAccessible(true);
             AbstractList<Class<?>> classes = (AbstractList) classesField.get(neighbor.getClassLoader());
-            return classes.stream().anyMatch(clazz -> clazz.getName().equals(targetClass));
+            return classes.stream().anyMatch(clazz -> clazz.getName().equals(targetClassName));
         } catch (Exception e) {
             return false;
         }
     }
 
     public void predefineClass() throws Exception {
-        CtClass hookedClass = this.generateHookedClass();
-
-        DefineClassHelper.toClass(targetClass, neighbor, neighbor.getClassLoader(), null, hookedClass.toBytecode());
+        DefineClassHelper.toClass(
+                targetClassName,
+                neighbor,
+                neighbor.getClassLoader(),
+                null,
+                targetClass.toBytecode()
+        );
     }
 
     public void redefineClass(Instrumentation instrumentation) throws Exception {
-        CtClass hookedClass = this.generateHookedClass();
-
-        instrumentation.redefineClasses(new ClassDefinition(Class.forName(targetClass), hookedClass.toBytecode()));
+        instrumentation.redefineClasses(
+                new ClassDefinition(Class.forName(targetClassName), targetClass.toBytecode())
+        );
     }
 
-    public abstract CtClass generateHookedClass();
+    public abstract void hookClass() throws Exception;
 
     public abstract boolean canHook();
+
+    protected abstract void initClassPath();
+
 }
