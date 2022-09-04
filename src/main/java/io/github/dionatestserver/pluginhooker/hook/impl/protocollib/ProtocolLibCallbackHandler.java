@@ -23,7 +23,7 @@ public class ProtocolLibCallbackHandler {
         DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
 
-        SortedPacketListenerList cachedListeners = dionaPlayer.getCachedListeners();
+        SortedPacketListenerList cachedListeners = outbound ? dionaPlayer.getSendingCachedListeners() : dionaPlayer.getReceivedCachedListeners();
         if (cachedListeners != null) return cachedListeners;
 
 
@@ -49,7 +49,11 @@ public class ProtocolLibCallbackHandler {
             }
         }
 
-        dionaPlayer.setCachedListeners(newListeners);
+        if (outbound) {
+            dionaPlayer.setSendingCachedListeners(newListeners);
+        } else {
+            dionaPlayer.setReceivedCachedListeners(newListeners);
+        }
         return newListeners;
     }
 

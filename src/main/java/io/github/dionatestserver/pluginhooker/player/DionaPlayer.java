@@ -20,7 +20,10 @@ public class DionaPlayer {
 
     // cached Protocollib listener list
     @Setter
-    private SortedPacketListenerList cachedListeners;
+    private SortedPacketListenerList receivedCachedListeners;
+
+    @Setter
+    private SortedPacketListenerList sendingCachedListeners;
 
     public DionaPlayer(Player player) {
         this.player = player;
@@ -41,8 +44,9 @@ public class DionaPlayer {
         removeCachedListener();
     }
 
-    public void removeCachedListener() {
-        cachedListeners = null;
+    public synchronized void removeCachedListener() {
+        sendingCachedListeners = null;
+        receivedCachedListeners = null;
     }
 
 
