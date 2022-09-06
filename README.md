@@ -1,6 +1,7 @@
 # PluginHooker
 
-PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and better method to hook Bukkit events.
+PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and better method to hook Bukkit events and ProtocolLib PacketEvents  
+[Discord](https://discord.gg/fdmkfts)
 
 ## Localization
 
