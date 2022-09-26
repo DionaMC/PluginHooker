@@ -32,7 +32,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.2</version>
     </dependency>
     ...
 </dependencies>

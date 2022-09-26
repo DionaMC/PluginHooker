@@ -40,7 +40,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.Diona-testserver</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.2</version>
     </dependency>
     ...
 </dependencies>
