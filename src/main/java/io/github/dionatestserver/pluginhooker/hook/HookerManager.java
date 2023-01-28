@@ -20,17 +20,17 @@ public class HookerManager {
         List<Injector> definedClasses = injectors.stream()
                 .filter(Injector::canHook)
                 .filter(injector -> {
-                    if (injector.isTargetClassDefined()) {
-                        logger.info( injector.getClassNameWithoutPackage() + " is already defined! Skipping...");
-                        return true;
-                    }
+//                    if (injector.isTargetClassDefined()) {
+//                        logger.info( injector.getClassNameWithoutPackage() + " is already defined! Skipping...");
+//                        return true;
+//                    }
                     try {
                         injector.predefineClass();
-                        logger.info( injector.getClassNameWithoutPackage() + " is now predefined!");
+                        logger.info(injector.getClassNameWithoutPackage() + " is now predefined!");
                         return false;
-                    } catch (Exception e) {
-                        logger.severe("Error while predefining " + injector.getClassNameWithoutPackage());
-                        e.printStackTrace();
+                    } catch (Throwable e) {
+//                        logger.severe("Error while predefining " + injector.getClassNameWithoutPackage());
+//                        e.printStackTrace();
                         return true;
                     }
                 })

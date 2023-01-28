@@ -15,6 +15,13 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
 public class AgentUtils {
+
+    static {
+        // 高版本jdk的sun.tools.attach.HotSpotVirtualMachine
+        // 拥有ALLOW_ATTACH_SELF检查 需要被设置为true
+        //TODO 需要修复
+    }
+
     public static File generateAgentFile(String agentClass) {
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -53,7 +60,7 @@ public class AgentUtils {
     }
 
     public static void attachSelf(File agentFile) throws Exception {
-        System.loadLibrary("attach");
+//        System.loadLibrary("attach");
         VirtualMachine vm = VirtualMachine.attach(getPid());
         vm.loadAgent(agentFile.getAbsolutePath());
         vm.detach();

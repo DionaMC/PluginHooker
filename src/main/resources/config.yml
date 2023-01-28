@@ -5,5 +5,7 @@ hook:
   # Should we hook the ProtocolLib packet event?
   protocollib-packet: true
 
+  netty: true
+
 # Should we use reflection to get player in unknown events?
 use-reflection-to-get-event-player: true

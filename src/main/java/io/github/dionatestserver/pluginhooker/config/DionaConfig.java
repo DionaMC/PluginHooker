@@ -7,6 +7,8 @@ public class DionaConfig {
     public static boolean hookBukkitEvent;
     @ConfigPath("hook.protocollib-packet")
     public static boolean hookProtocolLibPacket;
+    @ConfigPath("hook.netty")
+    public static boolean hookNetty;
 
     @ConfigPath("use-reflection-to-get-event-player")
     public static boolean useReflectionToGetEventPlayer;
