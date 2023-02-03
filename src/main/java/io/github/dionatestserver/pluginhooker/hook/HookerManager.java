@@ -1,12 +1,11 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
+import bot.inker.acj.JvmHacker;
 import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
-import io.github.dionatestserver.pluginhooker.utils.AgentUtils;
 import org.reflections.Reflections;
 
-import java.io.File;
+import java.lang.instrument.Instrumentation;
 import java.util.List;
-import java.util.Objects;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -20,17 +19,11 @@ public class HookerManager {
         List<Injector> definedClasses = injectors.stream()
                 .filter(Injector::canHook)
                 .filter(injector -> {
-//                    if (injector.isTargetClassDefined()) {
-//                        logger.info( injector.getClassNameWithoutPackage() + " is already defined! Skipping...");
-//                        return true;
-//                    }
                     try {
                         injector.predefineClass();
                         logger.info(injector.getClassNameWithoutPackage() + " is now predefined!");
                         return false;
                     } catch (Throwable e) {
-//                        logger.severe("Error while predefining " + injector.getClassNameWithoutPackage());
-//                        e.printStackTrace();
                         return true;
                     }
                 })
@@ -41,23 +34,24 @@ public class HookerManager {
 
         //init instrumentation field
         try {
-            String agentClass = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
-            File agentFile = AgentUtils.generateAgentFile(agentClass);
-            AgentUtils.attachSelf(Objects.requireNonNull(agentFile));
+//            String agentClass = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
+//            File agentFile = AgentUtils.generateAgentFile(agentClass);
+//            AgentUtils.attachSelf(Objects.requireNonNull(agentFile));
+            Instrumentation instrumentation = JvmHacker.instrumentation();
+
+            definedClasses.forEach(injector -> {
+                try {
+                    injector.redefineClass(instrumentation);
+                    logger.info(injector.getClassNameWithoutPackage() + " is now redefined!");
+                } catch (Exception e) {
+                    logger.severe("Error while redefining " + injector.getClassNameWithoutPackage());
+                    e.printStackTrace();
+                }
+            });
         } catch (Exception e) {
             logger.severe("Error while attaching agent");
             e.printStackTrace();
         }
-
-        definedClasses.forEach(injector -> {
-            try {
-                injector.redefineClass(PluginHookerAgent.instrumentation);
-                logger.info(injector.getClassNameWithoutPackage() + " is now redefined!");
-            } catch (Exception e) {
-                logger.severe("Error while redefining " + injector.getClassNameWithoutPackage());
-                e.printStackTrace();
-            }
-        });
     }
 
     private List<Injector> getInjectorList() {

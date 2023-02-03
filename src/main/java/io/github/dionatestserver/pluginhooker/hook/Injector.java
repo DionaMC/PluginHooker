@@ -9,8 +9,6 @@ import lombok.Getter;
 
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
-import java.lang.reflect.Field;
-import java.util.AbstractList;
 
 public abstract class Injector {
 
@@ -20,9 +18,9 @@ public abstract class Injector {
         classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
     }
 
-    protected final Class<?> neighbor;
+    protected Class<?> neighbor;
 
-    protected final CtClass targetClass;
+    protected CtClass targetClass;
 
     @Getter
     protected final String targetClassName;
@@ -31,32 +29,22 @@ public abstract class Injector {
     protected final String classNameWithoutPackage;
 
 
-    public Injector(String targetClassName, Class<?> neighbor) {
+    public Injector(String targetClassName, String neighborName) {
         this.targetClassName = targetClassName;
         // split the class name
         String[] className = this.getTargetClassName().split("\\.");
         // get the class name without the package
         classNameWithoutPackage = className[className.length - 1];
-        this.neighbor = neighbor;
 
+        if (!this.canHook()) return;
 
         try {
             this.initClassPath();
+            this.neighbor = Class.forName(neighborName);
             this.targetClass = classPool.get(targetClassName);
             this.hookClass();
         } catch (Exception e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    public boolean isTargetClassDefined() {
-        try {
-            Field classesField = ClassLoader.class.getDeclaredField("classes");
-            classesField.setAccessible(true);
-            AbstractList<Class<?>> classes = (AbstractList) classesField.get(neighbor.getClassLoader());
-            return classes.stream().anyMatch(clazz -> clazz.getName().equals(targetClassName));
-        } catch (Exception e) {
-            return false;
         }
     }
 

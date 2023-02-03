@@ -6,14 +6,14 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.function.BiPredicate;
 
-public class BukkitEventHooker {
+public class BukkitEventCallback {
 
     @Getter
-    private static BukkitEventHooker instance;
+    private static BukkitEventCallback instance;
 
     private final BiPredicate<Plugin, Event> callback;
 
-    public BukkitEventHooker(BiPredicate<Plugin, Event> callback) {
+    public BukkitEventCallback(BiPredicate<Plugin, Event> callback) {
         instance = this;
         this.callback = callback;
     }

@@ -14,7 +14,7 @@ public class ProtocolLibInjector extends Injector {
     private static final ProtocolLibCallbackHandler callbackHandler = new ProtocolLibCallbackHandler();
 
     public ProtocolLibInjector() {
-        super("com.comphenix.protocol.injector.PacketFilterManager", PacketFilterBuilder.class);
+        super("com.comphenix.protocol.injector.PacketFilterManager", "com.comphenix.protocol.injector.PacketFilterBuilder");
     }
 
     @Override

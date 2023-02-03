@@ -20,14 +20,14 @@ public class BukkitEventInjector extends Injector {
     @Getter
     private final BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
 
-    private static final CtClass HOOKER_CLASS;
+    private static final CtClass CALLBACK_CLASS;
 
     static {
         try {
-            HOOKER_CLASS = classPool.get(BukkitEventHooker.class.getName());
-            HOOKER_CLASS.replaceClassName(
-                    BukkitEventHooker.class.getName(),
-                    Bukkit.class.getPackage().getName() + "." + BukkitEventHooker.class.getSimpleName()
+            CALLBACK_CLASS = classPool.get(BukkitEventCallback.class.getName());
+            CALLBACK_CLASS.replaceClassName(
+                    BukkitEventCallback.class.getName(),
+                    Bukkit.class.getPackage().getName() + "." + BukkitEventCallback.class.getSimpleName()
             );
         } catch (NotFoundException e) {
             throw new RuntimeException(e);
@@ -35,16 +35,16 @@ public class BukkitEventInjector extends Injector {
     }
 
     public BukkitEventInjector() {
-        super("org.bukkit.plugin.RegisteredListener", Plugin.class);
+        super("org.bukkit.plugin.RegisteredListener", "org.bukkit.plugin.Plugin");
 
         try {
             Class<?> bukkitEventHooker =
                     DefineClassHelper.toClass(
-                            HOOKER_CLASS.getName(),
+                            CALLBACK_CLASS.getName(),
                             Bukkit.class,
                             Bukkit.class.getClassLoader(),
                             null,
-                            HOOKER_CLASS.toBytecode()
+                            CALLBACK_CLASS.toBytecode()
                     );
 
             BiPredicate<Plugin, Event> callback = this.callbackHandler::handleBukkitEvent;
@@ -58,7 +58,7 @@ public class BukkitEventInjector extends Injector {
     public void hookClass() throws CannotCompileException {
         CtMethod callEvent = ClassUtils.getMethodByName(targetClass.getMethods(), "callEvent");
         callEvent.insertBefore(
-                "if(" + HOOKER_CLASS.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
+                "if(" + CALLBACK_CLASS.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
         );
     }
 

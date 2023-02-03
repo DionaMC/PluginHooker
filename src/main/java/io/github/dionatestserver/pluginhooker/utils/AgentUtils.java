@@ -60,7 +60,6 @@ public class AgentUtils {
     }
 
     public static void attachSelf(File agentFile) throws Exception {
-//        System.loadLibrary("attach");
         VirtualMachine vm = VirtualMachine.attach(getPid());
         vm.loadAgent(agentFile.getAbsolutePath());
         vm.detach();

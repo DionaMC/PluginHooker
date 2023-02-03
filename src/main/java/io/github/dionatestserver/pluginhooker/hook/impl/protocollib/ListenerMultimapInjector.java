@@ -12,7 +12,7 @@ import javassist.LoaderClassPath;
 public class ListenerMultimapInjector extends Injector {
 
     public ListenerMultimapInjector() {
-        super("com.comphenix.protocol.concurrency.AbstractConcurrentListenerMultimap", PacketTypeSet.class);
+        super("com.comphenix.protocol.concurrency.AbstractConcurrentListenerMultimap", "com.comphenix.protocol.concurrency.PacketTypeSet");
     }
 
     @Override
