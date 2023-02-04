@@ -30,7 +30,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 
 <dependencies>
     <dependency>
-        <groupId>com.github.Diona-testserver</groupId>
+        <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
         <version>1.0.2</version>
     </dependency>
@@ -42,11 +42,11 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 添加/移除需要被hook的插件
 ```java
 public void hookPlugin() {
-    DionaPluginHooker.getPluginManager().addPlugin(pluginToHook);
+    PluginHooker.getPluginManager().addPlugin(pluginToHook);
 }
 
 public void unHookPlugin() {
-    DionaPluginHooker.getPluginManager().removePlugin(pluginToHook);
+    PluginHooker.getPluginManager().removePlugin(pluginToHook);
 }
 ```
 
@@ -54,7 +54,7 @@ public void unHookPlugin() {
 
 ```java
 public void enablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     if (dionaPlayer == null) {
         return;
     }
@@ -62,7 +62,7 @@ public void enablePluginForPlayer(Player player) {
 }
 
 public void disablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     if (dionaPlayer == null) {
         return;
     }
