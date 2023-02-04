@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.LoaderClassPath;
@@ -15,7 +15,7 @@ public abstract class Injector {
     protected static final ClassPool classPool = ClassPool.getDefault();
 
     static {
-        classPool.appendClassPath(new LoaderClassPath(DionaPluginHooker.class.getClassLoader()));
+        classPool.appendClassPath(new LoaderClassPath(PluginHooker.class.getClassLoader()));
     }
 
     protected Class<?> neighbor;

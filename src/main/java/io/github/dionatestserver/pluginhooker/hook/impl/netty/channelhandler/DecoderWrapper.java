@@ -1,8 +1,9 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler;
 
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import io.github.dionatestserver.pluginhooker.events.NettyCodecEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import org.bukkit.Bukkit;
@@ -35,7 +36,7 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
     public DecoderWrapper(MessageToMessageDecoder<?> decoder, Plugin plugin, Player player) {
         this.decoder = decoder;
         this.plugin = plugin;
-        this.dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+        this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     }
 
     @Override
@@ -44,10 +45,20 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
-                out.add(msg);
+                addToOutList(msg, out);
             } else {
                 decoderMethod.invoke(decoder, ctx, msg, out);
             }
+        } else {
+            addToOutList(msg, out);
+        }
+    }
+
+    private void addToOutList(Object msg, List<Object> out) {
+        if (msg instanceof ByteBuf) {
+            ByteBuf byteBuf = (ByteBuf) msg;
+            if (byteBuf.isReadable())
+                out.add(byteBuf.retain());
         } else {
             out.add(msg);
         }

@@ -41,6 +41,21 @@ public class HookerUtils {
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+
+
+    }
+
+    public static Player getPlayerByChannelContext(Object ctx) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            //TODO 使用反射代替直接调用nms
+            ChannelPipeline pipeline = ((CraftPlayer) player).getHandle().playerConnection.networkManager.channel.pipeline();
+            for (String name : pipeline.names()) {
+                if (pipeline.context(name) != ctx) continue;
+
+                return player;
+            }
+        }
+        return null;
     }
 
 

@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.player;
 
 import com.comphenix.protocol.injector.SortedPacketListenerList;
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.Bukkit;
@@ -31,7 +31,7 @@ public class DionaPlayer {
     }
 
     public void enablePlugin(Plugin plugin) {
-        if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
+        if (!PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
             Bukkit.getLogger().warning("Warning: " + plugin.getName() + " is not in the plugin hook list! Ignored!");
             return;
         }

@@ -11,10 +11,10 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 @Getter
-public final class DionaPluginHooker extends JavaPlugin {
+public final class PluginHooker extends JavaPlugin {
 
     @Getter
-    private static DionaPluginHooker instance;
+    private static PluginHooker instance;
 
     @Getter
     private static HookerManager hookerManager;
@@ -25,7 +25,7 @@ public final class DionaPluginHooker extends JavaPlugin {
     @Getter
     private static ConfigManager configManager;
 
-    public DionaPluginHooker() {
+    public PluginHooker() {
         instance = this;
 
         configManager = new ConfigManager();

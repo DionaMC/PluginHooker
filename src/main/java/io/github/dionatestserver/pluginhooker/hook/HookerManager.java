@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook;
 
 import bot.inker.acj.JvmHacker;
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import org.reflections.Reflections;
 
 import java.lang.instrument.Instrumentation;
@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 public class HookerManager {
 
-    private final Logger logger = DionaPluginHooker.getInstance().getLogger();
+    private final Logger logger = PluginHooker.getInstance().getLogger();
 
     public HookerManager() {
         List<Injector> injectors = this.getInjectorList();

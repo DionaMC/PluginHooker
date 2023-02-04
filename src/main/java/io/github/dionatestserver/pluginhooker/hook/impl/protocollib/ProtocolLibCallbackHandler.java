@@ -5,7 +5,7 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import io.github.dionatestserver.pluginhooker.events.ProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
@@ -20,7 +20,7 @@ public class ProtocolLibCallbackHandler {
     private Field mapListeners;
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
-        DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
+        DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return listenerList;
 
         SortedPacketListenerList cachedListeners = outbound ? dionaPlayer.getSendingCachedListeners() : dionaPlayer.getReceivedCachedListeners();
@@ -32,7 +32,7 @@ public class ProtocolLibCallbackHandler {
         for (PrioritizedListener<PacketListener> value : newListeners.values()) {
             PacketListener listener = value.getListener();
             Plugin plugin = listener.getPlugin();
-            if (!DionaPluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
+            if (!PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
                 continue;
             }
 

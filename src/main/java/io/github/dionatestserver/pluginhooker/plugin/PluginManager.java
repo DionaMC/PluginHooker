@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.plugin;
 
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import lombok.Getter;
 import org.bukkit.Bukkit;
@@ -24,7 +24,7 @@ public class PluginManager {
             return;
         }
         pluginsToHook.remove(plugin);
-        for (DionaPlayer dionaPlayer : DionaPluginHooker.getPlayerManager().getPlayers()) {
+        for (DionaPlayer dionaPlayer : PluginHooker.getPlayerManager().getPlayers()) {
             dionaPlayer.getEnabledPlugins().remove(plugin);
         }
     }

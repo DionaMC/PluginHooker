@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler;
 
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import io.github.dionatestserver.pluginhooker.events.NettyCodecEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.netty.channel.ChannelDuplexHandler;
@@ -19,7 +19,7 @@ public class DuplexHandlerWrapper extends ChannelDuplexHandler {
     public DuplexHandlerWrapper(ChannelDuplexHandler duplexHandler, Plugin plugin, Player player) {
         this.duplexHandler = duplexHandler;
         this.plugin = plugin;
-        this.dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+        this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     }
 
     @Override

@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.utils;
 
 import com.sun.tools.attach.VirtualMachine;
-import io.github.dionatestserver.pluginhooker.DionaPluginHooker;
+import io.github.dionatestserver.pluginhooker.PluginHooker;
 import javassist.ClassPool;
 
 import java.io.File;
@@ -29,7 +29,7 @@ public class AgentUtils {
         manifest.getMainAttributes().put(new Attributes.Name("Can-Redefine-Classes"), "true");
 
         try {
-            File agentFile = new File(DionaPluginHooker.getInstance().getDataFolder(), "agent.jar");
+            File agentFile = new File(PluginHooker.getInstance().getDataFolder(), "agent.jar");
             if (!agentFile.exists()) {
                 agentFile.createNewFile();
             }
