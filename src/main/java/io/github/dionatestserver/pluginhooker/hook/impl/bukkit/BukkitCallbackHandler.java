@@ -86,28 +86,31 @@ public class BukkitCallbackHandler {
 
     private Player getPlayerByEvent(Event event) {
         // return player from PlayerEvent
-        if (event instanceof PlayerEvent)
-            return ((PlayerEvent) event).getPlayer();
 
-        if (event instanceof EntityEvent) {
-            if (event instanceof EntityDamageByEntityEvent) {
-                Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
-                if (damager instanceof Player)
-                    return (Player) damager;
-                if (damager instanceof Projectile) {
-                    Projectile projectile = (Projectile) damager;
-                    ProjectileSource projectileSource = projectile.getShooter();
-                    if (projectileSource instanceof Player)
-                        return (Player) projectileSource;
-                }
+        if (event instanceof EntityDamageByEntityEvent) {
+            Entity damager = ((EntityDamageByEntityEvent) event).getDamager();
+            if (damager instanceof Player) {
+                return (Player) damager;
             }
+            if (damager instanceof Projectile) {
+                Projectile projectile = (Projectile) damager;
+                ProjectileSource projectileSource = projectile.getShooter();
+                if (projectileSource instanceof Player)
+                    return (Player) projectileSource;
+            }
+        }
+        if (event instanceof EntityEvent) {
             Entity entity = ((EntityEvent) event).getEntity();
-            if (entity instanceof Player)
+            if (entity instanceof Player) {
                 return (Player) entity;
-            else if (event instanceof ProjectileLaunchEvent) {
+            }
+            if (event instanceof ProjectileLaunchEvent) {
                 ProjectileSource shooter = ((ProjectileLaunchEvent) event).getEntity().getShooter();
                 return shooter instanceof Player ? (Player) shooter : null;
             }
+        }
+        if (event instanceof PlayerEvent) {
+            return ((PlayerEvent) event).getPlayer();
         }
 
         Function<Event, Player> function = this.eventMap.get(event.getClass());
