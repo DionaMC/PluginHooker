@@ -3,10 +3,12 @@ package io.github.dionatestserver.pluginhooker.hook.impl.netty;
 import io.github.dionatestserver.pluginhooker.PluginHooker;
 import io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler.DecoderWrapper;
 import io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler.DuplexHandlerWrapper;
+import io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler.EncoderWrapper;
 import io.github.dionatestserver.pluginhooker.utils.HookerUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
+import io.netty.handler.codec.MessageToMessageEncoder;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -73,6 +75,9 @@ public class NettyCallbackHandler {
                         if (handler instanceof MessageToMessageDecoder) {
                             setContextHandler(ctx, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
+                        } else if (handler instanceof MessageToMessageEncoder) {
+                            setContextHandler(ctx, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
+                            System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
                         } else if (handler instanceof ChannelDuplexHandler) {
                             setContextHandler(ctx, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");
