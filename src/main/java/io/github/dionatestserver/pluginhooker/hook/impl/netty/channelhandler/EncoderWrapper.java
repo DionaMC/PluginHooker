@@ -11,12 +11,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.List;
 
 public class EncoderWrapper extends MessageToMessageEncoder<Object> {
 
-    private final static Method encoderMethod;
+    private final static MethodHandle encoderMethodHandle;
 
     @ConfigPath("hook.netty.call-event")
     public static boolean callEvent;
@@ -24,9 +26,10 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
     static {
         PluginHooker.getConfigManager().loadConfig(EncoderWrapper.class);
         try {
-            encoderMethod = MessageToMessageEncoder.class
+            Method encoderMethod = MessageToMessageEncoder.class
                     .getDeclaredMethod("encode", ChannelHandlerContext.class, Object.class, List.class);
             encoderMethod.setAccessible(true);
+            encoderMethodHandle = MethodHandles.lookup().unreflect(encoderMethod);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -44,10 +47,14 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
     }
 
     @Override
-    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
+    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
             if (!callEvent) {
-                encoderMethod.invoke(encoder, ctx, msg, out);
+                try {
+                    encoderMethodHandle.invoke(encoder, ctx, msg, out);
+                } catch (Throwable throwable) {
+                    throwable.printStackTrace();
+                }
                 return;
             }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, true);
@@ -55,7 +62,11 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
             if (nettyCodecEvent.isCancelled()) {
                 addToOutList(msg, out);
             } else {
-                encoderMethod.invoke(encoder, ctx, msg, out);
+                try {
+                    encoderMethodHandle.invoke(encoder, ctx, msg, out);
+                } catch (Throwable throwable) {
+                    throwable.printStackTrace();
+                }
             }
         } else {
             addToOutList(msg, out);
@@ -73,7 +84,7 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext channelHandlerContext, Throwable throwable) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext channelHandlerContext, Throwable throwable) {
         throwable.printStackTrace();
     }
 }
