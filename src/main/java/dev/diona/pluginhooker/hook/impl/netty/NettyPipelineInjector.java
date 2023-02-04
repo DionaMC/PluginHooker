@@ -11,7 +11,7 @@ import javassist.util.proxy.DefineClassHelper;
 import lombok.Getter;
 
 import java.util.Arrays;
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class NettyPipelineInjector extends Injector {
 
@@ -48,8 +48,8 @@ public class NettyPipelineInjector extends Injector {
                             CALLBACK_CLASS.toBytecode()
                     );
 
-            BiConsumer<Object, Object> callback = callbackHandler::handlePipelineAdd;
-            nettyPipelineHooker.getConstructor(BiConsumer.class).newInstance(callback);
+            Consumer<Object> callback = callbackHandler::handlePipelineAdd;
+            nettyPipelineHooker.getConstructor(Consumer.class).newInstance(callback);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -63,12 +63,12 @@ public class NettyPipelineInjector extends Injector {
                 })
                 .forEach(method -> {
                     try {
-                        NettyVersion version = NettyVersion.getVersion();
-                        if (version.getMinor() == 1) {
-                            method.insertAfter(CALLBACK_CLASS.getName() + ".getInstance().onHandlerAdd($2);");
-                        } else if (version.getMinor() == 0) {
-                            method.insertBefore(CALLBACK_CLASS.getName() + ".getInstance().onHandlerAdd($3,$0);");
-                        }
+                        String src = String.format(
+                                CALLBACK_CLASS.getName() + ".getInstance().onHandlerAdd($%d);",
+                                method.getParameterTypes().length
+                        );
+                        method.insertAfter(src);
+//                        method.insertBefore(CALLBACK_CLASS.getName() + ".getInstance().onHandlerAdd($3,$0);");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }

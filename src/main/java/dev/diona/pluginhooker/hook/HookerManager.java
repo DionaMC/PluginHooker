@@ -32,7 +32,6 @@ public class HookerManager {
         if (definedClasses.size() == 0) return;
 
 
-        //init instrumentation field
         try {
             Instrumentation instrumentation = JvmHacker.instrumentation();
 

@@ -1,9 +1,9 @@
 package dev.diona.pluginhooker.hook.impl.netty;
 
+import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.hook.impl.netty.channelhandler.DecoderWrapper;
 import dev.diona.pluginhooker.hook.impl.netty.channelhandler.DuplexHandlerWrapper;
 import dev.diona.pluginhooker.hook.impl.netty.channelhandler.EncoderWrapper;
-import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.utils.HookerUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
@@ -32,7 +32,7 @@ public class NettyCallbackHandler {
     }
 
     //ctx = DefaultChannelHandlerContext
-    public void handlePipelineAdd(Object ctx, Object pipeline) {
+    public void handlePipelineAdd(Object ctx) {
         StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
         for (int i = 2; i < stackTraceElements.length; i++) {
             if (stackTraceElements[i].getClassName().startsWith("io.netty"))
