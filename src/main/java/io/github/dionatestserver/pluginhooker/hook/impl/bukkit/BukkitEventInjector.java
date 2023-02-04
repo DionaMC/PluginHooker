@@ -17,7 +17,7 @@ import java.util.function.BiPredicate;
 
 public class BukkitEventInjector extends Injector {
 
-    @ConfigPath("hook.bukkit-event")
+    @ConfigPath("hook.bukkit.enabled")
     public boolean hookBukkitEvent;
 
     private static final CtClass CALLBACK_CLASS;

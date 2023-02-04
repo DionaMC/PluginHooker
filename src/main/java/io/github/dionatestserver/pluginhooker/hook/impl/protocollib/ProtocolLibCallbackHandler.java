@@ -6,6 +6,7 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.injector.PrioritizedListener;
 import com.comphenix.protocol.injector.SortedPacketListenerList;
 import io.github.dionatestserver.pluginhooker.PluginHooker;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.events.ProtocolLibPacketEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
@@ -17,7 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtocolLibCallbackHandler {
 
+    @ConfigPath("hook.protocollib.call-event")
+    public boolean callEvent;
+
     private Field mapListeners;
+
+    public ProtocolLibCallbackHandler() {
+        PluginHooker.getConfigManager().loadConfig(this);
+    }
 
     public SortedPacketListenerList handleProtocolLibPacket(SortedPacketListenerList listenerList, PacketEvent event, boolean outbound) {
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
@@ -37,12 +45,12 @@ public class ProtocolLibCallbackHandler {
             }
 
             if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
-
-                ProtocolLibPacketEvent packetEvent = new ProtocolLibPacketEvent(listener, event, outbound);
-                Bukkit.getPluginManager().callEvent(packetEvent);
-
-                if (packetEvent.isCancelled()) {
-                    newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
+                if (callEvent) {
+                    ProtocolLibPacketEvent packetEvent = new ProtocolLibPacketEvent(listener, event, outbound);
+                    Bukkit.getPluginManager().callEvent(packetEvent);
+                    if (packetEvent.isCancelled()) {
+                        newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());
+                    }
                 }
             } else {
                 newListeners.removeListener(listener, outbound ? listener.getSendingWhitelist() : listener.getReceivingWhitelist());

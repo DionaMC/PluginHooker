@@ -31,8 +31,10 @@ import java.util.function.Function;
 
 public class BukkitCallbackHandler {
 
-    @ConfigPath("use-reflection-to-get-event-player")
+    @ConfigPath("hook.bukkit.use-reflection-to-get-event-player")
     public boolean useReflectionToGetEventPlayer;
+    @ConfigPath("hook.bukkit.call-event")
+    public boolean callEvent;
 
     private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
 
@@ -62,12 +64,17 @@ public class BukkitCallbackHandler {
 
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(this.getPlayerByEvent(event));
         if (dionaPlayer == null) {
+            if (!callEvent) {
+                return false;
+            }
             BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event);
             Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
-
             return bukkitListenerEvent.isCancelled();
         } else {
             if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
+                if (!callEvent) {
+                    return false;
+                }
                 BukkitListenerEvent bukkitListenerEvent = new BukkitListenerEvent(plugin, event, dionaPlayer);
                 Bukkit.getPluginManager().callEvent(bukkitListenerEvent);
                 return bukkitListenerEvent.isCancelled();

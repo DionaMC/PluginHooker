@@ -1,6 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler;
 
 import io.github.dionatestserver.pluginhooker.PluginHooker;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.events.NettyCodecEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.netty.channel.ChannelDuplexHandler;
@@ -12,9 +13,17 @@ import org.bukkit.plugin.Plugin;
 
 public class DuplexHandlerWrapper extends ChannelDuplexHandler {
 
+    @ConfigPath("hook.netty.call-event")
+    public static boolean callEvent;
+
+    static {
+        PluginHooker.getConfigManager().loadConfig(DuplexHandlerWrapper.class);
+    }
+
     private final ChannelDuplexHandler duplexHandler;
     private final Plugin plugin;
     private final DionaPlayer dionaPlayer;
+
 
     public DuplexHandlerWrapper(ChannelDuplexHandler duplexHandler, Plugin plugin, Player player) {
         this.duplexHandler = duplexHandler;
@@ -25,6 +34,10 @@ public class DuplexHandlerWrapper extends ChannelDuplexHandler {
     @Override
     public void channelRead(ChannelHandlerContext channelHandlerContext, Object packet) throws Exception {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
+            if (!callEvent) {
+                duplexHandler.channelRead(channelHandlerContext, packet);
+                return;
+            }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, packet, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
@@ -40,6 +53,10 @@ public class DuplexHandlerWrapper extends ChannelDuplexHandler {
     @Override
     public void write(ChannelHandlerContext channelHandlerContext, Object packet, ChannelPromise channelPromise) throws Exception {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
+            if (!callEvent) {
+                duplexHandler.write(channelHandlerContext, packet, channelPromise);
+                return;
+            }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, packet, true);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {

@@ -10,7 +10,7 @@ import lombok.Getter;
 
 public class ProtocolLibInjector extends Injector {
 
-    @ConfigPath("hook.protocollib-packet")
+    @ConfigPath("hook.protocollib.enabled")
     public boolean hookProtocolLibPacket;
 
     @Getter

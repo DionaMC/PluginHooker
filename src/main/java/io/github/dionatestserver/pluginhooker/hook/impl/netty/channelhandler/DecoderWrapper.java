@@ -1,6 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.netty.channelhandler;
 
 import io.github.dionatestserver.pluginhooker.PluginHooker;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.events.NettyCodecEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import io.netty.buffer.ByteBuf;
@@ -17,7 +18,11 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
 
     private final static Method decoderMethod;
 
+    @ConfigPath("hook.netty.call-event")
+    public static boolean callEvent;
+
     static {
+        PluginHooker.getConfigManager().loadConfig(DecoderWrapper.class);
         try {
             decoderMethod = MessageToMessageDecoder.class
                     .getDeclaredMethod("decode", ChannelHandlerContext.class, Object.class, List.class);
@@ -26,7 +31,6 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
             throw new RuntimeException(e);
         }
     }
-
 
     private final MessageToMessageDecoder<?> decoder;
     private final Plugin plugin;
@@ -42,6 +46,10 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
     @Override
     protected void decode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
+            if (!callEvent) {
+                decoderMethod.invoke(decoder, ctx, msg, out);
+                return;
+            }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {

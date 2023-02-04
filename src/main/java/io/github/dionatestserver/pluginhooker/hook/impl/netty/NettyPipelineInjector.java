@@ -15,7 +15,7 @@ import java.util.function.BiConsumer;
 
 public class NettyPipelineInjector extends Injector {
 
-    @ConfigPath("hook.netty")
+    @ConfigPath("hook.netty.enabled")
     public boolean hookNetty;
 
     @Getter

@@ -11,7 +11,7 @@ import javassist.LoaderClassPath;
 
 public class ListenerMultimapInjector extends Injector {
 
-    @ConfigPath("hook.protocollib-packet")
+    @ConfigPath("hook.protocollib.enabled")
     public boolean hookProtocolLibPacket;
 
     public ListenerMultimapInjector() {
