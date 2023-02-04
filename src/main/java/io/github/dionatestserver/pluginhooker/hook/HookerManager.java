@@ -34,9 +34,6 @@ public class HookerManager {
 
         //init instrumentation field
         try {
-//            String agentClass = "io.github.dionatestserver.pluginhooker.hook.PluginHookerAgent";
-//            File agentFile = AgentUtils.generateAgentFile(agentClass);
-//            AgentUtils.attachSelf(Objects.requireNonNull(agentFile));
             Instrumentation instrumentation = JvmHacker.instrumentation();
 
             definedClasses.forEach(injector -> {
