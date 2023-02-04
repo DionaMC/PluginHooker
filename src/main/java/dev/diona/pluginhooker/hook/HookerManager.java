@@ -52,7 +52,7 @@ public class HookerManager {
     }
 
     private List<Injector> getInjectorList() {
-        Reflections reflections = new Reflections("io.github.dionatestserver.pluginhooker.hook.impl");
+        Reflections reflections = new Reflections("dev.diona.pluginhooker.hook.impl");
         return reflections.getSubTypesOf(Injector.class).stream().map(injectorClass -> {
             try {
                 return injectorClass.getConstructor().newInstance();
