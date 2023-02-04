@@ -1,6 +1,6 @@
 name: PluginHooker
 version: '${project.version}'
-main: io.github.dionatestserver.pluginhooker.DionaPluginHooker
+main: io.github.dionatestserver.pluginhooker.PluginHooker
 softdepend: [ProtocolLib]
 authors: [ Loyisa, Hellxd ]
 description: PluginHooker

@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 
 import io.github.dionatestserver.pluginhooker.PluginHooker;
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.events.BukkitListenerEvent;
 import io.github.dionatestserver.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
@@ -30,6 +30,10 @@ import java.util.Set;
 import java.util.function.Function;
 
 public class BukkitCallbackHandler {
+
+    @ConfigPath("use-reflection-to-get-event-player")
+    public boolean useReflectionToGetEventPlayer;
+
     private final Map<Class<? extends Event>, Function<Event, Player>> eventMap = new LinkedHashMap<>();
 
     private final Map<Class<? extends Event>, Field> eventFieldCache = new LinkedHashMap<>();
@@ -38,6 +42,7 @@ public class BukkitCallbackHandler {
 
     public BukkitCallbackHandler() {
         this.initEventMap();
+        PluginHooker.getConfigManager().loadConfig(this);
     }
 
     public boolean handleBukkitEvent(Plugin plugin, Event event) {
@@ -103,7 +108,7 @@ public class BukkitCallbackHandler {
 
         // Try to get the player field from the event
 
-        if (DionaConfig.useReflectionToGetEventPlayer) {
+        if (useReflectionToGetEventPlayer) {
             if (this.failedFieldCache.contains(event.getClass())) {
                 return null;
             }

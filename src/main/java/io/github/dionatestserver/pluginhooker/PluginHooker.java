@@ -1,7 +1,6 @@
 package io.github.dionatestserver.pluginhooker;
 
 import io.github.dionatestserver.pluginhooker.config.ConfigManager;
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
 import io.github.dionatestserver.pluginhooker.hook.HookerManager;
 import io.github.dionatestserver.pluginhooker.listeners.PlayerListener;
 import io.github.dionatestserver.pluginhooker.player.PlayerManager;
@@ -29,8 +28,6 @@ public final class PluginHooker extends JavaPlugin {
         instance = this;
 
         configManager = new ConfigManager();
-        configManager.loadConfig(DionaConfig.class);
-
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
         this.getLogger().info("PluginManager loaded! start hooking...");

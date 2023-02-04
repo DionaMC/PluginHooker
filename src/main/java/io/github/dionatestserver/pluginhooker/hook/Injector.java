@@ -36,6 +36,8 @@ public abstract class Injector {
         // get the class name without the package
         classNameWithoutPackage = className[className.length - 1];
 
+        PluginHooker.getConfigManager().loadConfig(this);
+
         if (!this.canHook()) return;
 
         try {

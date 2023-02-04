@@ -2,7 +2,7 @@ package io.github.dionatestserver.pluginhooker.hook.impl.protocollib;
 
 import com.comphenix.protocol.concurrency.PacketTypeSet;
 import io.github.dionatestserver.pluginhooker.PluginHooker;
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
@@ -10,6 +10,9 @@ import javassist.CtMethod;
 import javassist.LoaderClassPath;
 
 public class ListenerMultimapInjector extends Injector {
+
+    @ConfigPath("hook.protocollib-packet")
+    public boolean hookProtocolLibPacket;
 
     public ListenerMultimapInjector() {
         super("com.comphenix.protocol.concurrency.AbstractConcurrentListenerMultimap", "com.comphenix.protocol.concurrency.PacketTypeSet");
@@ -28,7 +31,7 @@ public class ListenerMultimapInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        return DionaConfig.hookProtocolLibPacket;
+        return hookProtocolLibPacket;
     }
 
     @Override

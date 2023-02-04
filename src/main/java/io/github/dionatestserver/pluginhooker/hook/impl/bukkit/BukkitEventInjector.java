@@ -1,6 +1,6 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.bukkit;
 
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CannotCompileException;
@@ -17,8 +17,8 @@ import java.util.function.BiPredicate;
 
 public class BukkitEventInjector extends Injector {
 
-    @Getter
-    private final BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
+    @ConfigPath("hook.bukkit-event")
+    public boolean hookBukkitEvent;
 
     private static final CtClass CALLBACK_CLASS;
 
@@ -33,6 +33,9 @@ public class BukkitEventInjector extends Injector {
             throw new RuntimeException(e);
         }
     }
+
+    @Getter
+    private final BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
 
     public BukkitEventInjector() {
         super("org.bukkit.plugin.RegisteredListener", "org.bukkit.plugin.Plugin");
@@ -64,13 +67,11 @@ public class BukkitEventInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        return DionaConfig.hookBukkitEvent;
+        return hookBukkitEvent;
     }
 
     @Override
     protected void initClassPath() {
         // empty
     }
-
-
 }

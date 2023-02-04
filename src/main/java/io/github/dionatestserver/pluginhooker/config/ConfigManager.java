@@ -23,7 +23,8 @@ public class ConfigManager {
         }
     }
 
-    public void loadConfig(Class<?> targetClass) {
+    public void loadConfig(Object target) {
+        Class<?> targetClass = target.getClass();
         for (Field field : targetClass.getFields()) {
 
             ConfigPath annotation = field.getAnnotation(ConfigPath.class);
@@ -32,15 +33,15 @@ public class ConfigManager {
             Class<?> type = field.getType();
             try {
                 if (type == int.class || type == Integer.class) {
-                    field.set(null, config.getInt(annotation.value()));
+                    field.set(target, config.getInt(annotation.value()));
                 } else if (type == long.class || type == Long.class) {
-                    field.set(null, config.getLong(annotation.value()));
+                    field.set(target, config.getLong(annotation.value()));
                 } else if (type == double.class || type == Double.class) {
-                    field.set(null, config.getDouble(annotation.value()));
+                    field.set(target, config.getDouble(annotation.value()));
                 } else if (type == boolean.class || type == Boolean.class) {
-                    field.set(null, config.getBoolean(annotation.value()));
+                    field.set(target, config.getBoolean(annotation.value()));
                 } else if (type == String.class) {
-                    field.set(null, config.getString(annotation.value()));
+                    field.set(target, config.getString(annotation.value()));
                 }
             } catch (Exception e) {
                 e.printStackTrace();

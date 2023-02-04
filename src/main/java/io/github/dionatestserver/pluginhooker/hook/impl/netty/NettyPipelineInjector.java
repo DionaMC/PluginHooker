@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.netty;
 
 import io.github.dionatestserver.pluginhooker.PluginHooker;
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.NettyVersion;
 import io.netty.channel.DefaultChannelConfig;
@@ -14,6 +14,9 @@ import java.util.Arrays;
 import java.util.function.BiConsumer;
 
 public class NettyPipelineInjector extends Injector {
+
+    @ConfigPath("hook.netty")
+    public boolean hookNetty;
 
     @Getter
     private static final NettyCallbackHandler callbackHandler = new NettyCallbackHandler();
@@ -74,11 +77,12 @@ public class NettyPipelineInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        if (NettyVersion.getVersion().getMajor() != 4) {
+        String version = NettyVersion.getVersion().getMajor() + "." + NettyVersion.getVersion().getMinor();
+        if (!version.equals("4.1") && !version.equals("4.0")) {
             PluginHooker.getInstance().getLogger().warning("PluginHooker only supports netty 4.1/4.0");
             return false;
         }
-        return DionaConfig.hookNetty;
+        return hookNetty;
     }
 
     @Override

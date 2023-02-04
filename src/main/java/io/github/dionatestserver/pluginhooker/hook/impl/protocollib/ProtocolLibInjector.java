@@ -1,7 +1,7 @@
 package io.github.dionatestserver.pluginhooker.hook.impl.protocollib;
 
 import com.comphenix.protocol.injector.PacketFilterBuilder;
-import io.github.dionatestserver.pluginhooker.config.DionaConfig;
+import io.github.dionatestserver.pluginhooker.config.ConfigPath;
 import io.github.dionatestserver.pluginhooker.hook.Injector;
 import io.github.dionatestserver.pluginhooker.utils.ClassUtils;
 import javassist.CtMethod;
@@ -9,6 +9,9 @@ import javassist.LoaderClassPath;
 import lombok.Getter;
 
 public class ProtocolLibInjector extends Injector {
+
+    @ConfigPath("hook.protocollib-packet")
+    public boolean hookProtocolLibPacket;
 
     @Getter
     private static final ProtocolLibCallbackHandler callbackHandler = new ProtocolLibCallbackHandler();
@@ -27,7 +30,7 @@ public class ProtocolLibInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        return DionaConfig.hookProtocolLibPacket;
+        return hookProtocolLibPacket;
     }
 
     @Override
