@@ -8,12 +8,14 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 public class NettyCallbackHandler {
 
@@ -60,17 +62,8 @@ public class NettyCallbackHandler {
                         break;
 
                     ChannelHandler handler = getContextHandler(ctx);
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
 
-
-                        Player player = HookerUtils.getPlayerByChannelContext(ctx);
-                        if (player == null)
-                            return; // packetevents会在初始化时删除编解码器并重新添加导致找不到player对象
-//                            throw new RuntimeException("Player not found "
-//                                    + " | plugin: " + plugin.getName()
-//                                    + " | handler: " + handler.getClass().getName() + "@" + handler.hashCode()
-//                            );
-
+                    this.getPlayerByChannelContext(plugin, ctx, player -> {
                         if (handler instanceof MessageToMessageDecoder) {
                             setContextHandler(ctx, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
@@ -82,17 +75,35 @@ public class NettyCallbackHandler {
                             setContextHandler(ctx, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");
                         }
-                    }, 10L);
+                    });
                     break;
-
                 }
 
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-
             break;
         }
+    }
+
+
+    private void getPlayerByChannelContext(Plugin plugin, Object ctx, Consumer<Player> callback) {
+        AtomicInteger count = new AtomicInteger();
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                Player player = HookerUtils.getPlayerByChannelContext(ctx);
+                if (player == null) {
+                    if (count.get() == 5) {
+                        cancel();
+                    }
+                    count.incrementAndGet();
+                    return;
+                }
+                cancel();
+                callback.accept(player);
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
     }
 
 
