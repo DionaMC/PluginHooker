@@ -1,6 +1,7 @@
-#Hook options
+# Enable bstats
+bstats: true
+# Hook options
 hook:
-
   bukkit:
     # Should we hook the Bukkit event?
     enabled: true
