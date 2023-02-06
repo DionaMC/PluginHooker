@@ -3,6 +3,7 @@ package dev.diona.pluginhooker.hook.impl.netty;
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.hook.impl.netty.channelhandler.DecoderWrapper;
 import dev.diona.pluginhooker.hook.impl.netty.channelhandler.DuplexHandlerWrapper;
+import dev.diona.pluginhooker.hook.impl.netty.channelhandler.EncoderWrapper;
 import dev.diona.pluginhooker.utils.HookerUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
@@ -68,9 +69,8 @@ public class NettyCallbackHandler {
                             setContextHandler(ctx, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
                         } else if (handler instanceof MessageToMessageEncoder) {
-                            //TODO 需要修复
-//                            setContextHandler(ctx, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
-//                            System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
+                            setContextHandler(ctx, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
+                            System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
                         } else if (handler instanceof ChannelDuplexHandler) {
                             setContextHandler(ctx, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
                             System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");

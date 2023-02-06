@@ -6,6 +6,7 @@ import dev.diona.pluginhooker.events.NettyCodecEvent;
 import dev.diona.pluginhooker.player.DionaPlayer;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -27,7 +28,7 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
         PluginHooker.getConfigManager().loadConfig(EncoderWrapper.class);
         try {
             Method encoderMethod = MessageToMessageEncoder.class
-                    .getDeclaredMethod("encode", ChannelHandlerContext.class, Object.class, List.class);
+                    .getDeclaredMethod("write", ChannelHandlerContext.class, Object.class, ChannelPromise.class);
             encoderMethod.setAccessible(true);
             encoderMethodHandle = MethodHandles.lookup().unreflect(encoderMethod);
         } catch (Exception e) {
@@ -46,31 +47,37 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
         this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     }
 
+
     @Override
-    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
+    public void write(ChannelHandlerContext ctx, Object data, ChannelPromise promise) throws Exception {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
             if (!callEvent) {
                 try {
-                    encoderMethodHandle.invoke(encoder, ctx, msg, out);
+                    encoderMethodHandle.invoke(encoder, ctx, data, promise);
                 } catch (Throwable throwable) {
                     throwable.printStackTrace();
                 }
                 return;
             }
-            NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, true);
+            NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, true);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
-                addToOutList(msg, out);
+                super.write(ctx, data, promise);
             } else {
                 try {
-                    encoderMethodHandle.invoke(encoder, ctx, msg, out);
+                    encoderMethodHandle.invoke(encoder, ctx, data, promise);
                 } catch (Throwable throwable) {
                     throwable.printStackTrace();
                 }
             }
         } else {
-            addToOutList(msg, out);
+            super.write(ctx, data, promise);
         }
+    }
+
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
+        addToOutList(msg, out);
     }
 
     private void addToOutList(Object msg, List<Object> out) {
