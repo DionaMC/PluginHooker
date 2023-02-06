@@ -38,13 +38,13 @@ public final class PluginHooker extends JavaPlugin {
         this.getLogger().info("PluginHooker loaded! start hooking...");
         hookerManager = new HookerManager();
         configManager.loadConfig(this);
-        if (enabledBstats) {
-            new Metrics(this, 17654);
-        }
     }
 
     @Override
     public void onEnable() {
+        if (enabledBstats) {
+            new Metrics(this, 17654);
+        }
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
     }
 
