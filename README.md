@@ -38,7 +38,7 @@ Then add the following dependency
 ```xml
 <dependencies>
     <dependency>
-        <groupId>com.github.Diona-testserver</groupId>
+        <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
         <version>1.0.2</version>
     </dependency>
@@ -50,11 +50,11 @@ Add/remove plugins that need to be hooked
 
 ```java
 public void hookPlugin() {
-    DionaPluginHooker.getPluginManager().addPlugin(pluginToHook);
+    PluginHooker.getPluginManager().addPlugin(pluginToHook);
 }
 
 public void unHookPlugin() {
-    DionaPluginHooker.getPluginManager().removePlugin(pluginToHook);
+    PluginHooker.getPluginManager().removePlugin(pluginToHook);
 }
 ```
 
@@ -62,7 +62,7 @@ Enable/disable the specified plugin for the player
 
 ```java
 public void enablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     if (dionaPlayer == null) {
         return;
     }
@@ -70,7 +70,7 @@ public void enablePluginForPlayer(Player player) {
 }
 
 public void disablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = DionaPluginHooker.getPlayerManager().getDionaPlayer(player);
+    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
     if (dionaPlayer == null) {
         return;
     }
