@@ -12,6 +12,7 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 * Hook events for every player.
 * Bukkit events included.
 * ProtocolLib events/packets included.
+* Hook Netty pipeline
 
 ## Tested Versions
 
@@ -23,13 +24,11 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 Add the following repository to your pom.xml:
 
 ```xml
-
 <repositories>
     <repository>
         <id>jitpack.io</id>
         <url>https://jitpack.io</url>
     </repository>
-    ...
 </repositories>
 ```
 
@@ -40,9 +39,8 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
-    ...
 </dependencies>
 ```
 

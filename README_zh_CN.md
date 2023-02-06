@@ -11,6 +11,7 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
 * 分玩家 hook 事件
 * Hook Bukkit 事件
 * Hook ProtocolLib 事件
+* Hook Netty pipeline
 
 ## 已测试版本
 
@@ -25,16 +26,14 @@ PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
         <id>jitpack.io</id>
         <url>https://jitpack.io</url>
     </repository>
-    ...
 </repositories>
 
 <dependencies>
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
-    ...
 </dependencies>
 ```
 
