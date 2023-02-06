@@ -35,7 +35,7 @@ public final class PluginHooker extends JavaPlugin {
         configManager = new ConfigManager();
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
-        this.getLogger().info("PluginManager loaded! start hooking...");
+        this.getLogger().info("PluginHooker loaded! start hooking...");
         hookerManager = new HookerManager();
         configManager.loadConfig(this);
         if (enabledBstats) {
