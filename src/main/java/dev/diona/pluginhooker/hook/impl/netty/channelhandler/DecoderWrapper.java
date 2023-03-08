@@ -4,7 +4,7 @@ import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.NettyCodecEvent;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import io.netty.buffer.ByteBuf;
+import dev.diona.pluginhooker.utils.HookerUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import org.bukkit.Bukkit;
@@ -50,36 +50,26 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
     protected void decode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
             if (!callEvent) {
-                try {
-                    decoderMethodHandle.invoke(decoder, ctx, msg, out);
-                } catch (Throwable throwable) {
-                    throwable.printStackTrace();
-                }
+                invokeDecodeMethod(ctx, msg, out);
                 return;
             }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
-                addToOutList(msg, out);
+                HookerUtils.addToOutList(msg, out);
             } else {
-                try {
-                    decoderMethodHandle.invoke(decoder, ctx, msg, out);
-                } catch (Throwable throwable) {
-                    throwable.printStackTrace();
-                }
+                invokeDecodeMethod(ctx, msg, out);
             }
         } else {
-            addToOutList(msg, out);
+            HookerUtils.addToOutList(msg, out);
         }
     }
 
-    private void addToOutList(Object msg, List<Object> out) {
-        if (msg instanceof ByteBuf) {
-            ByteBuf byteBuf = (ByteBuf) msg;
-            if (byteBuf.isReadable())
-                out.add(byteBuf.retain());
-        } else {
-            out.add(msg);
+    private void invokeDecodeMethod(ChannelHandlerContext ctx, Object msg, List<Object> out) {
+        try {
+            decoderMethodHandle.invoke(decoder, ctx, msg, out);
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
         }
     }
 

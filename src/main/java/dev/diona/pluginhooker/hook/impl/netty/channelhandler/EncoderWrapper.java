@@ -4,7 +4,7 @@ import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.NettyCodecEvent;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import io.netty.buffer.ByteBuf;
+import dev.diona.pluginhooker.utils.HookerUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -52,11 +52,7 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
     public void write(ChannelHandlerContext ctx, Object data, ChannelPromise promise) throws Exception {
         if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
             if (!callEvent) {
-                try {
-                    encoderMethodHandle.invoke(encoder, ctx, data, promise);
-                } catch (Throwable throwable) {
-                    throwable.printStackTrace();
-                }
+                invokeWriteMethod(ctx, data, promise);
                 return;
             }
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, true);
@@ -64,30 +60,24 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
             if (nettyCodecEvent.isCancelled()) {
                 super.write(ctx, data, promise);
             } else {
-                try {
-                    encoderMethodHandle.invoke(encoder, ctx, data, promise);
-                } catch (Throwable throwable) {
-                    throwable.printStackTrace();
-                }
+                invokeWriteMethod(ctx, data, promise);
             }
         } else {
             super.write(ctx, data, promise);
         }
     }
 
-    @Override
-    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
-        addToOutList(msg, out);
+    private void invokeWriteMethod(ChannelHandlerContext ctx, Object data, ChannelPromise promise) {
+        try {
+            encoderMethodHandle.invoke(encoder, ctx, data, promise);
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
     }
 
-    private void addToOutList(Object msg, List<Object> out) {
-        if (msg instanceof ByteBuf) {
-            ByteBuf byteBuf = (ByteBuf) msg;
-            if (byteBuf.isReadable())
-                out.add(byteBuf.retain());
-        } else {
-            out.add(msg);
-        }
+    @Override
+    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
+        HookerUtils.addToOutList(msg, out);
     }
 
     @Override
