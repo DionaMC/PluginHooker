@@ -1,21 +1,22 @@
-![!ntro.jpg](https://s2.loli.net/2022/05/21/2Ds3fyzdZVGvFrK.jpg)
-
 # PluginHooker
 
-PluginHooker 是一个提供简单的方式来 hook 事件的 Bukkit 插件
+PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷的方式来控制玩家的各种监听器。
 
 [English](README.md)
 
 ## 功能
 
-* 分玩家 hook 事件
 * Hook Bukkit 事件
 * Hook ProtocolLib 事件
-* Hook Netty pipeline
+* Hook Netty pipeline (支持[PacketEvents](https://github.com/retrooper/packetevents))
+* 为每个玩家独立控制监听器
 
 ## 已测试版本
 
-* Spigot 1.8.8 + 最新版ProtocolLib
+* Spigot: 1.8.8
+* Netty: 4.0/4.1
+* ProtocolLib: 4.8/5.0
+* PacketEvents: 2.0
 
 ## 用法
 
@@ -69,7 +70,7 @@ public void disablePluginForPlayer(Player player) {
 }
 ```
 
-如果要拦截或在事件被执行时执行自定义的操作,请添加一个事件监听器:
+如果要拦截或在事件被执行前执行自定义的操作,请添加一个事件监听器:
 ```java
 public class ExampleListener implements Listener {
 
