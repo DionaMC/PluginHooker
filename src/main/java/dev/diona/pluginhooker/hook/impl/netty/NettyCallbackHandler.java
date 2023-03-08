@@ -67,13 +67,13 @@ public class NettyCallbackHandler {
                     this.getPlayerByChannelContext(plugin, ctx, player -> {
                         if (handler instanceof MessageToMessageDecoder) {
                             setContextHandler(ctx, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
-                            System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
+                            // System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
                         } else if (handler instanceof MessageToMessageEncoder) {
                             setContextHandler(ctx, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
-                            System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
+                            // System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
                         } else if (handler instanceof ChannelDuplexHandler) {
                             setContextHandler(ctx, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
-                            System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");
+                            // System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");
                         }
                     });
                     break;
