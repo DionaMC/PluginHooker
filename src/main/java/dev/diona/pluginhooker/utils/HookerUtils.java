@@ -3,7 +3,6 @@ package dev.diona.pluginhooker.utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelPipeline;
 import org.bukkit.Bukkit;
-import org.bukkit.craftbukkit.v1_8_R3.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -45,8 +44,9 @@ public class HookerUtils {
 
     public static Player getPlayerByChannelContext(Object ctx) {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            //TODO 使用反射代替直接调用nms
-            ChannelPipeline pipeline = ((CraftPlayer) player).getHandle().playerConnection.networkManager.channel.pipeline();
+//            ChannelPipeline pipeline = ((CraftPlayer) player).getHandle().playerConnection.networkManager.channel.pipeline();
+//            ChannelPipeline pipeline = ((CraftPlayer) player).getHandle().b.a.k.pipeline();
+            ChannelPipeline pipeline = NMSUtils.getPipelineByPlayer(player);
             for (String name : pipeline.names()) {
                 if (pipeline.context(name) != ctx) continue;
                 return player;
