@@ -12,12 +12,14 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 * Hook events for every player.
 * Bukkit events included.
 * ProtocolLib events/packets included.
-* Hook Netty pipeline
+* Hook Netty pipeline([PacketEvents](https://github.com/retrooper/packetevents) Supported)
 
-## Tested Versions
+## Tested environment
 
-* [Spigot 1.8.8](https://hub.spigotmc.org/stash/projects/SPIGOT/repos/spigot/browse?at=refs%2Fheads%2Fversion%2F1.8.8)
-  with Latest ProtocolLib
+* Spigot: 1.8.8
+* Netty: 4.0/4.1
+* ProtocolLib: 4.8/5.0
+* PacketEvents: 1.0/2.0
 
 ## Usage
 
