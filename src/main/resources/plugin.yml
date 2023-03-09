@@ -1,7 +1,17 @@
 name: PluginHooker
 version: '${project.version}'
 main: dev.diona.pluginhooker.PluginHooker
-softdepend: [ProtocolLib]
+softdepend: [ ProtocolLib ]
 authors: [ Loyisa, Hellxd ]
 description: PluginHooker
 website: https://github.com/DionaMC/PluginHooker
+
+commands:
+  pluginhooker:
+    description: PluginHooker admin commands
+    aliases: [ ph ]
+
+permissions:
+  pluginhooker.admin:
+    description: Allows access to the pluginhooker admin commands
+    default: op

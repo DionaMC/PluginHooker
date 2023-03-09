@@ -1,5 +1,6 @@
 package dev.diona.pluginhooker;
 
+import dev.diona.pluginhooker.commands.SimpleCommand;
 import dev.diona.pluginhooker.config.ConfigManager;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.hook.HookerManager;
@@ -45,6 +46,8 @@ public final class PluginHooker extends JavaPlugin {
         if (enabledBstats) {
             new Metrics(this, 17654);
         }
+        // register command
+        Bukkit.getPluginCommand("pluginhooker").setExecutor(new SimpleCommand());
         Bukkit.getPluginManager().registerEvents(new PlayerListener(), this);
     }
 
