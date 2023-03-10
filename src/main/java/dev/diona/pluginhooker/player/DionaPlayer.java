@@ -19,7 +19,7 @@ public class DionaPlayer {
 
     private final Set<Plugin> enabledPlugins = new HashSet<>();
 
-    // cached Protocollib listener list
+    // cached ProtocolLib listener list
     @Setter
     private SortedPacketListenerList receivedCachedListeners;
 
