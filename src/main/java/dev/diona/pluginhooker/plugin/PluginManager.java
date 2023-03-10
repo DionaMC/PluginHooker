@@ -25,8 +25,12 @@ public class PluginManager {
         }
         pluginsToHook.remove(plugin);
         for (DionaPlayer dionaPlayer : PluginHooker.getPlayerManager().getPlayers()) {
-            dionaPlayer.getEnabledPlugins().remove(plugin);
+            dionaPlayer.disablePlugin(plugin);
         }
+    }
+
+    public boolean isPluginHooked(Plugin plugin) {
+        return pluginsToHook.contains(plugin);
     }
 
 }

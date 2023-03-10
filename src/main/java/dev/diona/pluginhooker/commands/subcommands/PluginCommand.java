@@ -40,11 +40,11 @@ public class PluginCommand extends SubCommand {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "PluginHooker cannot hook itself"));
                 return false;
             }
-            if (PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
+            if (PluginHooker.getPluginManager().isPluginHooked(plugin)) {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[1] + " is already hooked"));
                 return false;
             }
-            PluginHooker.getPluginManager().getPluginsToHook().add(plugin);
+            PluginHooker.getPluginManager().addPlugin(plugin);
             sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[1] + " has been hooked"));
             return true;
         } else if (args[0].equalsIgnoreCase("remove")) {
@@ -57,11 +57,11 @@ public class PluginCommand extends SubCommand {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[1] + " not found"));
                 return false;
             }
-            if (!PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
+            if (!PluginHooker.getPluginManager().isPluginHooked(plugin)) {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[1] + " is not hooked"));
                 return false;
             }
-            PluginHooker.getPluginManager().getPluginsToHook().remove(plugin);
+            PluginHooker.getPluginManager().removePlugin(plugin);
             sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[1] + " has been unhooked"));
             return true;
         } else if (args[0].equalsIgnoreCase("list")) {

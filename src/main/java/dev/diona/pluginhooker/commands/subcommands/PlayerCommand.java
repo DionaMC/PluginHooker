@@ -48,11 +48,11 @@ public class PlayerCommand extends SubCommand {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " is not hooked"));
                 return false;
             }
-            if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
+            if (dionaPlayer.isPluginEnabled(plugin)) {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " is already enabled for " + args[0]));
                 return false;
             }
-            dionaPlayer.getEnabledPlugins().add(plugin);
+            dionaPlayer.enablePlugin(plugin);
             sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " has been enabled for " + args[0]));
             return false;
         } else if (args[1].equalsIgnoreCase("remove")) {
@@ -66,11 +66,11 @@ public class PlayerCommand extends SubCommand {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " not found"));
                 return false;
             }
-            if (!dionaPlayer.getEnabledPlugins().contains(plugin)) {
+            if (!dionaPlayer.isPluginEnabled(plugin)) {
                 sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " is not enabled for " + args[0]));
                 return false;
             }
-            dionaPlayer.getEnabledPlugins().remove(plugin);
+            dionaPlayer.disablePlugin(plugin);
             sender.sendMessage(StringUtils.colorize(PREFIX + "Plugin " + args[2] + " has been disabled for " + args[0]));
             return false;
         } else if (args[1].equalsIgnoreCase("list")) {

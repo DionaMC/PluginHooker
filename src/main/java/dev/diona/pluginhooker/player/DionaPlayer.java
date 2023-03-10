@@ -44,6 +44,10 @@ public class DionaPlayer {
         removeCachedListener();
     }
 
+    public boolean isPluginEnabled(Plugin plugin) {
+        return enabledPlugins.contains(plugin);
+    }
+
     public synchronized void removeCachedListener() {
         sendingCachedListeners = null;
         receivedCachedListeners = null;
