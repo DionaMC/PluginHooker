@@ -4,6 +4,8 @@ import io.netty.channel.ChannelPipeline;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -15,23 +17,23 @@ public class NMSUtils {
     private static final Field playerConnectionField;
     private static final Field networkManagerField;
     private static final Field channelField;
-    private static final Method getHandleMethod;
-    private static final Method pipelineMethod;
+    private static final MethodHandle getHandleMethod;
+    private static final MethodHandle pipelineMethod;
 
     static {
         try {
             int majorVersion = getNMSMajorVersion();
-            getHandleMethod = Class.forName(BUKKIT_PACKAGE + ".entity.CraftPlayer")
+            Method getHandle = Class.forName(BUKKIT_PACKAGE + ".entity.CraftPlayer")
                     .getMethod("getHandle");
+            getHandleMethod = MethodHandles.lookup().unreflect(getHandle);
 
-            playerConnectionField = getHandleMethod.getReturnType()
+            playerConnectionField = getHandle.getReturnType()
                     .getField(majorVersion > 16 ? "b" : "playerConnection");
             networkManagerField = playerConnectionField.getType()
                     .getField(majorVersion > 16 ? "a" : "networkManager");
             channelField = networkManagerField.getType()
                     .getField(majorVersion > 16 ? "k" : "channel");
-            pipelineMethod = channelField.getType()
-                    .getMethod("pipeline");
+            pipelineMethod = MethodHandles.lookup().unreflect(channelField.getType().getMethod("pipeline"));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -54,7 +56,7 @@ public class NMSUtils {
             Object networkManager = networkManagerField.get(playerConnection);
             Object channel = channelField.get(networkManager);
             return (ChannelPipeline) pipelineMethod.invoke(channel);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             throw new RuntimeException(e);
         }
     }
