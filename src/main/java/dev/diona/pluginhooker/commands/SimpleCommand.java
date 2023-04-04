@@ -60,7 +60,7 @@ public class SimpleCommand implements TabExecutor {
                         .collect(Collectors.toList());
             } else {
                 return commands.stream().map(SubCommand::getName)
-                        .filter(name -> name.startsWith(args[0]))
+                        .filter(name -> name.toLowerCase().startsWith(args[0].toLowerCase()))
                         .collect(Collectors.toList());
             }
         }
