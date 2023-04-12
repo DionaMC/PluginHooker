@@ -11,6 +11,7 @@ import org.bukkit.plugin.Plugin;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Getter
 public class DionaPlayer {
@@ -25,6 +26,8 @@ public class DionaPlayer {
 
     @Setter
     private SortedPacketListenerList sendingCachedListeners;
+
+    private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     public DionaPlayer(Player player) {
         this.player = player;
@@ -51,6 +54,14 @@ public class DionaPlayer {
     public synchronized void removeCachedListener() {
         sendingCachedListeners = null;
         receivedCachedListeners = null;
+    }
+
+    public boolean isInitialized() {
+        return initialized.get();
+    }
+
+    public void setInitialized() {
+        this.initialized.set(true);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package dev.diona.pluginhooker.utils;
 
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -51,11 +52,19 @@ public class NMSUtils {
 
     public static ChannelPipeline getPipelineByPlayer(Player player) {
         try {
+            Object channel = getChannelByPlayer(player);
+            return (ChannelPipeline) pipelineMethod.invoke(channel);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Channel getChannelByPlayer(Player player) {
+        try {
             Object entityPlayer = getHandleMethod.invoke(player);
             Object playerConnection = playerConnectionField.get(entityPlayer);
             Object networkManager = networkManagerField.get(playerConnection);
-            Object channel = channelField.get(networkManager);
-            return (ChannelPipeline) pipelineMethod.invoke(channel);
+            return (Channel) channelField.get(networkManager);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
