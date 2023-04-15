@@ -29,7 +29,7 @@ public class PlayerListener implements Listener {
         List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).get();
         if (list == null) return;
 
-        Bukkit.getScheduler().runTaskLater(PluginHooker.getInstance(), () -> {
+        Bukkit.getScheduler().runTaskLaterAsynchronously(PluginHooker.getInstance(), () -> {
             list.forEach(consumer -> consumer.accept(player));
         }, 10L);
         PluginHooker.getPlayerManager().getDionaPlayer(player).setInitialized();
