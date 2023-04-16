@@ -1,6 +1,8 @@
 # PluginHooker
 
 PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷的方式来控制玩家的各种监听器。
+[Discord](https://discord.gg/fdmkfts)
+[QQ群](https://jq.qq.com/?_wv=1027&k=dhEQrZZW)
 
 [English](README.md)
 
@@ -13,7 +15,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 
 ## 已测试环境
 
-* Spigot: 1.8.8
+* Spigot: 1.8.8/1.19.4
 * Netty: 4.0/4.1
 * ProtocolLib: 4.8/5.0
 * PacketEvents: 1.0/2.0
@@ -33,7 +35,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.1.0</version>
+        <version>1.2</version>
     </dependency>
 </dependencies>
 ```

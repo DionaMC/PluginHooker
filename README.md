@@ -2,6 +2,7 @@
 
 PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and better method to hook Bukkit events and ProtocolLib PacketEvents  
 [Discord](https://discord.gg/fdmkfts)
+[QQ群](https://jq.qq.com/?_wv=1027&k=dhEQrZZW)
 
 ## Localization
 
@@ -16,7 +17,7 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 
 ## Tested environment
 
-* Spigot: 1.8.8
+* Spigot: 1.8.8/1.19.4
 * Netty: 4.0/4.1
 * ProtocolLib: 4.8/5.0
 * PacketEvents: 1.0/2.0
@@ -41,7 +42,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.1.0</version>
+        <version>1.2</version>
     </dependency>
 </dependencies>
 ```
