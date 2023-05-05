@@ -3,6 +3,7 @@ package dev.diona.pluginhooker.player;
 import lombok.Getter;
 import org.bukkit.entity.Player;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -31,6 +32,6 @@ public class PlayerManager {
     }
 
     public void removeAllPlayerCachedListener() {
-        players.forEach(DionaPlayer::removeCachedListener);
+        Collections.unmodifiableSet(players).forEach(DionaPlayer::removeCachedListener);
     }
 }
