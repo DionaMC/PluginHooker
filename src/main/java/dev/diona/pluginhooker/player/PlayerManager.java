@@ -11,7 +11,7 @@ import java.util.Set;
 public class PlayerManager {
 
     @Getter
-    private final Set<DionaPlayer> players = new HashSet<>();
+    private final Set<DionaPlayer> players = Collections.synchronizedSet(new HashSet<>());
 
     public void addPlayer(Player player) {
         players.add(new DionaPlayer(player));
@@ -23,15 +23,10 @@ public class PlayerManager {
 
     public DionaPlayer getDionaPlayer(Player player) {
         if (player == null) return null;
-        for (DionaPlayer dionaPlayer : players) {
-            if (dionaPlayer.getPlayer().equals(player)) {
-                return dionaPlayer;
-            }
-        }
-        return null;
+        return players.stream().filter(dionaPlayer -> dionaPlayer.getPlayer().equals(player)).findFirst().orElse(null);
     }
 
     public void removeAllPlayerCachedListener() {
-        Collections.unmodifiableSet(players).forEach(DionaPlayer::removeCachedListener);
+        players.forEach(DionaPlayer::removeCachedListener);
     }
 }
