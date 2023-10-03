@@ -24,28 +24,40 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 
 ## Usage
 
+### Maven
 Add the following repository to your pom.xml:
 
 ```xml
-<repositories>
     <repository>
         <id>jitpack.io</id>
         <url>https://jitpack.io</url>
     </repository>
-</repositories>
 ```
 
 Then add the following dependency
 
 ```xml
-<dependencies>
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.2</version>
+        <version>1.2.1</version>
     </dependency>
-</dependencies>
 ```
+### Gradle
+Add the following repository to your build.gradle:
+```groovy
+    maven {
+        url = uri('https://jitpack.io')
+    }
+```
+
+Then add the following dependency
+
+```groovy
+    compileOnly 'com.github.DionaMC:PluginHooker:1.2.1'
+```
+
+### API usage
 
 Add/remove plugins that need to be hooked
 

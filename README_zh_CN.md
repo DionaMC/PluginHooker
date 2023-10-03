@@ -22,35 +22,40 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 
 ## 用法
 
-将PluginHooker作为Maven依赖项 ([Jitpack](https://jitpack.io/#Diona-testserver/PluginHooker))
+### Maven
+将以下repository添加到你的pom.xml文件内:
+
 ```xml
-<repositories>
     <repository>
         <id>jitpack.io</id>
         <url>https://jitpack.io</url>
     </repository>
-</repositories>
+```
 
-<dependencies>
+然后添加以下依赖
+
+```xml
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.2</version>
+        <version>1.2.1</version>
     </dependency>
-</dependencies>
+```
+### Gradle
+将以下repository添加到你的build.gradle文件内:
+```groovy
+    maven {
+        url = uri('https://jitpack.io')
+    }
 ```
 
+然后添加以下依赖
 
-添加/移除需要被hook的插件
-```java
-public void hookPlugin() {
-    PluginHooker.getPluginManager().addPlugin(pluginToHook);
-}
-
-public void unHookPlugin() {
-    PluginHooker.getPluginManager().removePlugin(pluginToHook);
-}
+```groovy
+    compileOnly 'com.github.DionaMC:PluginHooker:1.2.1'
 ```
+
+### API 用法
 
 为玩家启用/禁用指定的插件
 
