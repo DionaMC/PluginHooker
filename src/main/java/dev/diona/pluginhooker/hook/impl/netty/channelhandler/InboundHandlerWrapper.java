@@ -36,7 +36,7 @@ public class InboundHandlerWrapper extends ChannelInboundHandlerAdapter {
                 inbound.channelRead(channelHandlerContext, data);
                 return;
             }
-            NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, true);
+            NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
                 super.channelRead(channelHandlerContext, data);
