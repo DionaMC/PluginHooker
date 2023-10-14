@@ -3,30 +3,36 @@ package dev.diona.pluginhooker.player;
 import lombok.Getter;
 import org.bukkit.entity.Player;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Getter
 public class PlayerManager {
 
-    @Getter
-    private final Set<DionaPlayer> players = Collections.synchronizedSet(new HashSet<>());
+    private final Map<UUID, DionaPlayer> players = new ConcurrentHashMap<>();
 
     public void addPlayer(Player player) {
-        players.add(new DionaPlayer(player));
+        DionaPlayer dionaPlayer = new DionaPlayer(player);
+        this.players.put(player.getUniqueId(), dionaPlayer);
     }
 
     public void removePlayer(Player player) {
-        players.removeIf(dionaPlayer -> dionaPlayer.getPlayer() == player);
+        DionaPlayer dionaPlayer = this.getDionaPlayer(player);
+        if (dionaPlayer != null) {
+            dionaPlayer.setQuited(true);
+            this.players.remove(player.getUniqueId());
+        }
     }
 
     public DionaPlayer getDionaPlayer(Player player) {
         if (player == null) return null;
-        return players.stream().filter(dionaPlayer -> dionaPlayer.getPlayer().equals(player)).findFirst().orElse(null);
+        return this.players.getOrDefault(player.getUniqueId(), null);
     }
 
     public void removeAllPlayerCachedListener() {
-        players.forEach(DionaPlayer::removeCachedListener);
+        for (DionaPlayer dionaPlayer : this.players.values()) {
+            dionaPlayer.removeCachedListener();
+        }
     }
 }

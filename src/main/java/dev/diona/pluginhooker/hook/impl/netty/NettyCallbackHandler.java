@@ -87,17 +87,16 @@ public class NettyCallbackHandler {
                     };
 
                     Player player = HookerUtils.getPlayerByChannelContext(channelHandlerContext);
+                    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
                     // if player is null then the player is not joined yet
-                    if (player != null) {
-                        DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
-                        if (dionaPlayer != null && dionaPlayer.isInitialized()) {
-                            consumer.accept(player);
-                            return;
-                        }
+                    if (player != null && dionaPlayer != null && dionaPlayer.isInitialized()) {
+                        // if player is initialized, just replace the handler
+                        consumer.accept(player);
+                    } else {
+                        Channel channel = getChannel(channelHandlerContext);
+                        // add consumer to list, wait for player join event to replace the handler
+                        this.appendConsumer(consumer, channel);
                     }
-                    Channel channel = getChannel(channelHandlerContext);
-                    // add consumer to list, wait for player join event to replace the handler
-                    this.appendConsumer(consumer, channel);
                     return;
                 }
 

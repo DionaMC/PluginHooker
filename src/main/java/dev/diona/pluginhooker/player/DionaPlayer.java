@@ -29,6 +29,8 @@ public class DionaPlayer {
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
+    private final AtomicBoolean quited = new AtomicBoolean(false);
+
     public DionaPlayer(Player player) {
         this.player = player;
     }
@@ -60,8 +62,16 @@ public class DionaPlayer {
         return initialized.get();
     }
 
-    public void setInitialized() {
-        this.initialized.set(true);
+    public void setInitialized(boolean initialized) {
+        this.initialized.set(initialized);
+    }
+
+    public boolean isQuited() {
+        return quited.get();
+    }
+
+    public void setQuited(boolean quited) {
+        this.quited.set(quited);
     }
 
     @Override

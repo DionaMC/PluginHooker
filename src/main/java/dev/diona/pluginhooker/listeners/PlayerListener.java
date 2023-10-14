@@ -1,6 +1,7 @@
 package dev.diona.pluginhooker.listeners;
 
 import dev.diona.pluginhooker.PluginHooker;
+import dev.diona.pluginhooker.player.DionaPlayer;
 import dev.diona.pluginhooker.utils.HookerUtils;
 import dev.diona.pluginhooker.utils.NMSUtils;
 import io.netty.channel.Channel;
@@ -25,14 +26,30 @@ public class PlayerListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void postPlayerJoin(PlayerJoinEvent e) {
         Player player = e.getPlayer();
+        DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
+        if (dionaPlayer == null) return;
         Channel channel = NMSUtils.getChannelByPlayer(player);
-        List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).get();
-        if (list == null) return;
-
         Bukkit.getScheduler().runTaskLaterAsynchronously(PluginHooker.getInstance(), () -> {
-            list.forEach(consumer -> consumer.accept(player));
+            // is Channel still open?
+            if (!channel.isOpen()) {
+                // clear the attr
+                channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).remove();
+                return;
+            }
+            if (dionaPlayer.isQuited() || !dionaPlayer.getPlayer().isOnline()) {
+                return;
+            }
+            List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).getAndRemove();
+            // what??
+            if (list != null) {
+                for (Consumer<Player> consumer : list) {
+                    if (channel.isOpen()) {
+                        consumer.accept(player);
+                    }
+                }
+            }
         }, 10L);
-        PluginHooker.getPlayerManager().getDionaPlayer(player).setInitialized();
+        dionaPlayer.setInitialized(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
