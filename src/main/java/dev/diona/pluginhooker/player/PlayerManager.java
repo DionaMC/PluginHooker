@@ -20,7 +20,6 @@ public class PlayerManager {
     public void removePlayer(Player player) {
         DionaPlayer dionaPlayer = this.getDionaPlayer(player);
         if (dionaPlayer != null) {
-            dionaPlayer.setQuited(true);
             this.players.remove(player.getUniqueId());
         }
     }

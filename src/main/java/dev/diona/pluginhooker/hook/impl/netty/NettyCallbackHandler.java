@@ -68,17 +68,18 @@ public class NettyCallbackHandler {
 
                     ChannelHandler handler = getContextHandler(channelHandlerContext);
 
+                    if (handler.getClass().getSimpleName().equals("InboundPacketInterceptor")) {
+                        return;
+                    }
+
                     // replace the ChannelHandlerContext with our wrapper
                     Consumer<Player> consumer = player -> {
                         if (handler instanceof MessageToMessageDecoder) {
                             setContextHandler(channelHandlerContext, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
-                            // System.out.println("plugin: " + plugin.getName() + " MessageToMessageDecoder");
                         } else if (handler instanceof MessageToMessageEncoder) {
                             setContextHandler(channelHandlerContext, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
-                            // System.out.println("plugin: " + plugin.getName() + " MessageToMessageEncoder");
                         } else if (handler instanceof ChannelDuplexHandler) {
                             setContextHandler(channelHandlerContext, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
-                            // System.out.println("plugin: " + plugin.getName() + " ChannelDuplexHandler");
                         } else if (handler instanceof ChannelInboundHandlerAdapter) {
                             setContextHandler(channelHandlerContext, new InboundHandlerWrapper((ChannelInboundHandlerAdapter) handler, plugin, player));
                         } else if (handler instanceof ChannelOutboundHandlerAdapter) {

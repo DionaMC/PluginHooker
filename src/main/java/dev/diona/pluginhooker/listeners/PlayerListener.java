@@ -30,24 +30,12 @@ public class PlayerListener implements Listener {
         if (dionaPlayer == null) return;
         Channel channel = NMSUtils.getChannelByPlayer(player);
         Bukkit.getScheduler().runTaskLaterAsynchronously(PluginHooker.getInstance(), () -> {
-            // is Channel still open?
-            if (!channel.isOpen()) {
-                // clear the attr
-                channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).remove();
-                return;
-            }
-            if (dionaPlayer.isQuited() || !dionaPlayer.getPlayer().isOnline()) {
-                return;
-            }
             List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).getAndRemove();
-            // what??
-            if (list != null) {
-                for (Consumer<Player> consumer : list) {
-                    if (channel.isOpen()) {
-                        consumer.accept(player);
-                    }
-                }
-            }
+
+            if (list == null) return;
+            if (!channel.isOpen() || !dionaPlayer.getPlayer().isOnline()) return;
+
+            list.forEach(consumer -> consumer.accept(player));
         }, 10L);
         dionaPlayer.setInitialized(true);
     }

@@ -9,7 +9,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -28,8 +27,6 @@ public class DionaPlayer {
     private SortedPacketListenerList sendingCachedListeners;
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
-
-    private final AtomicBoolean quited = new AtomicBoolean(false);
 
     public DionaPlayer(Player player) {
         this.player = player;
@@ -64,26 +61,5 @@ public class DionaPlayer {
 
     public void setInitialized(boolean initialized) {
         this.initialized.set(initialized);
-    }
-
-    public boolean isQuited() {
-        return quited.get();
-    }
-
-    public void setQuited(boolean quited) {
-        this.quited.set(quited);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        DionaPlayer that = (DionaPlayer) o;
-        return player.equals(that.player);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(player);
     }
 }
