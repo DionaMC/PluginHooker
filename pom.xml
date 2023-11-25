@@ -32,6 +32,10 @@
             <id>dmulloy2-repo</id>
             <url>https://repo.dmulloy2.net/repository/public/</url>
         </repository>
+        <repository>
+            <id>elMakers</id>
+            <url>https://maven.elmakers.com/repository/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -44,7 +48,7 @@
 
         <dependency>
             <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
+            <artifactId>spigot</artifactId>
             <version>1.8.8-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
