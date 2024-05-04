@@ -7,6 +7,7 @@ import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
 import lombok.Getter;
+import org.bukkit.Bukkit;
 
 public class ProtocolLibInjector extends Injector {
 
@@ -30,7 +31,7 @@ public class ProtocolLibInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        return hookProtocolLibPacket;
+        return hookProtocolLibPacket && Bukkit.getServer().getPluginManager().getPlugin("ProtocolLib") != null;
     }
 
     @Override

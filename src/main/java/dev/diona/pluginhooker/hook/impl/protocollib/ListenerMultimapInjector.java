@@ -32,7 +32,7 @@ public class ListenerMultimapInjector extends Injector {
 
     @Override
     public boolean canHook() {
-        return hookProtocolLibPacket;
+        return hookProtocolLibPacket && Bukkit.getServer().getPluginManager().getPlugin("ProtocolLib") != null;
     }
 
     @Override
