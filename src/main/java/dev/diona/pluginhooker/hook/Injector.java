@@ -46,7 +46,7 @@ public abstract class Injector {
             this.targetClass = classPool.get(targetClassName);
             this.hookClass();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
 

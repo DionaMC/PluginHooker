@@ -8,6 +8,7 @@ import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
+import org.bukkit.Bukkit;
 
 public class ListenerMultimapInjector extends Injector {
 
@@ -24,7 +25,7 @@ public class ListenerMultimapInjector extends Injector {
         CtMethod addListener = ClassUtils.getMethodByName(targetClass.getMethods(), "addListener");
         CtMethod removeListener = ClassUtils.getMethodByName(targetClass.getMethods(), "removeListener");
 
-        String src = PluginHooker.class.getName() + ".getPlayerManager().removeAllPlayerCachedListener();";
+        String src = PluginHooker.class.getName() + ".getPlayerManager().checkAndRemoveCachedListener($0);";
         addListener.insertBefore(src);
         removeListener.insertBefore(src);
     }

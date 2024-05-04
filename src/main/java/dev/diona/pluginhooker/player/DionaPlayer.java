@@ -22,9 +22,14 @@ public class DionaPlayer {
     // cached ProtocolLib listener list
     @Setter
     private SortedPacketListenerList receivedCachedListeners;
-
     @Setter
     private SortedPacketListenerList sendingCachedListeners;
+
+    // Original ProtocolLib listener var
+    @Setter
+    private boolean receivedListenersSetup;
+    @Setter
+    private boolean sendingListenersSetup;
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 

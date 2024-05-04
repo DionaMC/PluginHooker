@@ -21,7 +21,16 @@ public class ProtocolLibCallbackHandler {
     @ConfigPath("hook.protocollib.call-event")
     public boolean callEvent;
 
-    private Field mapListeners;
+    private static Field MAP_LISTENERS_FIELD;
+
+    static {
+        try {
+            MAP_LISTENERS_FIELD = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
+            MAP_LISTENERS_FIELD.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
+        }
+    }
 
     public ProtocolLibCallbackHandler() {
         PluginHooker.getConfigManager().loadConfig(this);
@@ -33,6 +42,18 @@ public class ProtocolLibCallbackHandler {
 
         SortedPacketListenerList cachedListeners = outbound ? dionaPlayer.getSendingCachedListeners() : dionaPlayer.getReceivedCachedListeners();
         if (cachedListeners != null) return cachedListeners;
+
+        // is inbound cache setup
+        if (!outbound && !dionaPlayer.isReceivedListenersSetup()) {
+            dionaPlayer.setReceivedListenersSetup(true);
+            PluginHooker.getPlayerManager().getInboundListenerRefToPlayer().put(listenerList.hashCode(), dionaPlayer);
+        }
+
+        // is outbound cache setup
+        if (outbound && !dionaPlayer.isSendingListenersSetup()) {
+            dionaPlayer.setSendingListenersSetup(true);
+            PluginHooker.getPlayerManager().getOutboundListenerRefToPlayer().put(listenerList.hashCode(), dionaPlayer);
+        }
 
 
         SortedPacketListenerList newListeners = this.deepCopyListenerList(listenerList);
@@ -68,20 +89,13 @@ public class ProtocolLibCallbackHandler {
     private SortedPacketListenerList deepCopyListenerList(SortedPacketListenerList sortedPacketListenerList) {
         SortedPacketListenerList result = new SortedPacketListenerList();
         try {
-
-            if (this.mapListeners == null) {
-                this.mapListeners = SortedPacketListenerList.class.getSuperclass().getDeclaredField("mapListeners");
-                this.mapListeners.setAccessible(true);
+            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) MAP_LISTENERS_FIELD.get(sortedPacketListenerList);
+            ConcurrentHashMap<Object, Object> resultMap = new ConcurrentHashMap<>();
+            for (Object packetType : listeners.keySet()) {
+                resultMap.put(packetType, new SortedCopyOnWriteArray((Collection) listeners.get(packetType)));
             }
 
-            ConcurrentHashMap<Object, Object> listeners = (ConcurrentHashMap<Object, Object>) mapListeners.get(sortedPacketListenerList);
-            ConcurrentHashMap<Object, Object> resultMap = listeners.keySet().stream().collect(
-                    ConcurrentHashMap::new,
-                    (map, packetType) -> map.put(packetType, new SortedCopyOnWriteArray((Collection) listeners.get(packetType))),
-                    ConcurrentHashMap::putAll
-            );
-
-            mapListeners.set(result, resultMap);
+            MAP_LISTENERS_FIELD.set(result, resultMap);
             return result;
         } catch (Exception e) {
             e.printStackTrace();
