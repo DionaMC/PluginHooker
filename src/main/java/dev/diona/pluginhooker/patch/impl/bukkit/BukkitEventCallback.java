@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.bukkit;
+package dev.diona.pluginhooker.patch.impl.bukkit;
 
 import lombok.Getter;
 import org.bukkit.event.Event;

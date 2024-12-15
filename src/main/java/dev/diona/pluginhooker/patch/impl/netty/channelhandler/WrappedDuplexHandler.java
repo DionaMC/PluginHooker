@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.netty.channelhandler;
+package dev.diona.pluginhooker.patch.impl.netty.channelhandler;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
@@ -11,13 +11,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-public class DuplexHandlerWrapper extends ChannelDuplexHandler {
+public class WrappedDuplexHandler extends ChannelDuplexHandler {
 
     @ConfigPath("hook.netty.call-event")
     public static boolean callEvent;
 
     static {
-        PluginHooker.getConfigManager().loadConfig(DuplexHandlerWrapper.class);
+        PluginHooker.getConfigManager().loadConfig(WrappedDuplexHandler.class);
     }
 
     private final ChannelDuplexHandler duplexHandler;
@@ -25,7 +25,7 @@ public class DuplexHandlerWrapper extends ChannelDuplexHandler {
     private final DionaPlayer dionaPlayer;
 
 
-    public DuplexHandlerWrapper(ChannelDuplexHandler duplexHandler, Plugin plugin, Player player) {
+    public WrappedDuplexHandler(ChannelDuplexHandler duplexHandler, Plugin plugin, Player player) {
         this.duplexHandler = duplexHandler;
         this.plugin = plugin;
         this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);

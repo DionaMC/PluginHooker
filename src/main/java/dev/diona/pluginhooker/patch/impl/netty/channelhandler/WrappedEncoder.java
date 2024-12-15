@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.netty.channelhandler;
+package dev.diona.pluginhooker.patch.impl.netty.channelhandler;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
@@ -17,7 +17,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.List;
 
-public class EncoderWrapper extends MessageToMessageEncoder<Object> {
+public class WrappedEncoder extends MessageToMessageEncoder<Object> {
 
     private final static MethodHandle encoderMethodHandle;
 
@@ -25,7 +25,7 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
     public static boolean callEvent;
 
     static {
-        PluginHooker.getConfigManager().loadConfig(EncoderWrapper.class);
+        PluginHooker.getConfigManager().loadConfig(WrappedEncoder.class);
         try {
             Method encoderMethod = MessageToMessageEncoder.class
                     .getDeclaredMethod("write", ChannelHandlerContext.class, Object.class, ChannelPromise.class);
@@ -41,7 +41,7 @@ public class EncoderWrapper extends MessageToMessageEncoder<Object> {
 
     private final DionaPlayer dionaPlayer;
 
-    public EncoderWrapper(MessageToMessageEncoder<?> encoder, Plugin plugin, Player player) {
+    public WrappedEncoder(MessageToMessageEncoder<?> encoder, Plugin plugin, Player player) {
         this.encoder = encoder;
         this.plugin = plugin;
         this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);

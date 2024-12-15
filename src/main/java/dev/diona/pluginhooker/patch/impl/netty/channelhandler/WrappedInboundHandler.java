@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.netty.channelhandler;
+package dev.diona.pluginhooker.patch.impl.netty.channelhandler;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
@@ -10,20 +10,20 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-public class InboundHandlerWrapper extends ChannelInboundHandlerAdapter {
+public class WrappedInboundHandler extends ChannelInboundHandlerAdapter {
 
     @ConfigPath("hook.netty.call-event")
     public static boolean callEvent;
 
     static {
-        PluginHooker.getConfigManager().loadConfig(InboundHandlerWrapper.class);
+        PluginHooker.getConfigManager().loadConfig(WrappedInboundHandler.class);
     }
 
     private final ChannelInboundHandlerAdapter inbound;
     private final Plugin plugin;
     private final DionaPlayer dionaPlayer;
 
-    public InboundHandlerWrapper(ChannelInboundHandlerAdapter inbound, Plugin plugin, Player player) {
+    public WrappedInboundHandler(ChannelInboundHandlerAdapter inbound, Plugin plugin, Player player) {
         this.inbound = inbound;
         this.plugin = plugin;
         this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);

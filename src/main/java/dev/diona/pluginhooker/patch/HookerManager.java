@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook;
+package dev.diona.pluginhooker.patch;
 
 import bot.inker.acj.JvmHacker;
 import dev.diona.pluginhooker.PluginHooker;
@@ -14,14 +14,14 @@ public class HookerManager {
     private final Logger logger = PluginHooker.getInstance().getLogger();
 
     public HookerManager() {
-        List<Injector> injectors = this.getInjectorList();
+        List<Patcher> patchers = this.getPatcherList();
 
-        List<Injector> definedClasses = injectors.stream()
-                .filter(Injector::canHook)
-                .filter(injector -> {
+        List<Patcher> definedClasses = patchers.stream()
+                .filter(Patcher::canPatch)
+                .filter(patcher -> {
                     try {
-                        injector.predefineClass();
-                        logger.info(injector.getClassNameWithoutPackage() + " is now predefined!");
+                        patcher.predefineClass();
+                        logger.info(patcher.getClassNameWithoutPackage() + " is now predefined!");
                         return false;
                     } catch (Throwable e) {
                         return true;
@@ -29,18 +29,18 @@ public class HookerManager {
                 })
                 .collect(Collectors.toList());
 
-        if (definedClasses.size() == 0) return;
+        if (definedClasses.isEmpty()) return;
 
 
         try {
             Instrumentation instrumentation = JvmHacker.instrumentation();
 
-            definedClasses.forEach(injector -> {
+            definedClasses.forEach(patcher -> {
                 try {
-                    injector.redefineClass(instrumentation);
-                    logger.info(injector.getClassNameWithoutPackage() + " is now redefined!");
+                    patcher.redefineClass(instrumentation);
+                    logger.info(patcher.getClassNameWithoutPackage() + " is now redefined!");
                 } catch (Exception e) {
-                    logger.severe("Error while redefining " + injector.getClassNameWithoutPackage());
+                    logger.severe("Error while redefining " + patcher.getClassNameWithoutPackage());
                     e.printStackTrace();
                 }
             });
@@ -50,11 +50,11 @@ public class HookerManager {
         }
     }
 
-    private List<Injector> getInjectorList() {
-        Reflections reflections = new Reflections("dev.diona.pluginhooker.hook.impl");
-        return reflections.getSubTypesOf(Injector.class).stream().map(injectorClass -> {
+    private List<Patcher> getPatcherList() {
+        Reflections reflections = new Reflections("dev.diona.pluginhooker.patch.impl");
+        return reflections.getSubTypesOf(Patcher.class).stream().map(patcherClass -> {
             try {
-                return injectorClass.getConstructor().newInstance();
+                return patcherClass.getConstructor().newInstance();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

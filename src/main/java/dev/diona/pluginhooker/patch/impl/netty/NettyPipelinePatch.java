@@ -1,8 +1,8 @@
-package dev.diona.pluginhooker.hook.impl.netty;
+package dev.diona.pluginhooker.patch.impl.netty;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.hook.Injector;
+import dev.diona.pluginhooker.patch.Patcher;
 import dev.diona.pluginhooker.utils.NettyVersion;
 import io.netty.channel.DefaultChannelConfig;
 import javassist.CtClass;
@@ -13,7 +13,7 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
-public class NettyPipelineInjector extends Injector {
+public class NettyPipelinePatch extends Patcher {
 
     @ConfigPath("hook.netty.enabled")
     public boolean hookNetty;
@@ -35,7 +35,7 @@ public class NettyPipelineInjector extends Injector {
         }
     }
 
-    public NettyPipelineInjector() {
+    public NettyPipelinePatch() {
         super("io.netty.channel.DefaultChannelPipeline", "io.netty.channel.DefaultChannelConfig");
 
         try {
@@ -56,7 +56,7 @@ public class NettyPipelineInjector extends Injector {
     }
 
     @Override
-    public void hookClass() {
+    public void applyPatch() {
         Arrays.stream(targetClass.getDeclaredMethods())
                 .filter(method -> { // filter out methods that are not addLast0 or addFirst0
                     return method.getName().equals("addBefore0") || method.getName().equals("addAfter0");
@@ -68,7 +68,6 @@ public class NettyPipelineInjector extends Injector {
                                 method.getParameterTypes().length
                         );
                         method.insertAfter(src);
-//                        method.insertBefore(CALLBACK_CLASS.getName() + ".getInstance().onHandlerAdd($3,$0);");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -76,7 +75,7 @@ public class NettyPipelineInjector extends Injector {
     }
 
     @Override
-    public boolean canHook() {
+    public boolean canPatch() {
         String version = NettyVersion.getVersion().getMajor() + "." + NettyVersion.getVersion().getMinor();
         if (!version.equals("4.1") && !version.equals("4.0")) {
             PluginHooker.getInstance().getLogger().warning("PluginHooker only supports netty 4.1/4.0");

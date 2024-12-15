@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.bukkit;
+package dev.diona.pluginhooker.patch.impl.bukkit;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;

@@ -13,8 +13,6 @@ import java.util.function.Consumer;
 
 public class HookerUtils {
 
-//    private static Field channelPipelineField;
-
     public static final AttributeKey<List<Consumer<Player>>> HANDLER_REPLACEMENT_FUNCTIONS
             = AttributeKey.valueOf("HANDLER_REPLACEMENT_FUNCTION");
 

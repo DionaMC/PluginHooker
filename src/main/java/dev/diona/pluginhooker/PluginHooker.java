@@ -3,7 +3,7 @@ package dev.diona.pluginhooker;
 import dev.diona.pluginhooker.commands.SimpleCommand;
 import dev.diona.pluginhooker.config.ConfigManager;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.hook.HookerManager;
+import dev.diona.pluginhooker.patch.HookerManager;
 import dev.diona.pluginhooker.listeners.PlayerListener;
 import dev.diona.pluginhooker.player.PlayerManager;
 import dev.diona.pluginhooker.plugin.PluginManager;

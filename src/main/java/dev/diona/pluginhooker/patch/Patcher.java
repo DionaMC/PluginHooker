@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook;
+package dev.diona.pluginhooker.patch;
 
 import dev.diona.pluginhooker.PluginHooker;
 import javassist.ClassPool;
@@ -10,7 +10,7 @@ import lombok.Getter;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 
-public abstract class Injector {
+public abstract class Patcher {
 
     protected static final ClassPool classPool = ClassPool.getDefault();
 
@@ -29,7 +29,7 @@ public abstract class Injector {
     protected final String classNameWithoutPackage;
 
 
-    public Injector(String targetClassName, String neighborName) {
+    public Patcher(String targetClassName, String neighborName) {
         this.targetClassName = targetClassName;
         // split the class name
         String[] className = this.getTargetClassName().split("\\.");
@@ -38,13 +38,13 @@ public abstract class Injector {
 
         PluginHooker.getConfigManager().loadConfig(this);
 
-        if (!this.canHook()) return;
+        if (!this.canPatch()) return;
 
         try {
             this.initClassPath();
             this.neighbor = Class.forName(neighborName);
             this.targetClass = classPool.get(targetClassName);
-            this.hookClass();
+            this.applyPatch();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -66,9 +66,9 @@ public abstract class Injector {
         );
     }
 
-    public abstract void hookClass() throws Exception;
+    public abstract void applyPatch() throws Exception;
 
-    public abstract boolean canHook();
+    public abstract boolean canPatch();
 
     protected abstract void initClassPath();
 

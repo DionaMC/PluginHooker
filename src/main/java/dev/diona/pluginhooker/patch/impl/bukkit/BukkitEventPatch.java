@@ -1,7 +1,7 @@
-package dev.diona.pluginhooker.hook.impl.bukkit;
+package dev.diona.pluginhooker.patch.impl.bukkit;
 
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.hook.Injector;
+import dev.diona.pluginhooker.patch.Patcher;
 import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CannotCompileException;
 import javassist.CtClass;
@@ -15,7 +15,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.function.BiPredicate;
 
-public class BukkitEventInjector extends Injector {
+public class BukkitEventPatch extends Patcher {
 
     @ConfigPath("hook.bukkit.enabled")
     public boolean hookBukkitEvent;
@@ -37,7 +37,7 @@ public class BukkitEventInjector extends Injector {
     @Getter
     private final BukkitCallbackHandler callbackHandler = new BukkitCallbackHandler();
 
-    public BukkitEventInjector() {
+    public BukkitEventPatch() {
         super("org.bukkit.plugin.RegisteredListener", "org.bukkit.plugin.Plugin");
 
         try {
@@ -58,7 +58,7 @@ public class BukkitEventInjector extends Injector {
     }
 
     @Override
-    public void hookClass() throws CannotCompileException {
+    public void applyPatch() throws CannotCompileException {
         CtMethod callEvent = ClassUtils.getMethodByName(targetClass.getMethods(), "callEvent");
         callEvent.insertBefore(
                 "if(" + CALLBACK_CLASS.getName() + ".getInstance().onCallEvent(this.plugin,$1))return;"
@@ -66,7 +66,7 @@ public class BukkitEventInjector extends Injector {
     }
 
     @Override
-    public boolean canHook() {
+    public boolean canPatch() {
         return hookBukkitEvent;
     }
 

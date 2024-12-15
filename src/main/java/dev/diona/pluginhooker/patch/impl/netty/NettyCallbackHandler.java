@@ -1,8 +1,8 @@
-package dev.diona.pluginhooker.hook.impl.netty;
+package dev.diona.pluginhooker.patch.impl.netty;
 
 import com.google.common.collect.Lists;
 import dev.diona.pluginhooker.PluginHooker;
-import dev.diona.pluginhooker.hook.impl.netty.channelhandler.*;
+import dev.diona.pluginhooker.patch.impl.netty.channelhandler.*;
 import dev.diona.pluginhooker.player.DionaPlayer;
 import dev.diona.pluginhooker.utils.HookerUtils;
 import io.netty.channel.*;
@@ -75,15 +75,15 @@ public class NettyCallbackHandler {
                     // replace the ChannelHandlerContext with our wrapper
                     Consumer<Player> consumer = player -> {
                         if (handler instanceof MessageToMessageDecoder) {
-                            setContextHandler(channelHandlerContext, new DecoderWrapper((MessageToMessageDecoder<?>) handler, plugin, player));
+                            setContextHandler(channelHandlerContext, new WrappedDecoder((MessageToMessageDecoder<?>) handler, plugin, player));
                         } else if (handler instanceof MessageToMessageEncoder) {
-                            setContextHandler(channelHandlerContext, new EncoderWrapper((MessageToMessageEncoder<?>) handler, plugin, player));
+                            setContextHandler(channelHandlerContext, new WrappedEncoder((MessageToMessageEncoder<?>) handler, plugin, player));
                         } else if (handler instanceof ChannelDuplexHandler) {
-                            setContextHandler(channelHandlerContext, new DuplexHandlerWrapper((ChannelDuplexHandler) handler, plugin, player));
+                            setContextHandler(channelHandlerContext, new WrappedDuplexHandler((ChannelDuplexHandler) handler, plugin, player));
                         } else if (handler instanceof ChannelInboundHandlerAdapter) {
-                            setContextHandler(channelHandlerContext, new InboundHandlerWrapper((ChannelInboundHandlerAdapter) handler, plugin, player));
+                            setContextHandler(channelHandlerContext, new WrappedInboundHandler((ChannelInboundHandlerAdapter) handler, plugin, player));
                         } else if (handler instanceof ChannelOutboundHandlerAdapter) {
-                            setContextHandler(channelHandlerContext, new OutboundHandlerWrapper((ChannelOutboundHandlerAdapter) handler, plugin, player));
+                            setContextHandler(channelHandlerContext, new WrappedOutboundHandler((ChannelOutboundHandlerAdapter) handler, plugin, player));
                         }
                     };
 

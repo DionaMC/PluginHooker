@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.netty;
+package dev.diona.pluginhooker.patch.impl.netty;
 
 import lombok.Getter;
 

@@ -1,4 +1,4 @@
-package dev.diona.pluginhooker.hook.impl.netty.channelhandler;
+package dev.diona.pluginhooker.patch.impl.netty.channelhandler;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
@@ -16,7 +16,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.List;
 
-public class DecoderWrapper extends MessageToMessageDecoder<Object> {
+public class WrappedDecoder extends MessageToMessageDecoder<Object> {
 
     private final static MethodHandle decoderMethodHandle;
 
@@ -24,7 +24,7 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
     public static boolean callEvent;
 
     static {
-        PluginHooker.getConfigManager().loadConfig(DecoderWrapper.class);
+        PluginHooker.getConfigManager().loadConfig(WrappedDecoder.class);
         try {
             Method decoderMethod = MessageToMessageDecoder.class
                     .getDeclaredMethod("decode", ChannelHandlerContext.class, Object.class, List.class);
@@ -40,7 +40,7 @@ public class DecoderWrapper extends MessageToMessageDecoder<Object> {
 
     private final DionaPlayer dionaPlayer;
 
-    public DecoderWrapper(MessageToMessageDecoder<?> decoder, Plugin plugin, Player player) {
+    public WrappedDecoder(MessageToMessageDecoder<?> decoder, Plugin plugin, Player player) {
         this.decoder = decoder;
         this.plugin = plugin;
         this.dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
