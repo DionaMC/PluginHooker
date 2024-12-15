@@ -17,7 +17,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 
 * Spigot: 1.8.8/1.19.4
 * Netty: 4.0/4.1
-* ProtocolLib: 4.8/5.0
+* ProtocolLib: 5.3
 * PacketEvents: 1.0/2.0
 
 ## 用法
