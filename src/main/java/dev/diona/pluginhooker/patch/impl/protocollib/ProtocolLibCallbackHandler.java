@@ -38,7 +38,7 @@ public class ProtocolLibCallbackHandler {
     }
 
     public static ProtocolLibCallbackHandler getInstance() {
-        return instance != null ? instance : new ProtocolLibCallbackHandler();
+        return instance != null ? instance :  (instance = new ProtocolLibCallbackHandler());
     }
 
 }
