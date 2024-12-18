@@ -21,3 +21,9 @@ hook:
     enabled: true
     # Should we call the NettyCodecEvent?
     call-event: false
+
+  packetevents:
+    # Should we hook the PacketEvents packet listener?
+    enabled: true
+    # Should we call the PacketEventsPacketEvent?
+    call-event: true
