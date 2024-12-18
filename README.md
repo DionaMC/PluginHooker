@@ -40,7 +40,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.3.1</version>
+        <version>1.4</version>
     </dependency>
 ```
 ### Gradle
@@ -54,7 +54,7 @@ Add the following repository to your build.gradle:
 Then add the following dependency
 
 ```groovy
-    compileOnly 'com.github.DionaMC:PluginHooker:1.3.1'
+    compileOnly 'com.github.DionaMC:PluginHooker:1.4'
 ```
 
 ### API usage

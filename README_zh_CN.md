@@ -39,7 +39,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.3.1</version>
+        <version>1.4</version>
     </dependency>
 ```
 ### Gradle
@@ -53,7 +53,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 然后添加以下依赖
 
 ```groovy
-    compileOnly 'com.github.DionaMC:PluginHooker:1.3.1'
+    compileOnly 'com.github.DionaMC:PluginHooker:1.4'
 ```
 
 ### API 用法
