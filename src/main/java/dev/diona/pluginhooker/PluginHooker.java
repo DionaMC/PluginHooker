@@ -3,7 +3,7 @@ package dev.diona.pluginhooker;
 import dev.diona.pluginhooker.commands.SimpleCommand;
 import dev.diona.pluginhooker.config.ConfigManager;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.patch.HookerManager;
+import dev.diona.pluginhooker.patch.PatchManager;
 import dev.diona.pluginhooker.listeners.PlayerListener;
 import dev.diona.pluginhooker.player.PlayerManager;
 import dev.diona.pluginhooker.plugin.PluginManager;
@@ -19,7 +19,7 @@ public final class PluginHooker extends JavaPlugin {
     private static PluginHooker instance;
 
     @Getter
-    private static HookerManager hookerManager;
+    private static PatchManager patchManager;
     @Getter
     private static PluginManager pluginManager;
     @Getter
@@ -37,7 +37,7 @@ public final class PluginHooker extends JavaPlugin {
         pluginManager = new PluginManager();
         playerManager = new PlayerManager();
         this.getLogger().info("PluginHooker loaded! start hooking...");
-        hookerManager = new HookerManager();
+        patchManager = new PatchManager();
         configManager.loadConfig(this);
     }
 

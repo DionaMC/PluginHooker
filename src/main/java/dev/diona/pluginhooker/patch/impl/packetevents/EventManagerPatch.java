@@ -2,14 +2,14 @@ package dev.diona.pluginhooker.patch.impl.packetevents;
 
 import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.patch.Patcher;
+import dev.diona.pluginhooker.patch.Patch;
 import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
 import org.bukkit.Bukkit;
 
-public class EventManagerPatch extends Patcher {
+public class EventManagerPatch extends Patch {
 
     @ConfigPath("hook.packetevents.enabled")
     public boolean hookPacketEventsPacket;

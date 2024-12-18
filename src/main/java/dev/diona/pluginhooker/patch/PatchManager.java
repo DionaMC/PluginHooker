@@ -9,15 +9,15 @@ import java.util.List;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-public class HookerManager {
+public class PatchManager {
 
     private final Logger logger = PluginHooker.getInstance().getLogger();
 
-    public HookerManager() {
-        List<Patcher> patchers = this.getPatcherList();
+    public PatchManager() {
+        List<Patch> patches = this.getPatcherList();
 
-        List<Patcher> FailedToPredefineClasses = patchers.stream()
-                .filter(Patcher::canPatch)
+        List<Patch> FailedToPredefineClasses = patches.stream()
+                .filter(Patch::canPatch)
                 .filter(patcher -> {
                     if (patcher.isRedefineOnly()) {
                         return true;
@@ -53,9 +53,9 @@ public class HookerManager {
         }
     }
 
-    private List<Patcher> getPatcherList() {
+    private List<Patch> getPatcherList() {
         Reflections reflections = new Reflections("dev.diona.pluginhooker.patch.impl");
-        return reflections.getSubTypesOf(Patcher.class).stream().map(patcherClass -> {
+        return reflections.getSubTypesOf(Patch.class).stream().map(patcherClass -> {
             try {
                 return patcherClass.getConstructor().newInstance();
             } catch (Exception e) {

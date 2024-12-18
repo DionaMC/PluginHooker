@@ -2,7 +2,7 @@ package dev.diona.pluginhooker.patch.impl.netty;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.patch.Patcher;
+import dev.diona.pluginhooker.patch.Patch;
 import dev.diona.pluginhooker.utils.NettyVersion;
 import io.netty.channel.DefaultChannelConfig;
 import javassist.CtClass;
@@ -13,7 +13,7 @@ import lombok.Getter;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
-public class NettyPipelinePatch extends Patcher {
+public class NettyPipelinePatch extends Patch {
 
     @ConfigPath("hook.netty.enabled")
     public boolean hookNetty;

@@ -1,7 +1,7 @@
 package dev.diona.pluginhooker.patch.impl.bukkit;
 
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.patch.Patcher;
+import dev.diona.pluginhooker.patch.Patch;
 import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CannotCompileException;
 import javassist.CtClass;
@@ -15,7 +15,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.function.BiPredicate;
 
-public class BukkitEventPatch extends Patcher {
+public class BukkitEventPatch extends Patch {
 
     @ConfigPath("hook.bukkit.enabled")
     public boolean hookBukkitEvent;

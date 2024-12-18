@@ -10,7 +10,7 @@ import lombok.Getter;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 
-public abstract class Patcher {
+public abstract class Patch {
 
     protected static final ClassPool classPool = ClassPool.getDefault();
 
@@ -27,7 +27,7 @@ public abstract class Patcher {
     protected Class<?> neighbor;
     protected CtClass targetClass;
 
-    public Patcher(String targetClassName, String neighborName, boolean redefineOnly) {
+    public Patch(String targetClassName, String neighborName, boolean redefineOnly) {
         this.targetClassName = targetClassName;
         this.redefineOnly = redefineOnly;
         // split the class name
@@ -49,7 +49,7 @@ public abstract class Patcher {
         }
     }
 
-    public Patcher(String targetClassName, String neighborName) {
+    public Patch(String targetClassName, String neighborName) {
         this(targetClassName, neighborName, false);
     }
 

@@ -2,14 +2,14 @@ package dev.diona.pluginhooker.patch.impl.protocollib;
 
 import com.comphenix.protocol.injector.collection.PacketListenerSet;
 import dev.diona.pluginhooker.config.ConfigPath;
-import dev.diona.pluginhooker.patch.Patcher;
+import dev.diona.pluginhooker.patch.Patch;
 import dev.diona.pluginhooker.utils.ClassUtils;
 import javassist.CtClass;
 import javassist.CtMethod;
 import javassist.LoaderClassPath;
 import org.bukkit.Bukkit;
 
-public class OutboundPacketListenerSetPatch extends Patcher {
+public class OutboundPacketListenerSetPatch extends Patch {
 
     @ConfigPath("hook.protocollib.enabled")
     public boolean hookProtocolLibPacket;
