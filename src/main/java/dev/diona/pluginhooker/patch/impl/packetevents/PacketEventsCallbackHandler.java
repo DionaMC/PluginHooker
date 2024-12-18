@@ -1,9 +1,6 @@
 package dev.diona.pluginhooker.patch.impl.packetevents;
 
-import com.github.retrooper.packetevents.event.PacketEvent;
-import com.github.retrooper.packetevents.event.PacketListenerCommon;
-import com.github.retrooper.packetevents.event.PacketReceiveEvent;
-import com.github.retrooper.packetevents.event.PacketSendEvent;
+import com.github.retrooper.packetevents.event.*;
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.PacketEventsPacketEvent;
@@ -30,51 +27,22 @@ public class PacketEventsCallbackHandler {
      * @return boolean return true the prevent the listener
      */
     public boolean handlePacketEvent(PacketListenerCommon listener, PacketEvent event) {
-        if (event instanceof PacketSendEvent) {
-            PacketSendEvent packetSendEvent = (PacketSendEvent) event;
-            DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(packetSendEvent.getPlayer());
-            if (dionaPlayer == null) {
-                return false;
-            }
-            Plugin plugin = EventManagerCallbackHandler.getInstance().getPlugin(listener);
-            if (plugin == null) {
-                return false;
-            }
-            if (!PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
-                return false;
-            }
-            if (!dionaPlayer.getEnabledPlugins().contains(plugin)) {
-                return true;
-            }
-            if (callEvent) {
-                PacketEventsPacketEvent packetEvent = new PacketEventsPacketEvent(listener, event);
-                Bukkit.getPluginManager().callEvent(packetEvent);
-                return packetEvent.isCancelled();
-            }
-            return false;
+        if (!(event instanceof ProtocolPacketEvent)) {
+            throw new RuntimeException("Undefined behavior.");
         }
-        if (event instanceof PacketReceiveEvent) {
-            PacketReceiveEvent packetReceiveEvent = (PacketReceiveEvent) event;
-            DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(packetReceiveEvent.getPlayer());
-            if (dionaPlayer == null) {
-                return false;
-            }
-            Plugin plugin = EventManagerCallbackHandler.getInstance().getPlugin(listener);
-            if (plugin == null) {
-                return false;
-            }
-            if (!PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) {
-                return false;
-            }
-            if (!dionaPlayer.getEnabledPlugins().contains(plugin)) {
-                return true;
-            }
-            if (callEvent) {
-                PacketEventsPacketEvent packetEvent = new PacketEventsPacketEvent(listener, event);
-                Bukkit.getPluginManager().callEvent(packetEvent);
-                return packetEvent.isCancelled();
-            }
-            return false;
+        ProtocolPacketEvent ppe = (ProtocolPacketEvent) event;
+
+        DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(ppe.getPlayer());
+        if (dionaPlayer == null) return false;
+
+        Plugin plugin = EventManagerCallbackHandler.getInstance().getPlugin(listener);
+        if (plugin == null || !PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) return false;
+        if (!dionaPlayer.getEnabledPlugins().contains(plugin)) return true;
+
+        if (callEvent) {
+            PacketEventsPacketEvent packetEvent = new PacketEventsPacketEvent(listener, event);
+            Bukkit.getPluginManager().callEvent(packetEvent);
+            return packetEvent.isCancelled();
         }
         return false;
     }

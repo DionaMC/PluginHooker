@@ -21,18 +21,15 @@ public class EventManagerPatch extends Patch {
     @Override
     public void applyPatch() throws Exception {
         CtClass targetClass = classPool.get(this.targetClassName);
+        CtMethod[] methods = targetClass.getDeclaredMethods();
 
-        CtMethod registerListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getDeclaredMethods(), "registerListenerNoRecalculation");
-        String src1 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerRegister($1)";
-        registerListenerNoRecalculation.insertBefore(
-                src1 + ";"
-        );
+        CtMethod registerListenerNoRecalculation = ClassUtils.getMethodByName(methods, "registerListenerNoRecalculation");
+        String src1 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerRegister($1);";
+        registerListenerNoRecalculation.insertBefore(src1);
 
-        CtMethod unregisterListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getDeclaredMethods(), "unregisterListenerNoRecalculation");
-        String src2 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerUnregister($1)";
-        unregisterListenerNoRecalculation.insertBefore(
-                src2 + ";"
-        );
+        CtMethod unregisterListenerNoRecalculation = ClassUtils.getMethodByName(methods, "unregisterListenerNoRecalculation");
+        String src2 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerUnregister($1);";
+        unregisterListenerNoRecalculation.insertBefore(src2);
     }
 
     @Override
