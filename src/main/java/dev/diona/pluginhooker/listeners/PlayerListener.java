@@ -2,8 +2,8 @@ package dev.diona.pluginhooker.listeners;
 
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import dev.diona.pluginhooker.utils.HookerUtils;
-import dev.diona.pluginhooker.utils.NMSUtils;
+import dev.diona.pluginhooker.utils.NettyUtils;
+import dev.diona.pluginhooker.utils.BukkitUtils;
 import io.netty.channel.Channel;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -28,9 +28,9 @@ public class PlayerListener implements Listener {
         Player player = e.getPlayer();
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
         if (dionaPlayer == null) return;
-        Channel channel = NMSUtils.getChannelByPlayer(player);
+        Channel channel = BukkitUtils.getChannelByPlayer(player);
         Bukkit.getScheduler().runTaskLaterAsynchronously(PluginHooker.getInstance(), () -> {
-            List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).getAndRemove();
+            List<Consumer<Player>> list = channel.attr(NettyUtils.WRAPPER_FUNCTIONS).getAndRemove();
 
             if (list == null) return;
             if (!channel.isOpen() || !dionaPlayer.getPlayer().isOnline()) return;

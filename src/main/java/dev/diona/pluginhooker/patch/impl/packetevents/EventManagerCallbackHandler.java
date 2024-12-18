@@ -2,7 +2,7 @@ package dev.diona.pluginhooker.patch.impl.packetevents;
 
 import com.github.retrooper.packetevents.event.PacketListenerCommon;
 import dev.diona.pluginhooker.PluginHooker;
-import dev.diona.pluginhooker.utils.HookerUtils;
+import dev.diona.pluginhooker.utils.BukkitUtils;
 import lombok.Getter;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.Nullable;
@@ -41,7 +41,7 @@ public class EventManagerCallbackHandler {
                     continue;
                 }
 
-                List<Plugin> pluginList = HookerUtils.getServerPlugins();
+                List<Plugin> pluginList = BukkitUtils.getServerPlugins();
 
                 for (Plugin plugin : pluginList) {
                     // check if the plugin is loaded by the same classloader

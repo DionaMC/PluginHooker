@@ -4,14 +4,16 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 
 
-public class NMSUtils {
+public class BukkitUtils {
 
     private static final String BUKKIT_PACKAGE = Bukkit.getServer().getClass().getPackage().getName();
 
@@ -20,6 +22,8 @@ public class NMSUtils {
     private static final Field channelField;
     private static final MethodHandle getHandleMethod;
     private static final MethodHandle pipelineMethod;
+
+    static final Field pluginsField;
 
     static {
         try {
@@ -35,6 +39,9 @@ public class NMSUtils {
             channelField = networkManagerField.getType()
                     .getField(majorVersion > 16 ? "k" : "channel");
             pipelineMethod = MethodHandles.lookup().unreflect(channelField.getType().getMethod("pipeline"));
+
+            pluginsField = Bukkit.getPluginManager().getClass().getDeclaredField("plugins");
+            pluginsField.setAccessible(true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -68,5 +75,25 @@ public class NMSUtils {
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<Plugin> getServerPlugins() {
+        try {
+            return (List<Plugin>) pluginsField.get(Bukkit.getPluginManager());
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Player getPlayerByChannelContext(Object ctx) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            ChannelPipeline pipeline = getPipelineByPlayer(player);
+            for (String name : pipeline.names()) {
+                if (pipeline.context(name) != ctx) continue;
+                return player;
+            }
+        }
+        return null;
     }
 }

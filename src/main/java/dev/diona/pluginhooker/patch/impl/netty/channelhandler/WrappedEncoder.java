@@ -4,7 +4,7 @@ import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.NettyCodecEvent;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import dev.diona.pluginhooker.utils.HookerUtils;
+import dev.diona.pluginhooker.utils.NettyUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -77,7 +77,7 @@ public class WrappedEncoder extends MessageToMessageEncoder<Object> {
 
     @Override
     protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) {
-        HookerUtils.addToOutList(msg, out);
+        NettyUtils.processPacket(msg, out);
     }
 
     @Override

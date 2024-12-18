@@ -4,7 +4,7 @@ import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.NettyCodecEvent;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import dev.diona.pluginhooker.utils.HookerUtils;
+import dev.diona.pluginhooker.utils.NettyUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import org.bukkit.Bukkit;
@@ -56,12 +56,12 @@ public class WrappedDecoder extends MessageToMessageDecoder<Object> {
             NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, msg, false);
             Bukkit.getPluginManager().callEvent(nettyCodecEvent);
             if (nettyCodecEvent.isCancelled()) {
-                HookerUtils.addToOutList(msg, out);
+                NettyUtils.processPacket(msg, out);
             } else {
                 invokeDecodeMethod(ctx, msg, out);
             }
         } else {
-            HookerUtils.addToOutList(msg, out);
+            NettyUtils.processPacket(msg, out);
         }
     }
 

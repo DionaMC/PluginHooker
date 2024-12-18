@@ -4,7 +4,8 @@ import com.google.common.collect.Lists;
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.patch.impl.netty.channelhandler.*;
 import dev.diona.pluginhooker.player.DionaPlayer;
-import dev.diona.pluginhooker.utils.HookerUtils;
+import dev.diona.pluginhooker.utils.BukkitUtils;
+import dev.diona.pluginhooker.utils.NettyUtils;
 import io.netty.channel.*;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -56,7 +57,7 @@ public class NettyCallbackHandler {
                 if (!aClass.getClassLoader().getClass().getSimpleName().equals("PluginClassLoader"))
                     continue;
 
-                List<Plugin> pluginList = HookerUtils.getServerPlugins();
+                List<Plugin> pluginList = BukkitUtils.getServerPlugins();
 
                 for (Plugin plugin : pluginList) {
                     // check if the plugin is loaded by the same classloader
@@ -87,7 +88,7 @@ public class NettyCallbackHandler {
                         }
                     };
 
-                    Player player = HookerUtils.getPlayerByChannelContext(channelHandlerContext);
+                    Player player = BukkitUtils.getPlayerByChannelContext(channelHandlerContext);
                     DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
                     // if player is null then the player is not joined yet
                     if (player != null && dionaPlayer != null && dionaPlayer.isInitialized()) {
@@ -115,12 +116,12 @@ public class NettyCallbackHandler {
      * @param channel  channel
      */
     private void appendConsumer(Consumer<Player> consumer, Channel channel) {
-        List<Consumer<Player>> list = channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).get();
+        List<Consumer<Player>> list = channel.attr(NettyUtils.WRAPPER_FUNCTIONS).get();
         if (list == null) {
             list = Lists.newArrayList();
         }
         list.add(consumer);
-        channel.attr(HookerUtils.HANDLER_REPLACEMENT_FUNCTIONS).set(list);
+        channel.attr(NettyUtils.WRAPPER_FUNCTIONS).set(list);
     }
 
     /**
