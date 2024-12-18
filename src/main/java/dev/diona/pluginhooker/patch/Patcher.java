@@ -18,19 +18,18 @@ public abstract class Patcher {
         classPool.appendClassPath(new LoaderClassPath(PluginHooker.class.getClassLoader()));
     }
 
-    protected Class<?> neighbor;
-
-    protected CtClass targetClass;
-
     @Getter
     protected final String targetClassName;
-
     @Getter
     protected final String classNameWithoutPackage;
+    @Getter
+    private final boolean redefineOnly;
+    protected Class<?> neighbor;
+    protected CtClass targetClass;
 
-
-    public Patcher(String targetClassName, String neighborName) {
+    public Patcher(String targetClassName, String neighborName, boolean redefineOnly) {
         this.targetClassName = targetClassName;
+        this.redefineOnly = redefineOnly;
         // split the class name
         String[] className = this.getTargetClassName().split("\\.");
         // get the class name without the package
@@ -48,6 +47,10 @@ public abstract class Patcher {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public Patcher(String targetClassName, String neighborName) {
+        this(targetClassName, neighborName, false);
     }
 
     public void predefineClass() throws Exception {

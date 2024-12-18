@@ -16,9 +16,12 @@ public class HookerManager {
     public HookerManager() {
         List<Patcher> patchers = this.getPatcherList();
 
-        List<Patcher> definedClasses = patchers.stream()
+        List<Patcher> FailedToPredefineClasses = patchers.stream()
                 .filter(Patcher::canPatch)
                 .filter(patcher -> {
+                    if (patcher.isRedefineOnly()) {
+                        return true;
+                    }
                     try {
                         patcher.predefineClass();
                         logger.info(patcher.getClassNameWithoutPackage() + " is now predefined!");
@@ -29,13 +32,13 @@ public class HookerManager {
                 })
                 .collect(Collectors.toList());
 
-        if (definedClasses.isEmpty()) return;
+        if (FailedToPredefineClasses.isEmpty()) return;
 
 
         try {
             Instrumentation instrumentation = JvmHacker.instrumentation();
 
-            definedClasses.forEach(patcher -> {
+            FailedToPredefineClasses.forEach(patcher -> {
                 try {
                     patcher.redefineClass(instrumentation);
                     logger.info(patcher.getClassNameWithoutPackage() + " is now redefined!");

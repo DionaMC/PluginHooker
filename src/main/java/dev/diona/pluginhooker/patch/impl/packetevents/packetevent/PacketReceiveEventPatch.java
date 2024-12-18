@@ -23,7 +23,7 @@ public class PacketReceiveEventPatch extends Patcher {
     public void applyPatch() throws Exception {
         CtClass targetClass = classPool.get(this.targetClassName);
         CtMethod call = ClassUtils.getMethodByName(targetClass.getMethods(), "call");
-        String src = PacketEventsCallbackHandler.class.getName() + ".getInstance().handlePacketEvent(this,$1)";
+        String src = PacketEventsCallbackHandler.class.getName() + ".getInstance().handlePacketEvent($1,this)";
         call.insertBefore(
                 "if(" + src + ")return;"
         );

@@ -15,7 +15,7 @@ public class EventManagerPatch extends Patcher {
     public boolean hookPacketEventsPacket;
 
     public EventManagerPatch() {
-        super("com.github.retrooper.packetevents.event.EventManager", "com.github.retrooper.packetevents.event.ProtocolPacketEvent");
+        super("com.github.retrooper.packetevents.event.EventManager", "com.github.retrooper.packetevents.event.ProtocolPacketEvent", true);
     }
 
     @Override
