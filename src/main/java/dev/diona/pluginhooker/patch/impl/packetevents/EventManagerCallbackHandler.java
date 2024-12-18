@@ -1,6 +1,7 @@
 package dev.diona.pluginhooker.patch.impl.packetevents;
 
 import com.github.retrooper.packetevents.event.PacketEvent;
+import com.github.retrooper.packetevents.event.PacketListenerCommon;
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigManager;
 import org.bukkit.plugin.Plugin;
@@ -19,21 +20,21 @@ public class EventManagerCallbackHandler {
         PluginHooker.getConfigManager().loadConfig(this);
     }
 
-    public void handleEventRegister(PacketEvent event) {
+    public void handleListenerRegister(PacketListenerCommon event) {
         StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
         for (int i = 2; i < stackTraceElements.length; i++) {
             System.out.println(stackTraceElements[i]);
         }
     }
 
-    public void handleEventUnregister(PacketEvent event) {
+    public void handleListenerUnregister(PacketListenerCommon event) {
         StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
         for (int i = 2; i < stackTraceElements.length; i++) {
             System.out.println(stackTraceElements[i]);
         }
     }
 
-    public EventManagerCallbackHandler getInstance() {
+    public static EventManagerCallbackHandler getInstance() {
         return instance != null ? instance : (instance = new EventManagerCallbackHandler());
     }
 }

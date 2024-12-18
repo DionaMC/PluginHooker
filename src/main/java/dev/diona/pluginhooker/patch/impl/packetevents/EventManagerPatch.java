@@ -22,14 +22,14 @@ public class EventManagerPatch extends Patcher {
     public void applyPatch() throws Exception {
         CtClass targetClass = classPool.get(this.targetClassName);
 
-        CtMethod registerListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getMethods(), "registerListenerNoRecalculation");
-        String src1 = PacketEventsCallbackHandler.class.getName() + ".getInstance().handleEventRegister($1)";
+        CtMethod registerListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getDeclaredMethods(), "registerListenerNoRecalculation");
+        String src1 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerRegister($1)";
         registerListenerNoRecalculation.insertBefore(
                 src1 + ";"
         );
 
-        CtMethod unregisterListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getMethods(), "unregisterListenerNoRecalculation");
-        String src2 = PacketEventsCallbackHandler.class.getName() + ".getInstance().handleEventUnregister($1)";
+        CtMethod unregisterListenerNoRecalculation = ClassUtils.getMethodByName(targetClass.getDeclaredMethods(), "unregisterListenerNoRecalculation");
+        String src2 = EventManagerCallbackHandler.class.getName() + ".getInstance().handleListenerUnregister($1)";
         unregisterListenerNoRecalculation.insertBefore(
                 src2 + ";"
         );
