@@ -1,7 +1,9 @@
 name: PluginHooker
 version: '${project.version}'
 main: dev.diona.pluginhooker.PluginHooker
-softdepend: [ ProtocolLib ]
+softdepend:
+  - ProtocolLib
+  - PacketEvents
 authors: [ Loyisa, Hellxd ]
 description: PluginHooker
 website: https://github.com/DionaMC/PluginHooker

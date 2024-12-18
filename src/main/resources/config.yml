@@ -6,7 +6,7 @@ hook:
     # Should we hook the Bukkit event?
     enabled: true
     # Should we call the BukkitListenerEvent?
-    call-event: true
+    call-event: false
     # Should we use reflection to get player in unknown events?
     use-reflection-to-get-event-player: true
 
@@ -14,10 +14,16 @@ hook:
     # Should we hook the ProtocolLib packet listener?
     enabled: true
     # Should we call the ProtocolLibPacketEvent?
-    call-event: true
+    call-event: false
 
   netty:
     # Should we hook the netty pipeline?
     enabled: true
     # Should we call the NettyCodecEvent?
+    call-event: false
+
+  packetevents:
+    # Should we hook the PacketEvents packet listener?
+    enabled: true
+    # Should we call the PacketEventsPacketEvent?
     call-event: false
