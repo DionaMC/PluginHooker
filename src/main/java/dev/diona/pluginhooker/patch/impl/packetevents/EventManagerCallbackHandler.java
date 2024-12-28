@@ -14,7 +14,7 @@ public class EventManagerCallbackHandler {
 
     private static EventManagerCallbackHandler instance;
 
-    private final Map<Integer, Plugin> listenerToPluginMap = new HashMap<>();
+    private final Map<Class<? extends PacketListenerCommon>, Plugin> listenerToPluginMap = new HashMap<>();
 
     public EventManagerCallbackHandler() {
         PluginHooker.getConfigManager().loadConfig(this);
@@ -49,7 +49,7 @@ public class EventManagerCallbackHandler {
                         continue;
                     }
                     // System.out.println("Plugin: " + plugin.getName() +"  registered a " + listener.getClass().getSimpleName() + " Listener!");
-                    listenerToPluginMap.put(listener.hashCode(), plugin);
+                    listenerToPluginMap.put(listener.getClass(), plugin);
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -59,12 +59,11 @@ public class EventManagerCallbackHandler {
     }
 
     public void handleListenerUnregister(PacketListenerCommon listener) {
-        this.listenerToPluginMap.remove(listener.hashCode());
+        this.listenerToPluginMap.remove(listener.getClass());
     }
 
-    @Nullable
     public Plugin getPlugin(PacketListenerCommon listener) {
-        return this.listenerToPluginMap.get(listener.hashCode());
+        return this.listenerToPluginMap.get(listener.getClass());
     }
 
     public static EventManagerCallbackHandler getInstance() {
