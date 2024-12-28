@@ -1,6 +1,8 @@
 package dev.diona.pluginhooker.patch.impl.packetevents;
 
 import com.github.retrooper.packetevents.event.*;
+import com.github.retrooper.packetevents.event.simple.*;
+import com.google.common.collect.Sets;
 import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.config.ConfigPath;
 import dev.diona.pluginhooker.events.PacketEventsPacketEvent;
@@ -8,9 +10,24 @@ import dev.diona.pluginhooker.player.DionaPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Set;
+
 public class PacketEventsCallbackHandler {
 
     private static PacketEventsCallbackHandler instance;
+
+    private final Set<Class<? extends ProtocolPacketEvent>> ignoredPacketEvents = Sets.newHashSet(
+            // Receive
+            PacketHandshakeReceiveEvent.class,
+            PacketStatusReceiveEvent.class,
+            PacketLoginReceiveEvent.class,
+            PacketConfigReceiveEvent.class,
+            // Send
+            PacketHandshakeSendEvent.class,
+            PacketStatusSendEvent.class,
+            PacketLoginSendEvent.class,
+            PacketConfigSendEvent.class
+    );
 
     @ConfigPath("hook.packetevents.call-event")
     public boolean callEvent;
@@ -31,6 +48,8 @@ public class PacketEventsCallbackHandler {
             throw new RuntimeException("Undefined behavior.");
         }
         ProtocolPacketEvent ppe = (ProtocolPacketEvent) event;
+        // exempt
+        if (this.ignoredPacketEvents.contains(event.getClass())) return false;
 
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(ppe.getPlayer());
         if (dionaPlayer == null) return false;
