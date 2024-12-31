@@ -17,9 +17,9 @@ public class BukkitUtils {
 
     private static final String BUKKIT_PACKAGE = Bukkit.getServer().getClass().getPackage().getName();
 
-    private static final Field playerConnectionField;
-    private static final Field networkManagerField;
-    private static final Field channelField;
+    private static Field playerConnectionField = null;
+    private static Field networkManagerField = null;
+    private static Field channelField = null;
     private static final MethodHandle getHandleMethod;
     private static final MethodHandle pipelineMethod;
 
@@ -27,17 +27,43 @@ public class BukkitUtils {
 
     static {
         try {
-            int majorVersion = getNMSMajorVersion();
             Method getHandle = Class.forName(BUKKIT_PACKAGE + ".entity.CraftPlayer")
                     .getMethod("getHandle");
             getHandleMethod = MethodHandles.lookup().unreflect(getHandle);
 
-            playerConnectionField = getHandle.getReturnType()
-                    .getField(majorVersion > 16 ? "b" : "playerConnection");
-            networkManagerField = playerConnectionField.getType()
-                    .getField(majorVersion > 16 ? "a" : "networkManager");
-            channelField = networkManagerField.getType()
-                    .getField(majorVersion > 16 ? "k" : "channel");
+            for (Field field : getHandle.getReturnType().getDeclaredFields()) {
+                if (field.getType().getSimpleName().endsWith("ServerGamePacketListenerImpl")
+                        || field.getType().getSimpleName().endsWith("PlayerConnection")) {
+                    playerConnectionField = field;
+                    field.setAccessible(true);
+                    break;
+                }
+            }
+            for (Field field : playerConnectionField.getType().getDeclaredFields()) {
+                if (field.getType().getSimpleName().equals("Connection")
+                    || field.getType().getSimpleName().equals("NetworkManager")) {
+                    networkManagerField = field;
+                    field.setAccessible(true);
+                    break;
+                }
+            }
+            if (networkManagerField == null) {
+                for (Field field : playerConnectionField.getType().getSuperclass().getDeclaredFields()) {
+                    if (field.getType().getSimpleName().equals("Connection")
+                            || field.getType().getSimpleName().equals("NetworkManager")) {
+                        networkManagerField = field;
+                        field.setAccessible(true);
+                        break;
+                    }
+                }
+            }
+            for (Field field : networkManagerField.getType().getDeclaredFields()) {
+                if (field.getType().getSimpleName().equals("Channel")) {
+                    channelField = field;
+                    field.setAccessible(true);
+                    break;
+                }
+            }
             pipelineMethod = MethodHandles.lookup().unreflect(channelField.getType().getMethod("pipeline"));
 
             pluginsField = Bukkit.getPluginManager().getClass().getDeclaredField("plugins");
@@ -45,16 +71,6 @@ public class BukkitUtils {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-
-    public static String getNMSVersion() {
-        return BUKKIT_PACKAGE.substring(BUKKIT_PACKAGE.lastIndexOf('.') + 1);
-    }
-
-    public static int getNMSMajorVersion() {
-        String nmsVersion = getNMSVersion();
-        return Integer.parseInt(nmsVersion.substring(nmsVersion.indexOf('_') + 1, nmsVersion.lastIndexOf('_')));
     }
 
     public static ChannelPipeline getPipelineByPlayer(Player player) {
