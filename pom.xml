@@ -71,7 +71,7 @@
         <dependency>
             <groupId>org.javassist</groupId>
             <artifactId>javassist</artifactId>
-            <version>3.29.2-GA</version>
+            <version>3.30.0-GA</version>
         </dependency>
 
         <dependency>
@@ -119,10 +119,6 @@
                             <shadedPattern>dev.diona.pluginhooker.libs.org.reflections</shadedPattern>
                         </relocation>
                         <relocation>
-                            <pattern>org.slf4j</pattern>
-                            <shadedPattern>dev.diona.pluginhooker.libs.org.slf4j</shadedPattern>
-                        </relocation>
-                        <relocation>
                             <pattern>bot.inker.acj</pattern>
                             <shadedPattern>dev.diona.pluginhooker.libs.bot.inker.acj</shadedPattern>
                         </relocation>
@@ -145,6 +141,8 @@
                                     <artifact>*:*</artifact>
                                     <excludes>
                                         <exclude>javax/annotation/**</exclude>
+                                        <!-- NO slf4j -->
+                                        <exclude>org/slf4j/**</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
