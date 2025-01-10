@@ -22,6 +22,8 @@ public class ProtocolLibCallbackHandler {
 
 
     public boolean handleProtocolLibPacket(PacketEvent event, PacketListener listener, boolean outbound) {
+        // don't process temporary player
+        if (event.isPlayerTemporary()) return false;
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(event.getPlayer());
         if (dionaPlayer == null) return false;
 
