@@ -5,6 +5,7 @@ import io.netty.channel.ChannelPipeline;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -25,7 +26,34 @@ public class BukkitUtils {
 
     static final Field pluginsField;
 
+    private static boolean isPaper;
+    private static Field paperPluginManagerField ;
+    private static Field instanceManagerField;
+    private static Field paperPluginField;
+
     static {
+        try {
+            Class.forName("io.papermc.paper.plugin.manager.PaperPluginInstanceManager");
+            isPaper = true;
+        } catch (ClassNotFoundException e) {
+            isPaper = false;
+        }
+        if (isPaper) {
+            try {
+                // public PluginManager paperPluginManager;
+                paperPluginManagerField = Bukkit.getPluginManager().getClass().getDeclaredField("paperPluginManager");
+                paperPluginManagerField.setAccessible(true);
+                // final PaperPluginInstanceManager instanceManager;
+                Class<?> paperPluginManagerImplClass = Class.forName("io.papermc.paper.plugin.manager.PaperPluginManagerImpl");
+                instanceManagerField = paperPluginManagerImplClass.getDeclaredField("instanceManager");
+                instanceManagerField.setAccessible(true);
+                // private final List<Plugin> plugins = new ArrayList<>();
+                paperPluginField = instanceManagerField.getType().getDeclaredField("plugins");
+                paperPluginField.setAccessible(true);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
         try {
             Method getHandle = Class.forName(BUKKIT_PACKAGE + ".entity.CraftPlayer")
                     .getMethod("getHandle");
@@ -96,6 +124,12 @@ public class BukkitUtils {
     @SuppressWarnings("unchecked")
     public static List<Plugin> getServerPlugins() {
         try {
+            if (isPaper) {
+                // get the instance manager
+                Object instanceManager = instanceManagerField.get(paperPluginManagerField.get(Bukkit.getPluginManager()));
+                // get the plugins list
+                return (List<Plugin>) paperPluginField.get(instanceManager);
+            }
             return (List<Plugin>) pluginsField.get(Bukkit.getPluginManager());
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
