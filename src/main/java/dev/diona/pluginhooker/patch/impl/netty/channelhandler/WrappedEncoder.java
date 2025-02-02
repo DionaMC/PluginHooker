@@ -50,20 +50,20 @@ public class WrappedEncoder extends MessageToMessageEncoder<Object> {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object data, ChannelPromise promise) throws Exception {
-        if (dionaPlayer.getEnabledPlugins().contains(plugin)) {
-            if (!callEvent) {
-                invokeWriteMethod(ctx, data, promise);
-                return;
-            }
-            NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, true);
-            Bukkit.getPluginManager().callEvent(nettyCodecEvent);
-            if (nettyCodecEvent.isCancelled()) {
-                super.write(ctx, data, promise);
-            } else {
-                invokeWriteMethod(ctx, data, promise);
-            }
-        } else {
+        if (!dionaPlayer.getEnabledPlugins().contains(plugin)) {
             super.write(ctx, data, promise);
+            return;
+        }
+        if (!callEvent) {
+            invokeWriteMethod(ctx, data, promise);
+            return;
+        }
+        NettyCodecEvent nettyCodecEvent = new NettyCodecEvent(plugin, dionaPlayer, data, true);
+        Bukkit.getPluginManager().callEvent(nettyCodecEvent);
+        if (nettyCodecEvent.isCancelled()) {
+            super.write(ctx, data, promise);
+        } else {
+            invokeWriteMethod(ctx, data, promise);
         }
     }
 
