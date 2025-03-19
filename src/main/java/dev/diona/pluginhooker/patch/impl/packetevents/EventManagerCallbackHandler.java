@@ -5,7 +5,6 @@ import dev.diona.pluginhooker.PluginHooker;
 import dev.diona.pluginhooker.utils.BukkitUtils;
 import lombok.Getter;
 import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -14,7 +13,7 @@ public class EventManagerCallbackHandler {
 
     private static EventManagerCallbackHandler instance;
 
-    private final Map<Class<? extends PacketListenerCommon>, Plugin> listenerToPluginMap = new HashMap<>();
+    private final Map<Integer, Plugin> listenerToPluginMap = new HashMap<>();
 
     public EventManagerCallbackHandler() {
         PluginHooker.getConfigManager().loadConfig(this);
@@ -49,7 +48,7 @@ public class EventManagerCallbackHandler {
                         continue;
                     }
                     // System.out.println("Plugin: " + plugin.getName() +"  registered a " + listener.getClass().getSimpleName() + " Listener!");
-                    listenerToPluginMap.put(listener.getClass(), plugin);
+                    listenerToPluginMap.put(listener.hashCode(), plugin);
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -59,11 +58,11 @@ public class EventManagerCallbackHandler {
     }
 
     public void handleListenerUnregister(PacketListenerCommon listener) {
-        this.listenerToPluginMap.remove(listener.getClass());
+        this.listenerToPluginMap.remove(listener.hashCode());
     }
 
     public Plugin getPlugin(PacketListenerCommon listener) {
-        return this.listenerToPluginMap.get(listener.getClass());
+        return this.listenerToPluginMap.get(listener.hashCode());
     }
 
     public static EventManagerCallbackHandler getInstance() {
