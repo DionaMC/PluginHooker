@@ -2,6 +2,7 @@ package dev.diona.pluginhooker.player;
 
 import dev.diona.pluginhooker.PluginHooker;
 import lombok.Getter;
+import lombok.Setter;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -16,8 +17,10 @@ public class DionaPlayer {
     private final Player player;
 
     private final Set<Plugin> enabledPlugins = new HashSet<>();
-
     private final AtomicBoolean initialized = new AtomicBoolean(false);
+
+    @Setter
+    private boolean packetEventsHooked = false;
 
     public DionaPlayer(Player player) {
         this.player = player;

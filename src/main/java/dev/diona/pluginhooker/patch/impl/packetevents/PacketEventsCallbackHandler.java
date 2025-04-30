@@ -52,7 +52,7 @@ public class PacketEventsCallbackHandler {
         if (this.ignoredPacketEvents.contains(event.getClass())) return false;
 
         DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(ppe.getPlayer());
-        if (dionaPlayer == null) return false;
+        if (dionaPlayer == null || !dionaPlayer.isPacketEventsHooked()) return false;
 
         Plugin plugin = EventManagerCallbackHandler.getInstance().getPlugin(listener);
         if (plugin == null || !PluginHooker.getPluginManager().getPluginsToHook().contains(plugin)) return false;

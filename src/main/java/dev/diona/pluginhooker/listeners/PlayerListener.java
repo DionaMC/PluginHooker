@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 public class PlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
-    public void onPlayerJoin(PlayerJoinEvent e) {
+    public void prePlayerJoin(PlayerJoinEvent e) {
         PluginHooker.getPlayerManager().addPlayer(e.getPlayer());
     }
 
@@ -30,11 +30,12 @@ public class PlayerListener implements Listener {
         if (dionaPlayer == null) return;
         Channel channel = BukkitUtils.getChannelByPlayer(player);
         Bukkit.getScheduler().runTaskLaterAsynchronously(PluginHooker.getInstance(), () -> {
+            // PacketEvents
+            dionaPlayer.setPacketEventsHooked(true);
+            // netty
             List<Consumer<Player>> list = channel.attr(NettyUtils.WRAPPER_FUNCTIONS).getAndRemove();
-
             if (list == null) return;
             if (!channel.isOpen() || !dionaPlayer.getPlayer().isOnline()) return;
-
             list.forEach(consumer -> consumer.accept(player));
         }, 10L);
         dionaPlayer.setInitialized(true);
