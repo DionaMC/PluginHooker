@@ -40,7 +40,7 @@ Then add the following dependency
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.4</version>
+        <version>1.4.1</version>
     </dependency>
 ```
 ### Gradle

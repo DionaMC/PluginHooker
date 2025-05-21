@@ -39,7 +39,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.4</version>
+        <version>1.4.1</version>
     </dependency>
 ```
 ### Gradle
