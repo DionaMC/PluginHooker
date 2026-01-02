@@ -77,8 +77,8 @@ public class NettyPipelinePatch extends Patch {
     @Override
     public boolean canPatch() {
         String version = NettyVersion.getVersion().getMajor() + "." + NettyVersion.getVersion().getMinor();
-        if (!version.equals("4.1") && !version.equals("4.0")) {
-            PluginHooker.getInstance().getLogger().warning("PluginHooker only supports netty 4.1/4.0");
+        if (!version.equals("4.2") && !version.equals("4.1") && !version.equals("4.0")) {
+            PluginHooker.getInstance().getLogger().warning("PluginHooker only supports netty 4.2/4.1/4.0");
             return false;
         }
         return hookNetty;
