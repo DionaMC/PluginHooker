@@ -17,10 +17,10 @@ PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and be
 
 ## Tested environment
 
-* Spigot: 1.8.8/1.19.4
-* Netty: 4.0/4.1
-* ProtocolLib: 5.3
-* PacketEvents: 2.7.0
+* Spigot: 1.8.8/1.21.11
+* Netty: 4.0/4.1/4.2
+* ProtocolLib: 5.4.0
+* PacketEvents: 2.11.1
 
 ## Usage
 
