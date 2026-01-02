@@ -16,10 +16,10 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 
 ## 已测试环境
 
-* Spigot: 1.8.8/1.19.4
-* Netty: 4.0/4.1
-* ProtocolLib: 5.3
-* PacketEvents: 2.7.0
+* Spigot: 1.8.8/1.21.11
+* Netty: 4.0/4.1/4.2
+* ProtocolLib: 5.4.0
+* PacketEvents: 2.11.1
 
 ## 用法
 
@@ -39,7 +39,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
     <dependency>
         <groupId>com.github.DionaMC</groupId>
         <artifactId>PluginHooker</artifactId>
-        <version>1.4.1</version>
+        <version>1.4.2</version>
     </dependency>
 ```
 ### Gradle
@@ -53,7 +53,7 @@ PluginHooker 是一个 Bukkit 插件，它能够为开发者提供一种便捷�
 然后添加以下依赖
 
 ```groovy
-    compileOnly 'com.github.DionaMC:PluginHooker:1.4'
+    compileOnly 'com.github.DionaMC:PluginHooker:1.4.2'
 ```
 
 ### API 用法
