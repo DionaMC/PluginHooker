@@ -80,8 +80,4 @@ public class WrappedEncoder extends MessageToMessageEncoder<Object> {
         NettyUtils.processPacket(msg, out);
     }
 
-    @Override
-    public void exceptionCaught(ChannelHandlerContext channelHandlerContext, Throwable throwable) {
-        throwable.printStackTrace();
-    }
 }

@@ -73,8 +73,4 @@ public class WrappedDecoder extends MessageToMessageDecoder<Object> {
         }
     }
 
-    @Override
-    public void exceptionCaught(ChannelHandlerContext channelHandlerContext, Throwable throwable) {
-        throwable.printStackTrace();
-    }
 }
