@@ -1,113 +1,94 @@
-# PluginHooker
+# PluginHooker v2
 
-PluginHooker is a Bukkit plugin that aims to provide an ultimately simple and better method to hook Bukkit events and ProtocolLib PacketEvents  
-[Discord](https://discord.gg/fdmkfts)
-[QQ群](https://jq.qq.com/?_wv=1027&k=dhEQrZZW)
+PluginHooker is a per-player plugin sandbox for Bukkit/Spigot/Paper servers (1.8.8 ~ 26.3), powered by the **Java 25 Class-File API (`java.lang.classfile`)** and **`byte-buddy-agent`**.
 
-## Localization
-
-* [简体中文](README_zh_CN.md)
+[Discord](https://discord.gg/fdmkfts) | [QQ群](https://jq.qq.com/?_wv=1027&k=dhEQrZZW) | [简体中文](README_zh_CN.md)
 
 ## Features
 
-* Hook Bukkit events
-* Hook ProtocolLib events/packets
-* Hook PacketEvents events
-* Hook Netty pipeline
+* **Hook Bukkit Events**: Per-player isolation at `RegisteredListener#callEvent` with lock-free `ClassValue` `MethodHandle` player extraction.
+* **Hook Bukkit Player Lookup APIs**: Hide players from hooked plugins in `Bukkit.getOnlinePlayers()`, `World#getPlayers()`, and `Bukkit.getPlayer(...)`.
+* **Hook Netty Pipeline**: Direct context-level interception (`AbstractChannelHandlerContext`) supporting `addFirst`, `addLast`, `addBefore`, `addAfter`, and `replace` without replacing or breaking underlying handlers.
+* **Hook ProtocolLib**: Inbound & outbound `PacketListener` interception.
+* **Hook PacketEvents**: Supports both standalone and shaded/relocated PacketEvents instances.
+* **Whitelist & Blacklist Modes**: Configure each hooked plugin as default-disabled (`WHITELIST`) or default-enabled (`BLACKLIST`), with configurable post-join grace ticks (`join-grace-ticks`) for anticheat `PlayerData` initialization.
 
-## Tested environment
+## Requirements & Compatibility
 
-* Spigot: 1.8.8/1.21.11
-* Netty: 4.0/4.1/4.2
-* ProtocolLib: 5.4.0
-* PacketEvents: 2.11.1
+* **Java**: 25+
+* **Server**: Spigot / Paper 1.8.8 ~ 26.3
+* **Netty**: 4.0 / 4.1 / 4.2
+* **ProtocolLib**: 4.x / 5.x
+* **PacketEvents**: 2.x (standalone or shaded)
 
-## Usage
+## API Usage
 
-### Maven
-Add the following repository to your pom.xml:
+### Dependency (`:hooker-api`)
 
-```xml
-    <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
-    </repository>
+```kotlin
+repositories {
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.0-SNAPSHOT")
+}
 ```
 
-Then add the following dependency
-
-```xml
-    <dependency>
-        <groupId>com.github.DionaMC</groupId>
-        <artifactId>PluginHooker</artifactId>
-        <version>1.4.2</version>
-    </dependency>
-```
-### Gradle
-Add the following repository to your build.gradle:
-```groovy
-    maven {
-        url = uri('https://jitpack.io')
-    }
-```
-
-Then add the following dependency
-
-```groovy
-    compileOnly 'com.github.DionaMC:PluginHooker:1.4.2'
-```
-
-### API usage
-
-Add/remove plugins that need to be hooked
+### Registering & Controlling Hooked Plugins
 
 ```java
-public void hookPlugin() {
-    PluginHooker.getPluginManager().addPlugin(pluginToHook);
-}
+import dev.diona.pluginhooker.api.PluginHookerAPI;
+import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
-public void unHookPlugin() {
-    PluginHooker.getPluginManager().removePlugin(pluginToHook);
+public class SandboxExample {
+
+    public void registerAnticheat(Plugin anticheatPlugin) {
+        // WHITELIST: blocked for all players by default unless explicitly enabled
+        PluginHookerAPI.getPluginRegistry().registerPlugin(anticheatPlugin, HookMode.WHITELIST);
+    }
+
+    public void enableForPlayer(Player player, Plugin anticheatPlugin) {
+        HookedPlayer hookedPlayer = PluginHookerAPI.getPlayer(player);
+        if (hookedPlayer != null) {
+            hookedPlayer.enablePlugin(anticheatPlugin);
+        }
+    }
+
+    public void disableForPlayer(Player player, Plugin anticheatPlugin) {
+        HookedPlayer hookedPlayer = PluginHookerAPI.getPlayer(player);
+        if (hookedPlayer != null) {
+            hookedPlayer.disablePlugin(anticheatPlugin);
+        }
+    }
 }
 ```
 
-Enable/disable the specified plugin for the player
+### Listening to Hook Events
 
 ```java
-public void enablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
-    if (dionaPlayer == null) {
-        return;
-    }
-    dionaPlayer.enablePlugin(pluginToHook);
-}
+import dev.diona.pluginhooker.api.event.BukkitHookEvent;
+import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 
-public void disablePluginForPlayer(Player player) {
-    DionaPlayer dionaPlayer = PluginHooker.getPlayerManager().getDionaPlayer(player);
-    if (dionaPlayer == null) {
-        return;
-    }
-    dionaPlayer.disablePlugin(pluginToHook);
-}
-```
-
-To intercept or perform a custom action when an event is executed, add an event listener
-
-```java
-public class ExampleListener implements Listener {
+public class ExampleHookListener implements Listener {
 
     @EventHandler
-    public void onBukkitEvent(BukkitListenerEvent event) {
-        // do something
+    public void onBukkitHook(BukkitHookEvent event) {
+        // Inspect or cancel before the hooked plugin receives the Bukkit event
     }
 
     @EventHandler
-    public void onProtocolLibEvent(ProtocolLibPacketEvent event) {
-        // do something
+    public void onProtocolLibHook(ProtocolLibHookEvent event) {
+        // Inspect or cancel before the hooked plugin receives the packet
     }
 }
 ```
 
 ## Special Thanks
 
-* [Poke](https://github.com/Pokemonplatin) for his help with event hook and event list.
+* [Poke](https://github.com/Pokemonplatin) for his help with event hooks and event lists.

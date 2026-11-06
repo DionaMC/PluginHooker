@@ -1,0 +1,20 @@
+name: PluginHooker
+version: '${version}'
+main: dev.diona.pluginhooker.PluginHookerPlugin
+load: STARTUP
+softdepend:
+  - ProtocolLib
+  - packetevents
+authors: [ Loyisa, Hellxd ]
+description: Per-player plugin sandbox hooking Bukkit, Netty, ProtocolLib, and PacketEvents
+website: https://github.com/DionaMC/PluginHooker
+
+commands:
+  pluginhooker:
+    description: PluginHooker admin commands
+    aliases: [ ph ]
+
+permissions:
+  pluginhooker.admin:
+    description: Allows access to the pluginhooker admin commands
+    default: op

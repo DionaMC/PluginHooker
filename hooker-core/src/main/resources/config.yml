@@ -1,0 +1,50 @@
+# Enable bStats metrics
+bstats: true
+
+# Global sandbox settings
+sandbox:
+  # Default policy when a plugin is added to the sandbox:
+  # WHITELIST: Disabled for all players by default unless enabled per player
+  # BLACKLIST: Enabled for all players by default unless disabled per player
+  default-mode: WHITELIST
+  # Grace period (in ticks) after a player joins during which packets are allowed
+  # so anticheats/plugins can initialize their internal PlayerData without errors.
+  join-grace-ticks: 10
+
+# Hook modules
+hook:
+  bukkit:
+    # Hook Bukkit RegisteredListener#callEvent
+    enabled: true
+    # Fire BukkitHookEvent before allowing a listener call
+    call-event: false
+    # Use ClassValue MethodHandle cache to extract Player from custom/unknown events
+    use-reflection-to-get-event-player: true
+
+  bukkit-api:
+    # Hook CraftServer & CraftWorld player lookup APIs to hide disabled players from hooked plugins
+    enabled: true
+    # Filter Bukkit.getOnlinePlayers() / Server#getOnlinePlayers()
+    hide-from-online-players: true
+    # Filter World#getPlayers()
+    hide-from-world-players: true
+    # Filter Bukkit.getPlayer(...) / Bukkit.getPlayerExact(...)
+    hide-from-get-player: true
+
+  protocollib:
+    # Hook ProtocolLib InboundPacketListenerSet & OutboundPacketListenerSet
+    enabled: true
+    # Fire ProtocolLibHookEvent
+    call-event: false
+
+  netty:
+    # Hook Netty DefaultChannelPipeline & AbstractChannelHandlerContext
+    enabled: true
+    # Fire NettyHookEvent
+    call-event: false
+
+  packetevents:
+    # Hook PacketEvents EventManager, PacketReceiveEvent & PacketSendEvent (standalone & shaded)
+    enabled: true
+    # Fire PacketEventsHookEvent
+    call-event: false

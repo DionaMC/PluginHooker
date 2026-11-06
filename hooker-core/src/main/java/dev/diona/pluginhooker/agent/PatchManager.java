@@ -1,0 +1,205 @@
+package dev.diona.pluginhooker.agent;
+
+import dev.diona.pluginhooker.api.player.PlayerRegistry;
+import dev.diona.pluginhooker.api.plugin.PluginRegistry;
+import dev.diona.pluginhooker.config.HookConfig;
+import dev.diona.pluginhooker.patch.ClassPatch;
+import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.patch.impl.BukkitApiPatch;
+import dev.diona.pluginhooker.patch.impl.BukkitEventPatch;
+import dev.diona.pluginhooker.patch.impl.NettyPipelinePatch;
+import dev.diona.pluginhooker.patch.impl.PacketEventsPatch;
+import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
+
+import java.lang.instrument.ClassFileTransformer;
+import java.lang.instrument.Instrumentation;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.security.ProtectionDomain;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ * Coordinates the JVM instrumentation, Bootstrap bridge binding, and {@link ClassFileTransformer} lifecycle.
+ */
+public final class PatchManager {
+
+    private final Logger logger;
+    private final BukkitEventPatch bukkitEventPatch;
+    private final BukkitApiPatch bukkitApiPatch;
+    private final ProtocolLibPatch protocolLibPatch;
+    private final PacketEventsPatch packetEventsPatch;
+    private final NettyPipelinePatch nettyPipelinePatch;
+    private final List<ClassPatch> patches;
+    private final Set<String> transformedClasses = ConcurrentHashMap.newKeySet();
+
+    private Instrumentation instrumentation;
+    private ClassFileTransformer activeTransformer;
+
+    public PatchManager(
+            Logger logger,
+            HookConfig config,
+            PluginRegistry pluginRegistry,
+            PlayerRegistry playerRegistry,
+            ClassLoader selfClassLoader
+    ) {
+        this.logger = logger;
+        this.bukkitEventPatch = new BukkitEventPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.bukkitApiPatch = new BukkitApiPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.protocolLibPatch = new ProtocolLibPatch(config, pluginRegistry, playerRegistry);
+        this.packetEventsPatch = new PacketEventsPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.nettyPipelinePatch = new NettyPipelinePatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+
+        this.patches = List.of(
+                bukkitEventPatch,
+                bukkitApiPatch,
+                protocolLibPatch,
+                packetEventsPatch,
+                nettyPipelinePatch
+        );
+    }
+
+    public void initialize() {
+        try {
+            this.instrumentation = AgentInstaller.install();
+
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            MethodHandle guardMh = lookup.findVirtual(
+                    PatchManager.class,
+                    "dispatchGuard",
+                    MethodType.methodType(boolean.class, int.class, Object.class, Object.class, Object.class)
+            ).bindTo(this);
+
+            MethodHandle filterMh = lookup.findVirtual(
+                    PatchManager.class,
+                    "dispatchFilter",
+                    MethodType.methodType(Object.class, Object.class, int.class, Object.class)
+            ).bindTo(this);
+
+            MethodHandle notifyMh = lookup.findVirtual(
+                    PatchManager.class,
+                    "dispatchNotify",
+                    MethodType.methodType(void.class, int.class, Object.class, Object.class)
+            ).bindTo(this);
+
+            MethodHandle nettyMh = lookup.findVirtual(
+                    PatchManager.class,
+                    "dispatchNetty",
+                    MethodType.methodType(void.class, int.class, Object.class, Object.class, Object.class, Object.class)
+            ).bindTo(this);
+
+            BridgeInjector.injectAndBind(instrumentation, guardMh, filterMh, notifyMh, nettyMh);
+
+            this.activeTransformer = new HookClassFileTransformer();
+            instrumentation.addTransformer(activeTransformer, true);
+
+            retransformAlreadyLoadedClasses();
+        } catch (Throwable t) {
+            logger.log(Level.SEVERE, "Failed to initialize bytecode instrumentation", t);
+        }
+    }
+
+    public void shutdown() {
+        if (instrumentation != null && activeTransformer != null) {
+            instrumentation.removeTransformer(activeTransformer);
+        }
+    }
+
+    private void retransformAlreadyLoadedClasses() {
+        List<Class<?>> toRetransform = new ArrayList<>();
+        for (Class<?> loadedClass : instrumentation.getAllLoadedClasses()) {
+            if (!instrumentation.isModifiableClass(loadedClass)) {
+                continue;
+            }
+            String internalName = loadedClass.getName().replace('.', '/');
+            if (transformedClasses.contains(internalName)) {
+                continue;
+            }
+            for (ClassPatch patch : patches) {
+                if (patch.isEnabled() && patch.matchesClass(internalName)) {
+                    toRetransform.add(loadedClass);
+                    break;
+                }
+            }
+        }
+
+        for (Class<?> clazz : toRetransform) {
+            try {
+                instrumentation.retransformClasses(clazz);
+            } catch (Throwable t) {
+                logger.log(Level.SEVERE, "Failed to retransform loaded class " + clazz.getName(), t);
+            }
+        }
+    }
+
+    public boolean dispatchGuard(int hookId, Object arg0, Object arg1, Object arg2) {
+        return switch (hookId) {
+            case HookIds.GUARD_BUKKIT_EVENT -> bukkitEventPatch.handleCallEvent(arg0, arg1);
+            case HookIds.GUARD_PROTOCOLLIB_INBOUND -> protocolLibPatch.handlePacket(arg0, arg1, false);
+            case HookIds.GUARD_PROTOCOLLIB_OUTBOUND -> protocolLibPatch.handlePacket(arg0, arg1, true);
+            case HookIds.GUARD_PACKETEVENTS_RECEIVE -> packetEventsPatch.handlePacketEvent(arg0, arg1, false);
+            case HookIds.GUARD_PACKETEVENTS_SEND -> packetEventsPatch.handlePacketEvent(arg0, arg1, true);
+            default -> false;
+        };
+    }
+
+    public Object dispatchFilter(Object returnValue, int hookId, Object receiver) {
+        return switch (hookId) {
+            case HookIds.FILTER_ONLINE_PLAYERS -> bukkitApiPatch.filterOnlinePlayers(returnValue);
+            case HookIds.FILTER_WORLD_PLAYERS -> bukkitApiPatch.filterWorldPlayers(returnValue);
+            case HookIds.FILTER_GET_PLAYER -> bukkitApiPatch.filterGetPlayer(returnValue);
+            default -> returnValue;
+        };
+    }
+
+    public void dispatchNotify(int hookId, Object arg0, Object arg1) {
+        switch (hookId) {
+            case HookIds.NOTIFY_NETTY_HANDLER_ADD -> nettyPipelinePatch.handlePipelineAdd(arg0);
+            case HookIds.NOTIFY_PACKETEVENTS_REGISTER -> packetEventsPatch.handleListenerRegister(arg0);
+            case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER -> packetEventsPatch.handleListenerUnregister(arg0);
+            default -> {
+            }
+        }
+    }
+
+    public void dispatchNetty(int isOutbound, Object handler, Object ctx, Object msg, Object promise) throws Throwable {
+        nettyPipelinePatch.handleNettyDispatch(isOutbound, handler, ctx, msg, promise);
+    }
+
+    private final class HookClassFileTransformer implements ClassFileTransformer {
+        @Override
+        public byte[] transform(
+                ClassLoader loader,
+                String className,
+                Class<?> classBeingRedefined,
+                ProtectionDomain protectionDomain,
+                byte[] classfileBuffer
+        ) {
+            if (className == null) {
+                return null;
+            }
+            for (ClassPatch patch : patches) {
+                if (!patch.isEnabled() || !patch.matchesClass(className)) {
+                    continue;
+                }
+                if (!transformedClasses.add(className) && classBeingRedefined == null) {
+                    return null;
+                }
+                try {
+                    byte[] transformed = patch.transform(loader, className, classfileBuffer);
+                    logger.info("Hooked class: " + className.replace('/', '.'));
+                    return transformed;
+                } catch (Throwable t) {
+                    logger.log(Level.SEVERE, "Error transforming class " + className, t);
+                    return null;
+                }
+            }
+            return null;
+        }
+    }
+}

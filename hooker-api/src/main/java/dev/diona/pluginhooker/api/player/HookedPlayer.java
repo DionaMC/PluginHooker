@@ -1,0 +1,83 @@
+package dev.diona.pluginhooker.api.player;
+
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Represents a player managed by the PluginHooker sandbox.
+ */
+public interface HookedPlayer {
+
+    /**
+     * Returns the underlying Bukkit {@link Player}.
+     *
+     * @return the Bukkit player
+     */
+    Player getBukkitPlayer();
+
+    /**
+     * Returns the player's unique ID.
+     *
+     * @return the player UUID
+     */
+    UUID getUniqueId();
+
+    /**
+     * Explicitly enables a hooked plugin for this player.
+     *
+     * @param plugin the hooked plugin to enable
+     */
+    void enablePlugin(Plugin plugin);
+
+    /**
+     * Explicitly disables a hooked plugin for this player.
+     *
+     * @param plugin the hooked plugin to disable
+     */
+    void disablePlugin(Plugin plugin);
+
+    /**
+     * Clears any explicit per-player override for the given plugin,
+     * reverting to the plugin's {@link dev.diona.pluginhooker.api.plugin.HookMode}.
+     *
+     * @param plugin the hooked plugin
+     */
+    void resetPlugin(Plugin plugin);
+
+    /**
+     * Checks whether the specified plugin is currently allowed to process events/packets
+     * for this player (accounting for whether the plugin is hooked, join grace period,
+     * and per-player overrides).
+     *
+     * @param plugin the plugin to check
+     * @return true if allowed, false if blocked by the sandbox
+     */
+    boolean isPluginAllowed(Plugin plugin);
+
+    /**
+     * Checks whether the specified hooked plugin is active for this player
+     * (ignoring the temporary join grace period).
+     *
+     * @param plugin the hooked plugin
+     * @return true if active for this player
+     */
+    boolean isPluginEnabled(Plugin plugin);
+
+    /**
+     * Returns an unmodifiable set of hooked plugins currently enabled for this player.
+     *
+     * @return enabled hooked plugins
+     */
+    Set<Plugin> getEnabledPlugins();
+
+    /**
+     * Checks if the player is currently within the post-join initialization grace period.
+     * During this period, initial packets are allowed through so plugins can initialize player data.
+     *
+     * @return true if in the join grace period
+     */
+    boolean isInJoinGracePeriod();
+}
