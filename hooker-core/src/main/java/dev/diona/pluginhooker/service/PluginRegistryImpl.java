@@ -24,7 +24,9 @@ public final class PluginRegistryImpl implements PluginRegistry {
 
     private final HookConfig config;
     private final Map<Plugin, HookMode> hookedPlugins = new ConcurrentHashMap<>();
+    private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
     private final Map<ClassLoader, Plugin> classLoaderToPlugin = new ConcurrentHashMap<>();
+    private final Set<ClassLoader> inspectedLoaders = ConcurrentHashMap.newKeySet();
     @Setter
     private PlayerRegistryImpl playerRegistry;
 
@@ -71,8 +73,13 @@ public final class PluginRegistryImpl implements PluginRegistry {
     }
 
     @Override
+    public boolean hasHookedPlugins() {
+        return !hookedPlugins.isEmpty();
+    }
+
+    @Override
     public Set<Plugin> getHookedPlugins() {
-        return Collections.unmodifiableSet(hookedPlugins.keySet());
+        return unmodifiableHookedView;
     }
 
     @Override
@@ -84,8 +91,11 @@ public final class PluginRegistryImpl implements PluginRegistry {
         if (cached != null) {
             return cached;
         }
-        refreshClassLoaderCache();
-        return classLoaderToPlugin.get(classLoader);
+        if (inspectedLoaders.add(classLoader)) {
+            refreshClassLoaderCache();
+            return classLoaderToPlugin.get(classLoader);
+        }
+        return null;
     }
 
     public void refreshClassLoaderCache() {

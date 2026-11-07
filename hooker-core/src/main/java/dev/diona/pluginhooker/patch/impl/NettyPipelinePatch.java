@@ -152,20 +152,22 @@ public final class NettyPipelinePatch extends ClassPatch {
         ChannelHandlerContext ctx = (ChannelHandlerContext) ctxObj;
         boolean outbound = isOutbound != 0;
 
-        Plugin plugin = resolveHandlerPlugin(handlerObj, ctx);
-        if (plugin != null && pluginRegistry.isHooked(plugin)) {
-            HookedPlayer hookedPlayer = resolveHookedPlayer(ctx.channel());
-            if (hookedPlayer != null) {
-                if (!hookedPlayer.isPluginAllowed(plugin)) {
-                    bypassHandler(ctx, msg, promiseObj, outbound);
-                    return;
-                }
-                if (config.netty().isCallEvent()) {
-                    NettyHookEvent hookEvent = new NettyHookEvent(plugin, hookedPlayer, msg, outbound);
-                    Bukkit.getPluginManager().callEvent(hookEvent);
-                    if (hookEvent.isCancelled()) {
+        if (pluginRegistry.hasHookedPlugins()) {
+            Plugin plugin = resolveHandlerPlugin(handlerObj, ctx);
+            if (plugin != null && pluginRegistry.isHooked(plugin)) {
+                HookedPlayer hookedPlayer = resolveHookedPlayer(ctx.channel());
+                if (hookedPlayer != null) {
+                    if (!hookedPlayer.isPluginAllowed(plugin)) {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
+                    }
+                    if (config.netty().isCallEvent()) {
+                        NettyHookEvent hookEvent = new NettyHookEvent(plugin, hookedPlayer, msg, outbound);
+                        Bukkit.getPluginManager().callEvent(hookEvent);
+                        if (hookEvent.isCancelled()) {
+                            bypassHandler(ctx, msg, promiseObj, outbound);
+                            return;
+                        }
                     }
                 }
             }

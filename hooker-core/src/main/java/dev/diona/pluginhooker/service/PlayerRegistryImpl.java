@@ -27,12 +27,17 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     @Override
     public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
-        HookedPlayerImpl hookedPlayer = new HookedPlayerImpl(
-                bukkitPlayer,
-                pluginRegistry,
-                config.getJoinGraceMillis()
+        if (bukkitPlayer == null) {
+            return null;
+        }
+        HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
+                bukkitPlayer.getUniqueId(),
+                uuid -> new HookedPlayerImpl(
+                        bukkitPlayer,
+                        pluginRegistry,
+                        config.getJoinGraceMillis()
+                )
         );
-        players.put(bukkitPlayer.getUniqueId(), hookedPlayer);
         PlayerChannelResolver.bindPlayerToChannel(bukkitPlayer, hookedPlayer);
         return hookedPlayer;
     }

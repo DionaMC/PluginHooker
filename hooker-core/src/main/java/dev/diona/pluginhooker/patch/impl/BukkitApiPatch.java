@@ -366,12 +366,12 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!(playerObj instanceof Player bukkitPlayer)) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
-            return false;
-        }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
         if (hookedPlayer == null) {
+            return false;
+        }
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller == null) {
             return false;
         }
 
@@ -439,12 +439,12 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!config.bukkitApi().isBlockDisabledTeleport() || !(playerObj instanceof Player bukkitPlayer)) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (hookedPlayer == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from teleporting player " + bukkitPlayer.getName()
@@ -459,12 +459,12 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!config.bukkitApi().isBlockDisabledVelocity() || !(entityObj instanceof Player bukkitPlayer)) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (hookedPlayer == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from setting velocity on player " + bukkitPlayer.getName()
@@ -479,12 +479,12 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!config.bukkitApi().isBlockDisabledSendMessage() || !(playerObj instanceof Player bukkitPlayer)) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (hookedPlayer == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from sending message to player " + bukkitPlayer.getName());
@@ -535,13 +535,13 @@ public final class BukkitApiPatch extends ClassPatch {
             return returnValue;
         }
 
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
+        if (hookedPlayer == null) {
             return returnValue;
         }
 
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             return null;
         }
         return returnValue;

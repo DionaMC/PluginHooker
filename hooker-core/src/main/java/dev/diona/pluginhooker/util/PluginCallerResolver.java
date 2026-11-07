@@ -47,7 +47,7 @@ public final class PluginCallerResolver {
      * @return the hooked calling plugin, or null if none or not hooked
      */
     public static Plugin resolveHookedCaller(PluginRegistry registry, ClassLoader selfLoader) {
-        if (registry.getHookedPlugins().isEmpty()) {
+        if (!registry.hasHookedPlugins()) {
             return null;
         }
         Plugin caller = resolveCallerPlugin(registry, selfLoader);

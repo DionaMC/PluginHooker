@@ -59,6 +59,13 @@ public interface PluginRegistry {
     void setHookMode(Plugin plugin, HookMode mode);
 
     /**
+     * Checks whether at least one plugin is currently hooked.
+     *
+     * @return true if one or more plugins are hooked
+     */
+    boolean hasHookedPlugins();
+
+    /**
      * Returns an unmodifiable view of all currently hooked plugins.
      *
      * @return set of hooked plugins
