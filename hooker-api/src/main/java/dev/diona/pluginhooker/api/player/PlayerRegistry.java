@@ -11,6 +11,21 @@ import java.util.UUID;
 public interface PlayerRegistry {
 
     /**
+     * Registers a Bukkit {@link Player} into the sandbox.
+     *
+     * @param player the Bukkit player to register
+     * @return the registered hooked player instance
+     */
+    HookedPlayer registerPlayer(Player player);
+
+    /**
+     * Unregisters a Bukkit {@link Player} from the sandbox.
+     *
+     * @param player the Bukkit player to unregister
+     */
+    void unregisterPlayer(Player player);
+
+    /**
      * Gets the {@link HookedPlayer} wrapper for a Bukkit player.
      *
      * @param player the Bukkit player

@@ -41,7 +41,7 @@ hook:
     # Block disabled plugins from executing commands targeting disabled players via Server#dispatchCommand
     block-disabled-dispatch-command: true
     # Fire PluginDispatchCommandEvent when a hooked plugin calls Server#dispatchCommand
-    call-dispatch-command-event: false
+    call-dispatch-command-event: true
     # Block disabled plugins from teleporting players via Player#teleport
     block-disabled-teleport: true
     # Block disabled plugins from modifying player velocity via Player#setVelocity

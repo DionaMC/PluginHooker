@@ -25,6 +25,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     private final PluginRegistry pluginRegistry;
     private final HookConfig config;
 
+    @Override
     public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
         HookedPlayerImpl hookedPlayer = new HookedPlayerImpl(
                 bukkitPlayer,
@@ -36,6 +37,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         return hookedPlayer;
     }
 
+    @Override
     public void unregisterPlayer(Player bukkitPlayer) {
         if (bukkitPlayer == null) {
             return;

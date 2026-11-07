@@ -64,7 +64,7 @@ public final class HookConfig {
             this.bukkitApi.blockDisabledKick = yaml.getBoolean("hook.bukkit-api.block-disabled-kick", true);
             this.bukkitApi.callKickEvent = yaml.getBoolean("hook.bukkit-api.call-kick-event", true);
             this.bukkitApi.blockDisabledDispatchCommand = yaml.getBoolean("hook.bukkit-api.block-disabled-dispatch-command", true);
-            this.bukkitApi.callDispatchCommandEvent = yaml.getBoolean("hook.bukkit-api.call-dispatch-command-event", false);
+            this.bukkitApi.callDispatchCommandEvent = yaml.getBoolean("hook.bukkit-api.call-dispatch-command-event", true);
             this.bukkitApi.blockDisabledTeleport = yaml.getBoolean("hook.bukkit-api.block-disabled-teleport", true);
             this.bukkitApi.blockDisabledVelocity = yaml.getBoolean("hook.bukkit-api.block-disabled-velocity", true);
             this.bukkitApi.blockDisabledSendMessage = yaml.getBoolean("hook.bukkit-api.block-disabled-send-message", true);
@@ -103,7 +103,7 @@ public final class HookConfig {
         private boolean blockDisabledKick = true;
         private boolean callKickEvent = true;
         private boolean blockDisabledDispatchCommand = true;
-        private boolean callDispatchCommandEvent = false;
+        private boolean callDispatchCommandEvent = true;
         private boolean blockDisabledTeleport = true;
         private boolean blockDisabledVelocity = true;
         private boolean blockDisabledSendMessage = true;
