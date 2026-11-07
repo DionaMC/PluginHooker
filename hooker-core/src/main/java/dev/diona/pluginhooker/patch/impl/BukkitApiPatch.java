@@ -50,6 +50,7 @@ public final class BukkitApiPatch extends ClassPatch {
     private static final ClassDesc LIST_DESC = ClassDesc.of("java.util.List");
     private static final ClassDesc PLAYER_DESC = ClassDesc.of("org.bukkit.entity.Player");
     private static final ClassDesc UUID_DESC = ClassDesc.of("java.util.UUID");
+    private static final ClassDesc COMPLETABLE_FUTURE_DESC = ClassDesc.of("java.util.concurrent.CompletableFuture");
 
     private static final Set<String> WORLD_ENTITY_LIST_METHODS = Set.of(
             "getEntities",
@@ -82,6 +83,7 @@ public final class BukkitApiPatch extends ClassPatch {
                 || internalClassName.endsWith("/CraftWorld")
                 || internalClassName.endsWith("/CraftRegionAccessor")
                 || internalClassName.endsWith("/entity/CraftPlayer")
+                || internalClassName.contains("/entity/CraftPlayer$")
                 || internalClassName.endsWith("/entity/CraftEntity");
     }
 
@@ -95,6 +97,9 @@ public final class BukkitApiPatch extends ClassPatch {
         }
         if (internalClassName.endsWith("/entity/CraftPlayer")) {
             return createCraftPlayerTransform();
+        }
+        if (internalClassName.contains("/entity/CraftPlayer$")) {
+            return createCraftPlayerSpigotTransform(internalClassName, classModel);
         }
         return createCraftEntityTransform();
     }
@@ -267,6 +272,34 @@ public final class BukkitApiPatch extends ClassPatch {
         );
     }
 
+    private ClassTransform createCraftPlayerSpigotTransform(String internalClassName, ClassModel classModel) {
+        boolean isPlayerSpigot = classModel.superclass()
+                .map(sc -> sc.asInternalName().equals("org/bukkit/entity/Player$Spigot"))
+                .orElse(false);
+        if (!isPlayerSpigot) {
+            return ClassTransform.ACCEPT_ALL;
+        }
+
+        ClassDesc ownerDesc = ClassDesc.ofInternalName(internalClassName);
+        ClassDesc outerPlayerDesc = classModel.fields().stream()
+                .filter(f -> f.fieldName().equalsString("this$0"))
+                .findFirst()
+                .map(f -> f.fieldTypeSymbol())
+                .orElseGet(() -> ClassDesc.ofInternalName(internalClassName.substring(0, internalClassName.indexOf('$'))));
+
+        return ClassTransform.transformingMethodBodies(
+                method -> method.methodName().equalsString("sendMessage")
+                        && method.methodTypeSymbol().parameterCount() >= 1
+                        && method.methodTypeSymbol().returnType().equals(ConstantDescs.CD_void),
+                CodeTransforms.guardVoidEntry(
+                        HookIds.GUARD_PLAYER_SEND_MESSAGE,
+                        ArgSpec.getThisField(ownerDesc, "this$0", outerPlayerDesc),
+                        ArgSpec.param(0),
+                        ArgSpec.nullConst()
+                )
+        );
+    }
+
     private ClassTransform createCraftEntityTransform() {
         return ClassTransform.transformingMethods(
                 method -> {
@@ -278,6 +311,11 @@ public final class BukkitApiPatch extends ClassPatch {
                     if (name.equals("setVelocity") && mtd.parameterCount() == 1 && mtd.returnType().equals(ConstantDescs.CD_void)) {
                         return true;
                     }
+                    if (name.equals("teleportAsync")
+                            && mtd.parameterCount() >= 2
+                            && mtd.returnType().equals(COMPLETABLE_FUTURE_DESC)) {
+                        return true;
+                    }
                     return name.equals("getNearbyEntities")
                             && mtd.parameterCount() == 3
                             && mtd.returnType().equals(LIST_DESC);
@@ -285,8 +323,8 @@ public final class BukkitApiPatch extends ClassPatch {
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
                         String name = codeModel.parent().map(m -> m.methodName().stringValue()).orElse("");
-                        if (name.equals("setVelocity")) {
-                            mb.transformCode(
+                        switch (name) {
+                            case "setVelocity" -> mb.transformCode(
                                     codeModel,
                                     CodeTransforms.guardVoidEntry(
                                             HookIds.GUARD_ENTITY_VELOCITY,
@@ -295,8 +333,16 @@ public final class BukkitApiPatch extends ClassPatch {
                                             ArgSpec.nullConst()
                                     )
                             );
-                        } else {
-                            mb.transformCode(
+                            case "teleportAsync" -> mb.transformCode(
+                                    codeModel,
+                                    CodeTransforms.guardCompletableFutureBooleanEntry(
+                                            HookIds.GUARD_PLAYER_TELEPORT,
+                                            ArgSpec.thisRef(),
+                                            ArgSpec.param(0),
+                                            ArgSpec.param(1)
+                                    )
+                            );
+                            default -> mb.transformCode(
                                     codeModel,
                                     CodeTransforms.filterObjectReturn(
                                             HookIds.FILTER_ENTITY_COLLECTION,

@@ -50,6 +50,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/v1_8_R3/CraftServer",
             "org/bukkit/craftbukkit/v1_8_R3/CraftWorld",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer",
+            "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer$1",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftEntity",
             "io/netty/channel/DefaultChannelPipeline",
             "io/netty/channel/AbstractChannelHandlerContext",
@@ -66,6 +67,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/CraftWorld",
             "org/bukkit/craftbukkit/CraftRegionAccessor",
             "org/bukkit/craftbukkit/entity/CraftPlayer",
+            "org/bukkit/craftbukkit/entity/CraftPlayer$2",
             "org/bukkit/craftbukkit/entity/CraftEntity",
             "io/netty/channel/DefaultChannelPipeline",
             "io/netty/channel/AbstractChannelHandlerContext"

@@ -118,6 +118,38 @@ public final class CodeTransforms {
     }
 
     /**
+     * Injects a guard check at the start of a {@code CompletableFuture<Boolean>}-returning method (e.g. Paper's {@code teleportAsync}):
+     * {@code if (HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return CompletableFuture.completedFuture(Boolean.FALSE);}
+     */
+    public static CodeTransform guardCompletableFutureBooleanEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
+        ClassDesc cfDesc = ClassDesc.of("java.util.concurrent.CompletableFuture");
+        MethodTypeDesc completedFutureMtd = MethodTypeDesc.ofDescriptor(
+                "(Ljava/lang/Object;)Ljava/util/concurrent/CompletableFuture;"
+        );
+        return new CodeTransform() {
+            @Override
+            public void atStart(CodeBuilder cb) {
+                cb.ldc(hookId);
+                arg0.emit(cb);
+                arg1.emit(cb);
+                arg2.emit(cb);
+                cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
+                Label continueLabel = cb.newLabel();
+                cb.ifeq(continueLabel);
+                cb.getstatic(ConstantDescs.CD_Boolean, "FALSE", ConstantDescs.CD_Boolean);
+                cb.invokestatic(cfDesc, "completedFuture", completedFutureMtd);
+                cb.areturn();
+                cb.labelBinding(continueLabel);
+            }
+
+            @Override
+            public void accept(CodeBuilder cb, CodeElement element) {
+                cb.with(element);
+            }
+        };
+    }
+
+    /**
      * Intercepts all reference returns ({@code areturn}) and passes the return value through
      * {@code HookBridge.filterReturn(returnValue, hookId, receiver)}.
      */
