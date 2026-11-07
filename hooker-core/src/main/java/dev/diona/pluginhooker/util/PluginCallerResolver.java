@@ -15,7 +15,8 @@ public final class PluginCallerResolver {
     }
 
     /**
-     * Walks the call stack to find the nearest calling {@link Plugin} (excluding PluginHooker itself).
+     * Walks the call stack to find the nearest calling {@link Plugin} (excluding PluginHooker itself,
+     * standalone PacketEvents, and ProtocolLib).
      *
      * @param registry   the plugin registry providing O(1) ClassLoader -> Plugin lookup
      * @param selfLoader PluginHooker's own ClassLoader to ignore
@@ -31,7 +32,9 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin != null) {
+                if (plugin != null
+                        && !plugin.getName().equalsIgnoreCase("packetevents")
+                        && !plugin.getName().equalsIgnoreCase("ProtocolLib")) {
                     return plugin;
                 }
             }
@@ -101,17 +104,31 @@ public final class PluginCallerResolver {
     }
 
     /**
-     * Fast-path resolver that returns the calling {@link Plugin} only if it is currently hooked.
+     * Fast-path resolver that walks the call stack and returns the first calling {@link Plugin}
+     * that is currently hooked in {@link PluginRegistry}.
      *
      * @param registry   the plugin registry
      * @param selfLoader PluginHooker's own ClassLoader
-     * @return the hooked calling plugin, or null if none or not hooked
+     * @return the hooked calling plugin, or null if none is on the call stack
      */
     public static Plugin resolveHookedCaller(PluginRegistry registry, ClassLoader selfLoader) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        Plugin caller = resolveCallerPlugin(registry, selfLoader);
-        return (caller != null && registry.isHooked(caller)) ? caller : null;
+        return STACK_WALKER.walk(frames -> {
+            var iterator = frames.iterator();
+            while (iterator.hasNext()) {
+                Class<?> callerClass = iterator.next().getDeclaringClass();
+                ClassLoader loader = callerClass.getClassLoader();
+                if (loader == null || loader == selfLoader) {
+                    continue;
+                }
+                Plugin plugin = registry.getPluginByClassLoader(loader);
+                if (plugin != null && registry.isHooked(plugin)) {
+                    return plugin;
+                }
+            }
+            return null;
+        });
     }
 }

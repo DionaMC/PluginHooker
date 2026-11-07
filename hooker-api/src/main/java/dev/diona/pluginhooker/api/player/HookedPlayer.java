@@ -26,6 +26,13 @@ public interface HookedPlayer {
     UUID getUniqueId();
 
     /**
+     * Returns the player's username.
+     *
+     * @return the player name
+     */
+    String getName();
+
+    /**
      * Explicitly enables a hooked plugin for this player.
      *
      * @param plugin the hooked plugin to enable

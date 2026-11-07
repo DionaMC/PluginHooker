@@ -61,7 +61,8 @@ public final class PatchVerifier {
             "com/github/retrooper/packetevents/event/EventManager",
             "com/github/retrooper/packetevents/event/PacketReceiveEvent",
             "com/github/retrooper/packetevents/event/PacketSendEvent",
-            "io/github/retrooper/packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract"
+            "io/github/retrooper/packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract",
+            "io/github/retrooper/packetevents/manager/protocol/ProtocolManagerImpl"
     );
 
     private static final List<String> PAPER_26_3_TARGETS = List.of(
@@ -97,9 +98,9 @@ public final class PatchVerifier {
         List<ClassPatch> patches = List.of(
                 new BukkitEventPatch(config, pluginRegistry, playerRegistry, cl),
                 new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new ProtocolLibPatch(config, pluginRegistry, playerRegistry, cl),
-                new PacketEventsPatch(config, pluginRegistry, playerRegistry, cl),
-                new NettyPipelinePatch(config, pluginRegistry, playerRegistry, cl)
+                new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, cl),
+                new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, cl),
+                new NettyPipelinePatch(logger, config, pluginRegistry, playerRegistry, cl)
         );
 
         // 2. Verify Spigot 1.8.8 + ProtocolLib 5.4.0 + PacketEvents 2.14.0

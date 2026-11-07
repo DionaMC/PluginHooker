@@ -51,9 +51,9 @@ public final class PatchManager {
         this.logger = logger;
         this.bukkitEventPatch = new BukkitEventPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.bukkitApiPatch = new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.protocolLibPatch = new ProtocolLibPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.packetEventsPatch = new PacketEventsPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.nettyPipelinePatch = new NettyPipelinePatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.protocolLibPatch = new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.packetEventsPatch = new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
 
         this.patches = List.of(
                 bukkitEventPatch,

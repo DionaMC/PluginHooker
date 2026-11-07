@@ -18,19 +18,37 @@ import java.util.stream.Collectors;
 public final class HookedPlayerImpl implements HookedPlayer {
 
     @Getter
-    private final Player bukkitPlayer;
+    private volatile Player bukkitPlayer;
     @Getter
     private final UUID uniqueId;
+    @Getter
+    private volatile String name;
     private final PluginRegistry pluginRegistry;
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
-    private final long joinGraceUntilMillis;
+    private volatile long joinGraceUntilMillis;
 
     public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
+        this(bukkitPlayer.getUniqueId(), bukkitPlayer.getName(), bukkitPlayer, pluginRegistry, joinGraceDurationMillis);
+    }
+
+    public HookedPlayerImpl(UUID uniqueId, String name, Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
+        this.uniqueId = uniqueId;
+        this.name = name != null ? name : "";
         this.bukkitPlayer = bukkitPlayer;
-        this.uniqueId = bukkitPlayer.getUniqueId();
         this.pluginRegistry = pluginRegistry;
+        refreshJoinGrace(joinGraceDurationMillis);
+    }
+
+    public void attachBukkitPlayer(Player bukkitPlayer) {
+        if (bukkitPlayer != null) {
+            this.bukkitPlayer = bukkitPlayer;
+            this.name = bukkitPlayer.getName();
+        }
+    }
+
+    public void refreshJoinGrace(long joinGraceDurationMillis) {
         this.joinGraceUntilMillis = joinGraceDurationMillis > 0
                 ? System.currentTimeMillis() + joinGraceDurationMillis
                 : 0L;

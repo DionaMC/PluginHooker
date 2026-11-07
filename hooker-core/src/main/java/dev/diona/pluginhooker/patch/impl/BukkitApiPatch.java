@@ -481,7 +481,7 @@ public final class BukkitApiPatch extends ClassPatch {
         if (shouldBlock && config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
                     + " from dispatching command"
-                    + (targetPlayer != null ? " targeting " + targetPlayer.getBukkitPlayer().getName() : "")
+                    + (targetPlayer != null ? " targeting " + targetPlayer.getName() : "")
                     + ": /" + commandLine);
         }
         return shouldBlock;
@@ -565,7 +565,16 @@ public final class BukkitApiPatch extends ClassPatch {
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-            return hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller);
+            if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+                if (config.isDebug()) {
+                    String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
+                    logger.info("[Debug] Blocked " + caller.getName()
+                            + " from sending NMS packet " + packetName
+                            + " to player " + bukkitPlayer.getName());
+                }
+                return true;
+            }
+            return false;
         } catch (Throwable t) {
             return false;
         }
@@ -725,7 +734,7 @@ public final class BukkitApiPatch extends ClassPatch {
                 continue;
             }
             for (HookedPlayer hp : trackedPlayers) {
-                if (hp.getBukkitPlayer().getName().equalsIgnoreCase(token)) {
+                if (hp.getName().equalsIgnoreCase(token)) {
                     return hp;
                 }
             }

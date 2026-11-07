@@ -19,6 +19,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.util.logging.Logger;
 
 /**
  * Hooks ProtocolLib's {@code InboundPacketListenerSet}, {@code OutboundPacketListenerSet},
@@ -31,6 +32,7 @@ public final class ProtocolLibPatch extends ClassPatch {
     private static final String OUTBOUND_SET = "com/comphenix/protocol/injector/collection/OutboundPacketListenerSet";
     private static final String PACKET_FILTER_MANAGER = "com/comphenix/protocol/injector/PacketFilterManager";
 
+    private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
     private final PlayerRegistry playerRegistry;
@@ -91,7 +93,16 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        return caller != null && !hookedPlayer.isPluginAllowed(caller);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (config.isDebug()) {
+                String packetDesc = packetObj != null ? packetObj.toString() : "null";
+                logger.info("[Debug] Blocked " + caller.getName()
+                        + " from sending ProtocolLib packet (" + packetDesc + ")"
+                        + " to player " + bukkitPlayer.getName());
+            }
+            return true;
+        }
+        return false;
     }
 
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {

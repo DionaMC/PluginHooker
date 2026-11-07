@@ -57,10 +57,10 @@ public final class HookConfig {
             this.bukkit.useReflectionToGetPlayer = yaml.getBoolean("hook.bukkit.use-reflection-to-get-event-player", true);
 
             this.bukkitApi.enabled = yaml.getBoolean("hook.bukkit-api.enabled", true);
-            this.bukkitApi.hideFromOnlinePlayers = yaml.getBoolean("hook.bukkit-api.hide-from-online-players", true);
-            this.bukkitApi.hideFromWorldPlayers = yaml.getBoolean("hook.bukkit-api.hide-from-world-players", true);
-            this.bukkitApi.hideFromGetPlayer = yaml.getBoolean("hook.bukkit-api.hide-from-get-player", true);
-            this.bukkitApi.hideFromEntityLists = yaml.getBoolean("hook.bukkit-api.hide-from-entity-lists", true);
+            this.bukkitApi.hideFromOnlinePlayers = yaml.getBoolean("hook.bukkit-api.hide-from-online-players", false);
+            this.bukkitApi.hideFromWorldPlayers = yaml.getBoolean("hook.bukkit-api.hide-from-world-players", false);
+            this.bukkitApi.hideFromGetPlayer = yaml.getBoolean("hook.bukkit-api.hide-from-get-player", false);
+            this.bukkitApi.hideFromEntityLists = yaml.getBoolean("hook.bukkit-api.hide-from-entity-lists", false);
             this.bukkitApi.blockDisabledKick = yaml.getBoolean("hook.bukkit-api.block-disabled-kick", true);
             this.bukkitApi.callKickEvent = yaml.getBoolean("hook.bukkit-api.call-kick-event", true);
             this.bukkitApi.blockDisabledDispatchCommand = yaml.getBoolean("hook.bukkit-api.block-disabled-dispatch-command", true);
@@ -96,10 +96,10 @@ public final class HookConfig {
     @Getter
     public static final class ApiHookSettings {
         private boolean enabled = true;
-        private boolean hideFromOnlinePlayers = true;
-        private boolean hideFromWorldPlayers = true;
-        private boolean hideFromGetPlayer = true;
-        private boolean hideFromEntityLists = true;
+        private boolean hideFromOnlinePlayers = false;
+        private boolean hideFromWorldPlayers = false;
+        private boolean hideFromGetPlayer = false;
+        private boolean hideFromEntityLists = false;
         private boolean blockDisabledKick = true;
         private boolean callKickEvent = true;
         private boolean blockDisabledDispatchCommand = true;

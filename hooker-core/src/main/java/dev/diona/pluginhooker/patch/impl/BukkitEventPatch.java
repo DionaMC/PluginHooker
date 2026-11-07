@@ -81,6 +81,12 @@ public final class BukkitEventPatch extends ClassPatch {
                 || event instanceof PlayerQuitEvent) {
             return false;
         }
+        String eventSimpleName = event.getClass().getSimpleName();
+        if (eventSimpleName.equals("PlayerSpawnLocationEvent")
+                || eventSimpleName.equals("PlayerConnectionValidateLoginEvent")
+                || eventSimpleName.equals("PlayerInitialSpawnEvent")) {
+            return false;
+        }
 
         // Ignore PluginHooker's own hook events
         if (event.getClass().getClassLoader() == selfClassLoader) {

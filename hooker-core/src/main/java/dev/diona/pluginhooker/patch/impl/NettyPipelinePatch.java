@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.logging.Logger;
 
 /**
  * Hooks Netty's {@code DefaultChannelPipeline} and {@code AbstractChannelHandlerContext}.
@@ -61,6 +62,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V"
     );
 
+    private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
     private final PlayerRegistry playerRegistry;
@@ -164,7 +166,12 @@ public final class NettyPipelinePatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (config.isDebug()) {
+                logger.info("[Debug] Blocked " + caller.getName()
+                        + " from writing raw ByteBuf (" + ((ByteBuf) msg).readableBytes() + " bytes)"
+                        + " to player " + hookedPlayer.getName());
+            }
             ReferenceCountUtil.safeRelease(msg);
             return true;
         }
@@ -243,8 +250,10 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     /**
-     * Excludes server-internal handlers, ProtocolLib injectors, and PacketEvents handlers (including shaded PacketEvents,
-     * which are already hooked at the EventManager/PacketEvent layer by {@link PacketEventsPatch}).
+     * Excludes server-internal handlers, ProtocolLib injectors, and standalone PacketEvents handlers
+     * (standalone PacketEvents is shared across plugins and hooked at the EventManager/PacketEvent layer
+     * by {@link PacketEventsPatch}, whereas shaded PacketEvents instances belong to a single plugin and
+     * are intercepted here at the Netty pipeline layer).
      */
     private static boolean isExcludedHandler(Class<?> handlerClass) {
         String name = handlerClass.getName();
@@ -255,8 +264,8 @@ public final class NettyPipelinePatch extends ClassPatch {
                 || name.startsWith("ca.spottedleaf.")
                 || name.startsWith("com.mojang.")
                 || name.startsWith("com.comphenix.protocol.")
-                || name.contains(".packetevents.")
-                || simpleName.startsWith("PacketEvents")
+                || name.startsWith("com.github.retrooper.packetevents.")
+                || name.startsWith("io.github.retrooper.packetevents.")
                 || simpleName.equals("InboundPacketInterceptor");
     }
 
@@ -278,8 +287,19 @@ public final class NettyPipelinePatch extends ClassPatch {
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {
         if (outbound) {
+            if (msg instanceof ByteBuf buf && !buf.isReadable()) {
+                ReferenceCountUtil.safeRelease(msg);
+                if (promiseObj instanceof ChannelPromise promise) {
+                    promise.trySuccess();
+                }
+                return;
+            }
             ctx.write(msg, (ChannelPromise) promiseObj);
         } else {
+            if (msg instanceof ByteBuf buf && !buf.isReadable()) {
+                ReferenceCountUtil.safeRelease(msg);
+                return;
+            }
             ctx.fireChannelRead(msg);
         }
     }
