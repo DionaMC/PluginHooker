@@ -1,6 +1,7 @@
 name: PluginHooker
 version: '${version}'
 main: dev.diona.pluginhooker.PluginHookerPlugin
+api-version: '1.13'
 load: STARTUP
 softdepend:
   - ProtocolLib

@@ -19,6 +19,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.classfile.CodeModel;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -99,7 +100,7 @@ public final class PacketEventsPatch extends ClassPatch {
                                 && method.methodTypeSymbol().parameterCount() == 1;
                     },
                     (mb, element) -> {
-                        if (element instanceof java.lang.classfile.CodeModel codeModel) {
+                        if (element instanceof CodeModel codeModel) {
                             String name = codeModel.parent()
                                     .map(m -> m.methodName().stringValue())
                                     .orElse("");

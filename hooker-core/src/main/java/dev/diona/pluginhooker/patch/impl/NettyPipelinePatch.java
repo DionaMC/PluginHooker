@@ -24,6 +24,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.classfile.CodeModel;
 import java.lang.classfile.CodeTransform;
 import java.lang.constant.MethodTypeDesc;
 import java.util.Collections;
@@ -83,7 +84,7 @@ public final class NettyPipelinePatch extends ClassPatch {
                     method -> PIPELINE_ADD_METHODS.contains(method.methodName().stringValue())
                             && method.methodTypeSymbol().parameterCount() >= 1,
                     (mb, element) -> {
-                        if (element instanceof java.lang.classfile.CodeModel codeModel) {
+                        if (element instanceof CodeModel codeModel) {
                             // In all addFirst0/addLast0/addBefore0/addAfter0/replace0 across Netty 4.0~4.2,
                             // the last parameter is the newly added AbstractChannelHandlerContext.
                             int paramCount = codeModel.parent()

@@ -3,6 +3,8 @@ bstats: true
 
 # Global sandbox settings
 sandbox:
+  # Print debug logs when a hooked plugin's API action (kick, command, teleport, velocity, message) is intercepted
+  debug: false
   # Default policy when a plugin is added to the sandbox:
   # WHITELIST: Disabled for all players by default unless enabled per player
   # BLACKLIST: Enabled for all players by default unless disabled per player
@@ -22,14 +24,30 @@ hook:
     use-reflection-to-get-event-player: true
 
   bukkit-api:
-    # Hook CraftServer & CraftWorld player lookup APIs to hide disabled players from hooked plugins
+    # Hook CraftServer, CraftWorld, CraftPlayer, and CraftEntity APIs
     enabled: true
-    # Filter Bukkit.getOnlinePlayers() / Server#getOnlinePlayers()
+    # Filter Bukkit.getOnlinePlayers() / Server#getOnlinePlayers() / Server#matchPlayer()
     hide-from-online-players: true
     # Filter World#getPlayers()
     hide-from-world-players: true
     # Filter Bukkit.getPlayer(...) / Bukkit.getPlayerExact(...)
     hide-from-get-player: true
+    # Filter World#getEntities(), getLivingEntities(), getEntitiesByClass(), and getNearbyEntities()
+    hide-from-entity-lists: true
+    # Block disabled plugins from kicking players via Player#kickPlayer
+    block-disabled-kick: true
+    # Fire PlayerKickHookEvent when a hooked plugin calls Player#kickPlayer
+    call-kick-event: true
+    # Block disabled plugins from executing commands targeting disabled players via Server#dispatchCommand
+    block-disabled-dispatch-command: true
+    # Fire PluginDispatchCommandEvent when a hooked plugin calls Server#dispatchCommand
+    call-dispatch-command-event: false
+    # Block disabled plugins from teleporting players via Player#teleport
+    block-disabled-teleport: true
+    # Block disabled plugins from modifying player velocity via Player#setVelocity
+    block-disabled-velocity: true
+    # Block disabled plugins from sending messages or broadcasts to disabled players via Player#sendMessage
+    block-disabled-send-message: true
 
   protocollib:
     # Hook ProtocolLib InboundPacketListenerSet & OutboundPacketListenerSet

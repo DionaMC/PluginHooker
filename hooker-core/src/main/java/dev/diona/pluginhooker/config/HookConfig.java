@@ -2,6 +2,7 @@ package dev.diona.pluginhooker.config;
 
 import dev.diona.pluginhooker.api.plugin.HookMode;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -16,6 +17,8 @@ import java.util.Locale;
 public final class HookConfig {
 
     private boolean bstats = true;
+    @Setter
+    private volatile boolean debug = false;
     private int joinGraceTicks = 10;
     private HookMode defaultHookMode = HookMode.WHITELIST;
 
@@ -40,6 +43,7 @@ public final class HookConfig {
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
 
             this.bstats = yaml.getBoolean("bstats", true);
+            this.debug = yaml.getBoolean("sandbox.debug", false);
             this.joinGraceTicks = Math.max(0, yaml.getInt("sandbox.join-grace-ticks", 10));
             String modeStr = yaml.getString("sandbox.default-mode", "WHITELIST");
             try {
@@ -56,6 +60,14 @@ public final class HookConfig {
             this.bukkitApi.hideFromOnlinePlayers = yaml.getBoolean("hook.bukkit-api.hide-from-online-players", true);
             this.bukkitApi.hideFromWorldPlayers = yaml.getBoolean("hook.bukkit-api.hide-from-world-players", true);
             this.bukkitApi.hideFromGetPlayer = yaml.getBoolean("hook.bukkit-api.hide-from-get-player", true);
+            this.bukkitApi.hideFromEntityLists = yaml.getBoolean("hook.bukkit-api.hide-from-entity-lists", true);
+            this.bukkitApi.blockDisabledKick = yaml.getBoolean("hook.bukkit-api.block-disabled-kick", true);
+            this.bukkitApi.callKickEvent = yaml.getBoolean("hook.bukkit-api.call-kick-event", true);
+            this.bukkitApi.blockDisabledDispatchCommand = yaml.getBoolean("hook.bukkit-api.block-disabled-dispatch-command", true);
+            this.bukkitApi.callDispatchCommandEvent = yaml.getBoolean("hook.bukkit-api.call-dispatch-command-event", false);
+            this.bukkitApi.blockDisabledTeleport = yaml.getBoolean("hook.bukkit-api.block-disabled-teleport", true);
+            this.bukkitApi.blockDisabledVelocity = yaml.getBoolean("hook.bukkit-api.block-disabled-velocity", true);
+            this.bukkitApi.blockDisabledSendMessage = yaml.getBoolean("hook.bukkit-api.block-disabled-send-message", true);
 
             this.protocolLib.enabled = yaml.getBoolean("hook.protocollib.enabled", true);
             this.protocolLib.callEvent = yaml.getBoolean("hook.protocollib.call-event", false);
@@ -87,6 +99,14 @@ public final class HookConfig {
         private boolean hideFromOnlinePlayers = true;
         private boolean hideFromWorldPlayers = true;
         private boolean hideFromGetPlayer = true;
+        private boolean hideFromEntityLists = true;
+        private boolean blockDisabledKick = true;
+        private boolean callKickEvent = true;
+        private boolean blockDisabledDispatchCommand = true;
+        private boolean callDispatchCommandEvent = false;
+        private boolean blockDisabledTeleport = true;
+        private boolean blockDisabledVelocity = true;
+        private boolean blockDisabledSendMessage = true;
     }
 
     @Getter

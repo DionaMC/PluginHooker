@@ -50,7 +50,7 @@ public final class PatchManager {
     ) {
         this.logger = logger;
         this.bukkitEventPatch = new BukkitEventPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.bukkitApiPatch = new BukkitApiPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.bukkitApiPatch = new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.protocolLibPatch = new ProtocolLibPatch(config, pluginRegistry, playerRegistry);
         this.packetEventsPatch = new PacketEventsPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.nettyPipelinePatch = new NettyPipelinePatch(config, pluginRegistry, playerRegistry, selfClassLoader);
@@ -144,6 +144,11 @@ public final class PatchManager {
             case HookIds.GUARD_PROTOCOLLIB_OUTBOUND -> protocolLibPatch.handlePacket(arg0, arg1, true);
             case HookIds.GUARD_PACKETEVENTS_RECEIVE -> packetEventsPatch.handlePacketEvent(arg0, arg1, false);
             case HookIds.GUARD_PACKETEVENTS_SEND -> packetEventsPatch.handlePacketEvent(arg0, arg1, true);
+            case HookIds.GUARD_PLAYER_KICK -> bukkitApiPatch.handlePlayerKick(arg0, arg1);
+            case HookIds.GUARD_DISPATCH_COMMAND -> bukkitApiPatch.handleDispatchCommand(arg0, arg1);
+            case HookIds.GUARD_PLAYER_TELEPORT -> bukkitApiPatch.handlePlayerTeleport(arg0, arg1, arg2);
+            case HookIds.GUARD_ENTITY_VELOCITY -> bukkitApiPatch.handleEntityVelocity(arg0, arg1);
+            case HookIds.GUARD_PLAYER_SEND_MESSAGE -> bukkitApiPatch.handlePlayerSendMessage(arg0, arg1);
             default -> false;
         };
     }
@@ -153,6 +158,7 @@ public final class PatchManager {
             case HookIds.FILTER_ONLINE_PLAYERS -> bukkitApiPatch.filterOnlinePlayers(returnValue);
             case HookIds.FILTER_WORLD_PLAYERS -> bukkitApiPatch.filterWorldPlayers(returnValue);
             case HookIds.FILTER_GET_PLAYER -> bukkitApiPatch.filterGetPlayer(returnValue);
+            case HookIds.FILTER_ENTITY_COLLECTION -> bukkitApiPatch.filterEntityCollection(returnValue);
             default -> returnValue;
         };
     }

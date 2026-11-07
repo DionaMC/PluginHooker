@@ -39,7 +39,12 @@ tasks {
         group = "verification"
         classpath = sourceSets["main"].compileClasspath + sourceSets["test"].runtimeClasspath
         mainClass.set("dev.diona.pluginhooker.PatchVerifier")
-        jvmArgs("-XX:+EnableDynamicAgentLoading")
+        val paperCacheDir = providers.gradleProperty("paperServerDir")
+            .orElse(layout.dir(provider { gradle.gradleUserHomeDir.resolve("caches/pluginhooker-paper/26.3") }).map { it.asFile.absolutePath })
+        jvmArgs(
+            "-XX:+EnableDynamicAgentLoading",
+            "-Dpaper.cache.dir=${paperCacheDir.get()}"
+        )
     }
 
     check {

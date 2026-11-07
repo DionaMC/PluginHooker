@@ -4,6 +4,7 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.constant.ConstantDescs;
 
 /**
  * Base abstraction for a bytecode patch using the JDK 25 {@link ClassFile} API.
@@ -47,6 +48,7 @@ public abstract class ClassPatch {
         ClassHierarchyResolver resolver = ClassHierarchyResolver.ofResourceParsing(effectiveLoader)
                 .orElse(ClassHierarchyResolver.ofClassLoading(effectiveLoader))
                 .orElse(ClassHierarchyResolver.defaultResolver())
+                .orElse(desc -> ClassHierarchyResolver.ClassHierarchyInfo.ofClass(ConstantDescs.CD_Object))
                 .cached();
 
         ClassFile cf = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(resolver));

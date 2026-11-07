@@ -91,6 +91,33 @@ public final class CodeTransforms {
     }
 
     /**
+     * Injects a guard check at the start of a boolean-returning method:
+     * {@code if (HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return false;}
+     */
+    public static CodeTransform guardBooleanEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
+        return new CodeTransform() {
+            @Override
+            public void atStart(CodeBuilder cb) {
+                cb.ldc(hookId);
+                arg0.emit(cb);
+                arg1.emit(cb);
+                arg2.emit(cb);
+                cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
+                Label continueLabel = cb.newLabel();
+                cb.ifeq(continueLabel);
+                cb.iconst_0();
+                cb.ireturn();
+                cb.labelBinding(continueLabel);
+            }
+
+            @Override
+            public void accept(CodeBuilder cb, CodeElement element) {
+                cb.with(element);
+            }
+        };
+    }
+
+    /**
      * Intercepts all reference returns ({@code areturn}) and passes the return value through
      * {@code HookBridge.filterReturn(returnValue, hookId, receiver)}.
      */
