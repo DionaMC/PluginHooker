@@ -7,7 +7,8 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 ## 功能特性
 
 * **Hook Bukkit 事件**：拦截 `RegisteredListener#callEvent`，结合无锁 `ClassValue` + `MethodHandle` 自动提取事件关联玩家。
-* **Hook Bukkit 玩家查询 API**：支持在 `Bukkit.getOnlinePlayers()`、`World#getPlayers()`、`Bukkit.getPlayer(...)` 中对未启用的受控插件隐藏指定玩家。
+* **Hook Bukkit 玩家与实体查询 API**：支持在 `Bukkit.getOnlinePlayers()`、`Bukkit.matchPlayer()`、`Bukkit.getPlayer(...)`、`World#getPlayers()`、`World#getPlayersSeeingChunk(...)`、`World#getEntities()`、`World#getLivingEntities()`、`World#getEntitiesByClass(...)` 及 `getNearbyEntities(...)` 中对未启用的受控插件隐藏指定玩家。
+* **Hook Bukkit 玩家副作用 API**：阻断未启用的受控插件对玩家调用 `Player#kickPlayer` / `Player#kick(Component)`、`Bukkit.dispatchCommand`、`Player#teleport` / `Player#teleportAsync`、`Player#setVelocity`、`Player#sendMessage`、`Player.Spigot#sendMessage` 以及 `Bukkit.broadcast`。
 * **Hook Netty Pipeline**：直接在 `AbstractChannelHandlerContext` 调用点拦截读写，完整支持 `addFirst`、`addLast`、`addBefore`、`addAfter`、`replace`，无需替换原 `ChannelHandler`，保留全部生命周期与卸载兼容性。
 * **Hook ProtocolLib**：接管双向数据包监听器。
 * **Hook PacketEvents**：同时支持独立插件版与被其他插件打包（Shaded/Relocated）的 PacketEvents。
@@ -18,8 +19,14 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 * **Java**: 25+
 * **服务端**: Spigot / Paper 1.8.8 ~ 26.3
 * **Netty**: 4.0 / 4.1 / 4.2
-* **ProtocolLib**: 4.x / 5.x
-* **PacketEvents**: 2.x（独立安装或 Shaded）
+* **ProtocolLib**: 5.4.0
+* **PacketEvents**: 2.14.0（独立安装或 Shaded）
+
+## 指令列表
+
+* `/ph plugin <add|remove|mode|list> [plugin] [WHITELIST|BLACKLIST]` - 管理受控插件与默认沙箱策略
+* `/ph player <player> <add|remove|reset|list> [plugin]` - 管理单个玩家的插件启用/禁用状态
+* `/ph debug` - 在线开关沙箱拦截调试日志输出
 
 ## API 用法
 
@@ -31,8 +38,24 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.0-SNAPSHOT")
+    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.0")
 }
+```
+
+### Maven 依赖 (`:hooker-api`)
+
+```xml
+<repository>
+    <id>jitpack.io</id>
+    <url>https://jitpack.io</url>
+</repository>
+
+<dependency>
+    <groupId>com.github.DionaMC.PluginHooker</groupId>
+    <artifactId>hooker-api</artifactId>
+    <version>2.0.0</version>
+    <scope>provided</scope>
+</dependency>
 ```
 
 ### 控制插件与玩家状态
@@ -71,11 +94,25 @@ public class SandboxExample {
 
 ```java
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
+import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
+import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
 import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
 public class ExampleHookListener implements Listener {
+
+    @EventHandler
+    public void onPlayerKickHook(PlayerKickHookEvent event) {
+        // 获取是哪个受控插件踢出了玩家及踢出原因（兼容 String 与 Adventure Component）
+        String pluginName = event.getPlugin().getName();
+        String reason = event.getReason();
+    }
+
+    @EventHandler
+    public void onDispatchCommand(PluginDispatchCommandEvent event) {
+        // 监听或拦截受控插件执行的后台命令
+    }
 
     @EventHandler
     public void onBukkitHook(BukkitHookEvent event) {
