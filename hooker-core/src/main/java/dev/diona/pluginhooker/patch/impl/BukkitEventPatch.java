@@ -38,8 +38,15 @@ public final class BukkitEventPatch extends ClassPatch {
 
     private static final Set<String> WHITELISTED_LIFECYCLE_EVENTS = Set.of(
             "PlayerSpawnLocationEvent",
+            "AsyncPlayerSpawnLocationEvent",
+            "PlayerInitialSpawnEvent",
             "PlayerConnectionValidateLoginEvent",
-            "PlayerInitialSpawnEvent"
+            "AsyncPlayerConnectionConfigureEvent",
+            "PlayerConnectionInitialConfigureEvent",
+            "PlayerConnectionReconfigureEvent",
+            "PlayerConnectionCloseEvent",
+            "PlayerHandshakeEvent",
+            "PlayerServerFullCheckEvent"
     );
 
     private final HookConfig config;
