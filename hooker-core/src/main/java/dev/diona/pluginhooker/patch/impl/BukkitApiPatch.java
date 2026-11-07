@@ -26,7 +26,9 @@ import java.lang.constant.ConstantDescs;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -67,18 +69,44 @@ public final class BukkitApiPatch extends ClassPatch {
     private static final ClassValue<Optional<MethodHandle>> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
         @Override
         protected Optional<MethodHandle> computeValue(Class<?> connectionClass) {
-            for (String methodName : List.of("getCraftPlayer", "getPlayer")) {
-                try {
-                    Method m = connectionClass.getMethod(methodName);
-                    if (Player.class.isAssignableFrom(m.getReturnType())) {
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            for (Method m : connectionClass.getMethods()) {
+                if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0) {
+                    continue;
+                }
+                if (Player.class.isAssignableFrom(m.getReturnType())) {
+                    try {
                         m.setAccessible(true);
                         return Optional.of(
-                                MethodHandles.lookup()
-                                        .unreflect(m)
+                                lookup.unreflect(m)
                                         .asType(MethodType.methodType(Player.class, Object.class))
                         );
+                    } catch (ReflectiveOperationException ignored) {
                     }
-                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+            for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers())) {
+                        continue;
+                    }
+                    for (Method m : f.getType().getMethods()) {
+                        if (m.getName().equals("getBukkitEntity")
+                                && m.getParameterCount() == 0
+                                && Player.class.isAssignableFrom(m.getReturnType())) {
+                            try {
+                                f.setAccessible(true);
+                                m.setAccessible(true);
+                                MethodHandle fieldGetter = lookup.unreflectGetter(f);
+                                MethodHandle entityGetter = lookup.unreflect(m);
+                                return Optional.of(
+                                        MethodHandles.filterReturnValue(fieldGetter, entityGetter)
+                                                .asType(MethodType.methodType(Player.class, Object.class))
+                                );
+                            } catch (ReflectiveOperationException ignored) {
+                            }
+                        }
+                    }
                 }
             }
             return Optional.empty();
