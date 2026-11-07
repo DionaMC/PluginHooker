@@ -21,6 +21,7 @@ public final class HookIds {
     public static final int GUARD_PACKETEVENTS_SEND_PACKET = 13;
     public static final int GUARD_NETTY_WRITE_BYTEBUF = 14;
     public static final int GUARD_PROTOCOLLIB_ASYNC = 15;
+    public static final int GUARD_NETTY_CLOSE = 16;
 
     // Return-value filter hooks
     public static final int FILTER_ONLINE_PLAYERS = 101;

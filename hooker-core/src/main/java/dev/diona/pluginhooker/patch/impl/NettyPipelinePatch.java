@@ -139,6 +139,24 @@ public final class NettyPipelinePatch extends ClassPatch {
                             ArgSpec.nullConst()
                     );
                     mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                } else if ((name.equals("close") || name.equals("disconnect"))
+                        && desc.equals("()Lio/netty/channel/ChannelFuture;")) {
+                    CodeTransform closeGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_CLOSE,
+                            ArgSpec.thisRef(),
+                            ArgSpec.nullConst(),
+                            ArgSpec.nullConst()
+                    );
+                    mb.transformCode(codeModel, closeGuard.andThen(handlerCallsTransform));
+                } else if ((name.equals("close") || name.equals("disconnect"))
+                        && desc.equals("(Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
+                    CodeTransform closeGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_CLOSE,
+                            ArgSpec.thisRef(),
+                            ArgSpec.param(0),
+                            ArgSpec.nullConst()
+                    );
+                    mb.transformCode(codeModel, closeGuard.andThen(handlerCallsTransform));
                 } else {
                     mb.transformCode(codeModel, handlerCallsTransform);
                 }
@@ -171,6 +189,35 @@ public final class NettyPipelinePatch extends ClassPatch {
                         + " to player " + hookedPlayer.getName());
             }
             ReferenceCountUtil.safeRelease(msg);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Intercepts direct {@code channel.close()}/{@code disconnect()} and {@code ctx.close()}/{@code disconnect()}
+     * calls initiated by disabled plugins (e.g. GrimAC's {@code user.closeConnection()}).
+     */
+    public boolean handleChannelClose(Object ctxObj, Object promiseObj) {
+        if (!config.bukkitApi().isBlockDisabledKick() || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
+            return false;
+        }
+        HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
+        if (hookedPlayer == null) {
+            return false;
+        }
+        Plugin caller = PluginCallerResolver.resolveDirectChannelCloseCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (config.isDebug()) {
+                logger.info("[Debug] Blocked " + caller.getName()
+                        + " from closing Netty channel of player " + hookedPlayer.getName());
+            }
+            if (promiseObj instanceof ChannelPromise promise) {
+                promise.trySuccess();
+            }
             return true;
         }
         return false;

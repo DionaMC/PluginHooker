@@ -293,4 +293,51 @@ public final class PluginCallerResolver {
             return null;
         });
     }
+
+    /**
+     * Resolves the calling plugin for a direct {@code channel.close()}/{@code disconnect()} or
+     * {@code ctx.close()}/{@code disconnect()} call (including via PacketEvents' {@code User#closeConnection()}
+     * or {@code ChannelHelper#close(Object)}).
+     * <p>
+     * Returns {@code null} if {@code close}/{@code disconnect} is merely being forwarded along the pipeline
+     * by a {@link ChannelHandler}'s own {@code close}/{@code disconnect} callback or initiated by the server.
+     */
+    public static Plugin resolveDirectChannelCloseCaller(PluginRegistry registry, ClassLoader selfLoader) {
+        if (!registry.hasHookedPlugins()) {
+            return null;
+        }
+        return STACK_WALKER.walk(frames -> {
+            var iterator = frames.iterator();
+            while (iterator.hasNext()) {
+                StackWalker.StackFrame frame = iterator.next();
+                Class<?> callerClass = frame.getDeclaringClass();
+                ClassLoader loader = callerClass.getClassLoader();
+                if (loader == null || loader == selfLoader) {
+                    continue;
+                }
+                String className = callerClass.getName();
+                if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
+                    continue;
+                }
+                String simpleName = callerClass.getSimpleName();
+                if (simpleName.equals("NettyChannelOperator")
+                        || simpleName.equals("ChannelOperator")
+                        || simpleName.equals("ChannelHelper")
+                        || simpleName.equals("User")) {
+                    continue;
+                }
+                String methodName = frame.getMethodName();
+                if (ChannelHandler.class.isAssignableFrom(callerClass)
+                        && (methodName.equals("close") || methodName.equals("disconnect"))) {
+                    return null;
+                }
+                Plugin plugin = registry.getPluginByClassLoader(loader);
+                if (plugin == null || isSharedPacketFramework(plugin)) {
+                    return null;
+                }
+                return registry.isHooked(plugin) ? plugin : null;
+            }
+            return null;
+        });
+    }
 }
