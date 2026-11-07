@@ -38,7 +38,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.2")
+    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.3")
 }
 ```
 
@@ -53,7 +53,7 @@ dependencies {
 <dependency>
     <groupId>com.github.DionaMC.PluginHooker</groupId>
     <artifactId>hooker-api</artifactId>
-    <version>2.0.2</version>
+    <version>2.0.3</version>
     <scope>provided</scope>
 </dependency>
 ```

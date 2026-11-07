@@ -207,13 +207,13 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     /**
-     * Never block PacketEvents' own internal state-tracking listeners (even when PacketEvents is shaded inside a hooked plugin).
+     * Never block PacketEvents' own internal state-tracking listeners (even when PacketEvents is shaded
+     * or partially obfuscated inside a hooked plugin).
      */
     private static boolean isInternalPacketEventsListener(Class<?> listenerClass) {
         String name = listenerClass.getName();
         String simpleName = listenerClass.getSimpleName();
-        return name.contains(".packetevents.manager.")
-                || name.contains(".packetevents.util.")
+        return name.contains(".packetevents.")
                 || simpleName.equals("InternalPacketListener")
                 || simpleName.equals("InternalBukkitPacketListener");
     }
