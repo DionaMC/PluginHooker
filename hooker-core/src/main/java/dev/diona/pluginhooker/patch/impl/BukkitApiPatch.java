@@ -602,7 +602,7 @@ public final class BukkitApiPatch extends ClassPatch {
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-            if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller)) {
                 if (config.isDebug()) {
                     String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                     logger.info("[Debug] Blocked " + caller.getName()

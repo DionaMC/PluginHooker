@@ -253,7 +253,7 @@ public final class PacketEventsPatch extends ClassPatch {
             }
         }
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
             if (config.isDebug()) {
                 int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
                 logger.info("[Debug] Blocked " + caller.getName()

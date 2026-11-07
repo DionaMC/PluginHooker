@@ -11,7 +11,7 @@ sandbox:
   default-mode: WHITELIST
   # Grace period (in ticks) after a player joins during which packets are allowed
   # so anticheats/plugins can initialize their internal PlayerData without errors.
-  join-grace-ticks: 10
+  join-grace-ticks: 5
 
 # Hook modules
 hook:

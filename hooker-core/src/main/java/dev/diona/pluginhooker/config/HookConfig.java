@@ -19,7 +19,7 @@ public final class HookConfig {
     private boolean bstats = true;
     @Setter
     private volatile boolean debug = false;
-    private int joinGraceTicks = 10;
+    private int joinGraceTicks = 5;
     private HookMode defaultHookMode = HookMode.WHITELIST;
 
     @Accessors(fluent = true)
@@ -44,7 +44,7 @@ public final class HookConfig {
 
             this.bstats = yaml.getBoolean("bstats", true);
             this.debug = yaml.getBoolean("sandbox.debug", false);
-            this.joinGraceTicks = Math.max(0, yaml.getInt("sandbox.join-grace-ticks", 10));
+            this.joinGraceTicks = Math.max(0, yaml.getInt("sandbox.join-grace-ticks", 5));
             String modeStr = yaml.getString("sandbox.default-mode", "WHITELIST");
             try {
                 this.defaultHookMode = HookMode.valueOf(modeStr.toUpperCase(Locale.ROOT));
