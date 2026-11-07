@@ -16,6 +16,10 @@ public final class HookIds {
     public static final int GUARD_PLAYER_TELEPORT = 8;
     public static final int GUARD_ENTITY_VELOCITY = 9;
     public static final int GUARD_PLAYER_SEND_MESSAGE = 10;
+    public static final int GUARD_NMS_SEND_PACKET = 11;
+    public static final int GUARD_PROTOCOLLIB_SEND_PACKET = 12;
+    public static final int GUARD_PACKETEVENTS_SEND_PACKET = 13;
+    public static final int GUARD_NETTY_WRITE_BYTEBUF = 14;
 
     // Return-value filter hooks
     public static final int FILTER_ONLINE_PLAYERS = 101;

@@ -51,7 +51,7 @@ public final class PatchManager {
         this.logger = logger;
         this.bukkitEventPatch = new BukkitEventPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.bukkitApiPatch = new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.protocolLibPatch = new ProtocolLibPatch(config, pluginRegistry, playerRegistry);
+        this.protocolLibPatch = new ProtocolLibPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.packetEventsPatch = new PacketEventsPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.nettyPipelinePatch = new NettyPipelinePatch(config, pluginRegistry, playerRegistry, selfClassLoader);
 
@@ -149,6 +149,10 @@ public final class PatchManager {
             case HookIds.GUARD_PLAYER_TELEPORT -> bukkitApiPatch.handlePlayerTeleport(arg0, arg1, arg2);
             case HookIds.GUARD_ENTITY_VELOCITY -> bukkitApiPatch.handleEntityVelocity(arg0, arg1);
             case HookIds.GUARD_PLAYER_SEND_MESSAGE -> bukkitApiPatch.handlePlayerSendMessage(arg0, arg1);
+            case HookIds.GUARD_NMS_SEND_PACKET -> bukkitApiPatch.handleNmsSendPacket(arg0, arg1);
+            case HookIds.GUARD_PROTOCOLLIB_SEND_PACKET -> protocolLibPatch.handleSendOrReceivePacket(arg0, arg1);
+            case HookIds.GUARD_PACKETEVENTS_SEND_PACKET -> packetEventsPatch.handleSendPacket(arg0, arg1, arg2);
+            case HookIds.GUARD_NETTY_WRITE_BYTEBUF -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1);
             default -> false;
         };
     }

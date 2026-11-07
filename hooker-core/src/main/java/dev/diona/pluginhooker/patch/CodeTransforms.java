@@ -150,6 +150,37 @@ public final class CodeTransforms {
     }
 
     /**
+     * Injects a guard check at the start of Netty's 1-arg {@code AbstractChannelHandlerContext#write(Object)}
+     * or {@code writeAndFlush(Object)} (returning {@code ChannelFuture}):
+     * {@code if (HookBridge.checkGuard(hookId, this, msg, null)) return this.newSucceededFuture();}
+     */
+    public static CodeTransform guardNettyChannelFutureEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
+        ClassDesc ctxDesc = ClassDesc.of("io.netty.channel.AbstractChannelHandlerContext");
+        MethodTypeDesc succeededFutureMtd = MethodTypeDesc.ofDescriptor("()Lio/netty/channel/ChannelFuture;");
+        return new CodeTransform() {
+            @Override
+            public void atStart(CodeBuilder cb) {
+                cb.ldc(hookId);
+                arg0.emit(cb);
+                arg1.emit(cb);
+                arg2.emit(cb);
+                cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
+                Label continueLabel = cb.newLabel();
+                cb.ifeq(continueLabel);
+                cb.aload(0);
+                cb.invokevirtual(ctxDesc, "newSucceededFuture", succeededFutureMtd);
+                cb.areturn();
+                cb.labelBinding(continueLabel);
+            }
+
+            @Override
+            public void accept(CodeBuilder cb, CodeElement element) {
+                cb.with(element);
+            }
+        };
+    }
+
+    /**
      * Intercepts all reference returns ({@code areturn}) and passes the return value through
      * {@code HookBridge.filterReturn(returnValue, hookId, receiver)}.
      */

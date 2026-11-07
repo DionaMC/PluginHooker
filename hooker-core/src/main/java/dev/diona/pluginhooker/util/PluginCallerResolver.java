@@ -65,6 +65,42 @@ public final class PluginCallerResolver {
     }
 
     /**
+     * Fast caller resolver for NMS {@code sendPacket}/{@code send}.
+     * Stops immediately if the caller of {@code sendPacket} is another NMS/CraftBukkit server class,
+     * avoiding full stack walks on normal server packet traffic.
+     */
+    public static Plugin resolveDirectNmsCaller(PluginRegistry registry, ClassLoader selfLoader, Class<?> nmsConnectionClass) {
+        if (!registry.hasHookedPlugins()) {
+            return null;
+        }
+        return STACK_WALKER.walk(frames -> {
+            var iterator = frames.iterator();
+            boolean passedSendMethod = false;
+            while (iterator.hasNext()) {
+                Class<?> callerClass = iterator.next().getDeclaringClass();
+                if (callerClass == nmsConnectionClass || callerClass.isAssignableFrom(nmsConnectionClass)) {
+                    passedSendMethod = true;
+                    continue;
+                }
+                if (!passedSendMethod) {
+                    continue;
+                }
+                ClassLoader loader = callerClass.getClassLoader();
+                if (loader == null || loader == selfLoader) {
+                    return null;
+                }
+                Plugin plugin = registry.getPluginByClassLoader(loader);
+                if (plugin != null) {
+                    return registry.isHooked(plugin) ? plugin : null;
+                }
+                // If the direct caller of sendPacket is a server class (loader not a plugin), stop immediately
+                return null;
+            }
+            return null;
+        });
+    }
+
+    /**
      * Fast-path resolver that returns the calling {@link Plugin} only if it is currently hooked.
      *
      * @param registry   the plugin registry

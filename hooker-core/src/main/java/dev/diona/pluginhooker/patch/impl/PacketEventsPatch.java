@@ -11,7 +11,10 @@ import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
+import io.netty.channel.Channel;
+import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -40,6 +43,16 @@ public final class PacketEventsPatch extends ClassPatch {
     private static final String EVENT_MANAGER_SUFFIX = "packetevents/event/EventManager";
     private static final String PACKET_RECEIVE_SUFFIX = "packetevents/event/PacketReceiveEvent";
     private static final String PACKET_SEND_SUFFIX = "packetevents/event/PacketSendEvent";
+    private static final String PROTOCOL_MANAGER_SUFFIX = "packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract";
+
+    private static final Set<String> PROTOCOL_SEND_METHODS = Set.of(
+            "sendPacket",
+            "sendPacketSilently",
+            "writePacket",
+            "writePacketSilently",
+            "receivePacket",
+            "receivePacketSilently"
+    );
 
     private static final Set<String> IGNORED_EVENT_SIMPLE_NAMES = Set.of(
             "PacketHandshakeReceiveEvent",
@@ -86,11 +99,25 @@ public final class PacketEventsPatch extends ClassPatch {
     public boolean matchesClass(String internalClassName) {
         return internalClassName.endsWith(EVENT_MANAGER_SUFFIX)
                 || internalClassName.endsWith(PACKET_RECEIVE_SUFFIX)
-                || internalClassName.endsWith(PACKET_SEND_SUFFIX);
+                || internalClassName.endsWith(PACKET_SEND_SUFFIX)
+                || internalClassName.endsWith(PROTOCOL_MANAGER_SUFFIX);
     }
 
     @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
+        if (internalClassName.endsWith(PROTOCOL_MANAGER_SUFFIX)) {
+            return ClassTransform.transformingMethodBodies(
+                    method -> PROTOCOL_SEND_METHODS.contains(method.methodName().stringValue())
+                            && method.methodTypeSymbol().parameterCount() == 2,
+                    CodeTransforms.guardVoidEntry(
+                            HookIds.GUARD_PACKETEVENTS_SEND_PACKET,
+                            ArgSpec.thisRef(),
+                            ArgSpec.param(0),
+                            ArgSpec.param(1)
+                    )
+            );
+        }
+
         if (internalClassName.endsWith(EVENT_MANAGER_SUFFIX)) {
             return ClassTransform.transformingMethods(
                     method -> {
@@ -157,6 +184,25 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     }
 
+    public boolean handleSendPacket(Object protocolManagerObj, Object channelObj, Object byteBufObj) {
+        if (!pluginRegistry.hasHookedPlugins() || !(channelObj instanceof Channel channel)) {
+            return false;
+        }
+        HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(channel);
+        if (hookedPlayer == null) {
+            return false;
+        }
+        Plugin caller = pluginRegistry.getPluginByClassLoader(protocolManagerObj.getClass().getClassLoader());
+        if (caller == null || caller.getName().equalsIgnoreCase("packetevents")) {
+            caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        }
+        if (caller != null && pluginRegistry.isHooked(caller) && !hookedPlayer.isPluginAllowed(caller)) {
+            ReferenceCountUtil.safeRelease(byteBufObj);
+            return true;
+        }
+        return false;
+    }
+
     public boolean handlePacketEvent(Object listener, Object event, boolean outbound) {
         if (listener == null || event == null) {
             return false;
@@ -207,13 +253,13 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     /**
-     * Never block PacketEvents' own internal state-tracking listeners (even when PacketEvents is shaded
-     * or partially obfuscated inside a hooked plugin).
+     * Never block PacketEvents' own internal state-tracking listeners (even when PacketEvents is shaded inside a hooked plugin).
      */
     private static boolean isInternalPacketEventsListener(Class<?> listenerClass) {
         String name = listenerClass.getName();
         String simpleName = listenerClass.getSimpleName();
-        return name.contains(".packetevents.")
+        return name.contains(".packetevents.manager.")
+                || name.contains(".packetevents.util.")
                 || simpleName.equals("InternalPacketListener")
                 || simpleName.equals("InternalBukkitPacketListener");
     }

@@ -11,25 +11,30 @@ import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 
 /**
- * Hooks ProtocolLib's {@code InboundPacketListenerSet} and {@code OutboundPacketListenerSet}.
+ * Hooks ProtocolLib's {@code InboundPacketListenerSet}, {@code OutboundPacketListenerSet},
+ * and active packet sending/receiving in {@code PacketFilterManager}.
  */
 @RequiredArgsConstructor
 public final class ProtocolLibPatch extends ClassPatch {
 
     private static final String INBOUND_SET = "com/comphenix/protocol/injector/collection/InboundPacketListenerSet";
     private static final String OUTBOUND_SET = "com/comphenix/protocol/injector/collection/OutboundPacketListenerSet";
+    private static final String PACKET_FILTER_MANAGER = "com/comphenix/protocol/injector/PacketFilterManager";
 
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
     private final PlayerRegistry playerRegistry;
+    private final ClassLoader selfClassLoader;
 
     @Override
     public boolean isEnabled() {
@@ -38,11 +43,29 @@ public final class ProtocolLibPatch extends ClassPatch {
 
     @Override
     public boolean matchesClass(String internalClassName) {
-        return INBOUND_SET.equals(internalClassName) || OUTBOUND_SET.equals(internalClassName);
+        return INBOUND_SET.equals(internalClassName)
+                || OUTBOUND_SET.equals(internalClassName)
+                || PACKET_FILTER_MANAGER.equals(internalClassName);
     }
 
     @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
+        if (PACKET_FILTER_MANAGER.equals(internalClassName)) {
+            return ClassTransform.transformingMethodBodies(
+                    method -> {
+                        String name = method.methodName().stringValue();
+                        return (name.equals("sendServerPacket") || name.equals("receiveClientPacket"))
+                                && method.methodTypeSymbol().parameterCount() >= 2;
+                    },
+                    CodeTransforms.guardVoidEntry(
+                            HookIds.GUARD_PROTOCOLLIB_SEND_PACKET,
+                            ArgSpec.param(0),
+                            ArgSpec.param(1),
+                            ArgSpec.nullConst()
+                    )
+            );
+        }
+
         int hookId = OUTBOUND_SET.equals(internalClassName)
                 ? HookIds.GUARD_PROTOCOLLIB_OUTBOUND
                 : HookIds.GUARD_PROTOCOLLIB_INBOUND;
@@ -57,6 +80,18 @@ public final class ProtocolLibPatch extends ClassPatch {
                         ArgSpec.nullConst()
                 )
         );
+    }
+
+    public boolean handleSendOrReceivePacket(Object playerObj, Object packetObj) {
+        if (!(playerObj instanceof Player bukkitPlayer) || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (hookedPlayer == null) {
+            return false;
+        }
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        return caller != null && !hookedPlayer.isPluginAllowed(caller);
     }
 
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {

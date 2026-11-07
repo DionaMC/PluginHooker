@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -63,6 +64,27 @@ public final class BukkitApiPatch extends ClassPatch {
     private static volatile MethodHandle componentSerializerHandle;
     private static volatile boolean componentSerializerResolved;
 
+    private static final ClassValue<Optional<MethodHandle>> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> connectionClass) {
+            for (String methodName : List.of("getCraftPlayer", "getPlayer")) {
+                try {
+                    Method m = connectionClass.getMethod(methodName);
+                    if (Player.class.isAssignableFrom(m.getReturnType())) {
+                        m.setAccessible(true);
+                        return Optional.of(
+                                MethodHandles.lookup()
+                                        .unreflect(m)
+                                        .asType(MethodType.methodType(Player.class, Object.class))
+                        );
+                    }
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+            return Optional.empty();
+        }
+    };
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -76,6 +98,10 @@ public final class BukkitApiPatch extends ClassPatch {
 
     @Override
     public boolean matchesClass(String internalClassName) {
+        if (internalClassName.startsWith("net/minecraft/server/")) {
+            return internalClassName.endsWith("/PlayerConnection")
+                    || internalClassName.equals("net/minecraft/server/network/ServerCommonPacketListenerImpl");
+        }
         if (!internalClassName.startsWith("org/bukkit/craftbukkit/")) {
             return false;
         }
@@ -89,6 +115,9 @@ public final class BukkitApiPatch extends ClassPatch {
 
     @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
+        if (internalClassName.startsWith("net/minecraft/server/")) {
+            return createNmsPlayerConnectionTransform(internalClassName);
+        }
         if (internalClassName.endsWith("/CraftServer")) {
             return createCraftServerTransform();
         }
@@ -300,6 +329,29 @@ public final class BukkitApiPatch extends ClassPatch {
         );
     }
 
+    private ClassTransform createNmsPlayerConnectionTransform(String internalClassName) {
+        boolean isModernCommon = internalClassName.endsWith("/ServerCommonPacketListenerImpl");
+        return ClassTransform.transformingMethodBodies(
+                method -> {
+                    String name = method.methodName().stringValue();
+                    var mtd = method.methodTypeSymbol();
+                    if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
+                        return false;
+                    }
+                    if (isModernCommon) {
+                        return name.equals("send") && mtd.parameterCount() == 2;
+                    }
+                    return name.equals("sendPacket") && mtd.parameterCount() == 1;
+                },
+                CodeTransforms.guardVoidEntry(
+                        HookIds.GUARD_NMS_SEND_PACKET,
+                        ArgSpec.thisRef(),
+                        ArgSpec.param(0),
+                        ArgSpec.nullConst()
+                )
+        );
+    }
+
     private ClassTransform createCraftEntityTransform() {
         return ClassTransform.transformingMethods(
                 method -> {
@@ -492,6 +544,31 @@ public final class BukkitApiPatch extends ClassPatch {
             return true;
         }
         return false;
+    }
+
+    public boolean handleNmsSendPacket(Object connectionObj, Object packetObj) {
+        if (connectionObj == null || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
+                pluginRegistry,
+                selfClassLoader,
+                connectionObj.getClass()
+        );
+        if (caller == null) {
+            return false;
+        }
+        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
+        if (getterOpt.isEmpty()) {
+            return false;
+        }
+        try {
+            Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
+            HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+            return hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     // =========================================================================

@@ -52,13 +52,16 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer$1",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftEntity",
+            "net/minecraft/server/v1_8_R3/PlayerConnection",
             "io/netty/channel/DefaultChannelPipeline",
             "io/netty/channel/AbstractChannelHandlerContext",
             "com/comphenix/protocol/injector/collection/InboundPacketListenerSet",
             "com/comphenix/protocol/injector/collection/OutboundPacketListenerSet",
+            "com/comphenix/protocol/injector/PacketFilterManager",
             "com/github/retrooper/packetevents/event/EventManager",
             "com/github/retrooper/packetevents/event/PacketReceiveEvent",
-            "com/github/retrooper/packetevents/event/PacketSendEvent"
+            "com/github/retrooper/packetevents/event/PacketSendEvent",
+            "io/github/retrooper/packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract"
     );
 
     private static final List<String> PAPER_26_3_TARGETS = List.of(
@@ -69,6 +72,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/entity/CraftPlayer",
             "org/bukkit/craftbukkit/entity/CraftPlayer$2",
             "org/bukkit/craftbukkit/entity/CraftEntity",
+            "net/minecraft/server/network/ServerCommonPacketListenerImpl",
             "io/netty/channel/DefaultChannelPipeline",
             "io/netty/channel/AbstractChannelHandlerContext"
     );
@@ -93,7 +97,7 @@ public final class PatchVerifier {
         List<ClassPatch> patches = List.of(
                 new BukkitEventPatch(config, pluginRegistry, playerRegistry, cl),
                 new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new ProtocolLibPatch(config, pluginRegistry, playerRegistry),
+                new ProtocolLibPatch(config, pluginRegistry, playerRegistry, cl),
                 new PacketEventsPatch(config, pluginRegistry, playerRegistry, cl),
                 new NettyPipelinePatch(config, pluginRegistry, playerRegistry, cl)
         );

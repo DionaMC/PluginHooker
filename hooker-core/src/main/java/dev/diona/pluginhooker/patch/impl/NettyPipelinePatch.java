@@ -11,12 +11,14 @@ import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
 import io.netty.channel.ChannelOutboundHandler;
 import io.netty.channel.ChannelPromise;
+import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -121,7 +123,52 @@ public final class NettyPipelinePatch extends ClassPatch {
                 BRIDGE_WRITE_DESC
         );
 
-        return ClassTransform.transformingMethodBodies(replaceRead.andThen(replaceWrite));
+        CodeTransform handlerCallsTransform = replaceRead.andThen(replaceWrite);
+
+        return ClassTransform.transformingMethods((mb, element) -> {
+            if (element instanceof CodeModel codeModel) {
+                var methodOpt = codeModel.parent();
+                String name = methodOpt.map(m -> m.methodName().stringValue()).orElse("");
+                String desc = methodOpt.map(m -> m.methodType().stringValue()).orElse("");
+                if ((name.equals("write") || name.equals("writeAndFlush"))
+                        && desc.equals("(Ljava/lang/Object;)Lio/netty/channel/ChannelFuture;")) {
+                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_WRITE_BYTEBUF,
+                            ArgSpec.thisRef(),
+                            ArgSpec.param(0),
+                            ArgSpec.nullConst()
+                    );
+                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                } else {
+                    mb.transformCode(codeModel, handlerCallsTransform);
+                }
+            } else {
+                mb.with(element);
+            }
+        });
+    }
+
+    /**
+     * Intercepts direct {@code channel.write/writeAndFlush(ByteBuf)} and {@code ctx.write/writeAndFlush(ByteBuf)}
+     * calls initiated by disabled plugins (including completely obfuscated shaded PacketEvents).
+     */
+    public boolean handleWriteByteBuf(Object ctxObj, Object msg) {
+        if (!(msg instanceof ByteBuf) || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
+            return false;
+        }
+        HookedPlayer hookedPlayer = resolveHookedPlayer(ctx.channel());
+        if (hookedPlayer == null) {
+            return false;
+        }
+        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+            ReferenceCountUtil.safeRelease(msg);
+            return true;
+        }
+        return false;
     }
 
     public void handlePipelineAdd(Object ctxObj) {
