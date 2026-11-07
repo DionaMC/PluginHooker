@@ -109,8 +109,17 @@ public final class BukkitApiPatch extends ClassPatch {
                 || internalClassName.endsWith("/CraftWorld")
                 || internalClassName.endsWith("/CraftRegionAccessor")
                 || internalClassName.endsWith("/entity/CraftPlayer")
-                || internalClassName.contains("/entity/CraftPlayer$")
+                || isAnonymousInnerClass(internalClassName, "/entity/CraftPlayer$")
                 || internalClassName.endsWith("/entity/CraftEntity");
+    }
+
+    private static boolean isAnonymousInnerClass(String internalClassName, String marker) {
+        int idx = internalClassName.indexOf(marker);
+        if (idx < 0) {
+            return false;
+        }
+        int suffixStart = idx + marker.length();
+        return suffixStart < internalClassName.length() && Character.isDigit(internalClassName.charAt(suffixStart));
     }
 
     @Override
@@ -565,7 +574,7 @@ public final class BukkitApiPatch extends ClassPatch {
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-            if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller)) {
                 if (config.isDebug()) {
                     String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                     logger.info("[Debug] Blocked " + caller.getName()

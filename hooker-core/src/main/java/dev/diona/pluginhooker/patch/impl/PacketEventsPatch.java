@@ -31,24 +31,25 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.logging.Logger;
 
 /**
- * Hooks standalone PacketEvents' {@code EventManager}, {@code PacketReceiveEvent}, and {@code PacketSendEvent},
- * as well as both standalone and shaded {@code ProtocolManager} active packet-sending methods.
+ * Hooks standalone and shaded PacketEvents' {@code EventManager}, {@code PacketReceiveEvent},
+ * {@code PacketSendEvent}, and {@code ProtocolManagerImpl} active packet-sending methods.
  */
 @RequiredArgsConstructor
 public final class PacketEventsPatch extends ClassPatch {
 
-    private static final String EVENT_MANAGER_CLASS = "com/github/retrooper/packetevents/event/EventManager";
-    private static final String PACKET_RECEIVE_CLASS = "com/github/retrooper/packetevents/event/PacketReceiveEvent";
-    private static final String PACKET_SEND_CLASS = "com/github/retrooper/packetevents/event/PacketSendEvent";
-    private static final String PROTOCOL_MANAGER_ABSTRACT_SUFFIX = "packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract";
+    private static final String EVENT_MANAGER_SUFFIX = "packetevents/event/EventManager";
+    private static final String PACKET_RECEIVE_SUFFIX = "packetevents/event/PacketReceiveEvent";
+    private static final String PACKET_SEND_SUFFIX = "packetevents/event/PacketSendEvent";
     private static final String PROTOCOL_MANAGER_IMPL_SUFFIX = "packetevents/manager/protocol/ProtocolManagerImpl";
 
     private static final Set<String> PROTOCOL_SEND_METHODS = Set.of(
@@ -71,6 +72,13 @@ public final class PacketEventsPatch extends ClassPatch {
             "PacketConfigSendEvent"
     );
 
+    private record ShadedEventAccessors(
+            MethodHandle getPlayer,
+            MethodHandle getChannel,
+            MethodHandle getUser
+    ) {
+    }
+
     private static final ClassValue<Optional<MethodHandle>> UNWRAP_LISTENER_HANDLE = new ClassValue<>() {
         @Override
         protected Optional<MethodHandle> computeValue(Class<?> listenerClass) {
@@ -88,6 +96,35 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     };
 
+    private static final ClassValue<ShadedEventAccessors> SHADED_EVENT_ACCESSORS = new ClassValue<>() {
+        @Override
+        protected ShadedEventAccessors computeValue(Class<?> eventClass) {
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            return new ShadedEventAccessors(
+                    findNoArgGetter(lookup, eventClass, "getPlayer"),
+                    findNoArgGetter(lookup, eventClass, "getChannel"),
+                    findNoArgGetter(lookup, eventClass, "getUser")
+            );
+        }
+    };
+
+    private static final ClassValue<Optional<MethodHandle>> SHADED_USER_UUID_GETTER = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> userClass) {
+            return Optional.ofNullable(findNoArgGetter(MethodHandles.lookup(), userClass, "getUUID"));
+        }
+    };
+
+    private static MethodHandle findNoArgGetter(MethodHandles.Lookup lookup, Class<?> clazz, String name) {
+        try {
+            Method m = clazz.getMethod(name);
+            m.setAccessible(true);
+            return lookup.unreflect(m).asType(MethodType.methodType(Object.class, Object.class));
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -104,15 +141,14 @@ public final class PacketEventsPatch extends ClassPatch {
 
     @Override
     public boolean matchesClass(String internalClassName) {
-        return EVENT_MANAGER_CLASS.equals(internalClassName)
-                || PACKET_RECEIVE_CLASS.equals(internalClassName)
-                || PACKET_SEND_CLASS.equals(internalClassName)
+        return internalClassName.endsWith(EVENT_MANAGER_SUFFIX)
+                || internalClassName.endsWith(PACKET_RECEIVE_SUFFIX)
+                || internalClassName.endsWith(PACKET_SEND_SUFFIX)
                 || isProtocolManagerClass(internalClassName);
     }
 
     private static boolean isProtocolManagerClass(String internalClassName) {
-        return internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX)
-                || internalClassName.endsWith(PROTOCOL_MANAGER_ABSTRACT_SUFFIX);
+        return internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX);
     }
 
     @Override
@@ -130,7 +166,7 @@ public final class PacketEventsPatch extends ClassPatch {
             );
         }
 
-        if (EVENT_MANAGER_CLASS.equals(internalClassName)) {
+        if (internalClassName.endsWith(EVENT_MANAGER_SUFFIX)) {
             return ClassTransform.transformingMethods(
                     method -> {
                         String name = method.methodName().stringValue();
@@ -161,7 +197,7 @@ public final class PacketEventsPatch extends ClassPatch {
             );
         }
 
-        int hookId = PACKET_SEND_CLASS.equals(internalClassName)
+        int hookId = internalClassName.endsWith(PACKET_SEND_SUFFIX)
                 ? HookIds.GUARD_PACKETEVENTS_SEND
                 : HookIds.GUARD_PACKETEVENTS_RECEIVE;
 
@@ -216,11 +252,8 @@ public final class PacketEventsPatch extends ClassPatch {
                 return false;
             }
         }
-        Plugin caller = pluginRegistry.getPluginByClassLoader(protocolManagerObj.getClass().getClassLoader());
-        if (caller == null || PluginCallerResolver.isSharedPacketFramework(caller)) {
-            caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        }
-        if (caller != null && pluginRegistry.isHooked(caller) && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
             if (config.isDebug()) {
                 int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -306,36 +339,74 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     /**
-     * Never block PacketEvents' own internal state-tracking listeners.
+     * Never block PacketEvents' own internal state-tracking listeners (in both standalone and shaded instances).
      */
     private static boolean isInternalPacketEventsListener(Class<?> listenerClass) {
         String name = listenerClass.getName();
         String simpleName = listenerClass.getSimpleName();
         return name.contains(".packetevents.manager.")
                 || name.contains(".packetevents.util.")
+                || name.contains(".packetevents.bukkit.")
+                || name.contains(".packetevents.injector.")
                 || simpleName.equals("InternalPacketListener")
                 || simpleName.equals("InternalBukkitPacketListener");
     }
 
     private HookedPlayer resolveHookedPlayer(Object event) {
-        if (!(event instanceof ProtocolPacketEvent ppe)) {
+        if (event instanceof ProtocolPacketEvent ppe) {
+            if (ppe.getPlayer() instanceof Player p) {
+                HookedPlayer hp = playerRegistry.getPlayer(p);
+                if (hp != null) {
+                    return hp;
+                }
+            }
+            if (ppe.getChannel() instanceof Channel ch) {
+                HookedPlayer hp = PlayerChannelResolver.resolveHookedPlayer(ch, playerRegistry);
+                if (hp != null) {
+                    return hp;
+                }
+            }
+            User user = ppe.getUser();
+            if (user != null && user.getUUID() != null) {
+                return playerRegistry.getPlayer(user.getUUID());
+            }
             return null;
         }
-        if (ppe.getPlayer() instanceof Player p) {
-            HookedPlayer hp = playerRegistry.getPlayer(p);
-            if (hp != null) {
-                return hp;
+
+        // Shaded/relocated PacketEvents event instance
+        ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
+        try {
+            if (accessors.getPlayer() != null) {
+                Object playerObj = accessors.getPlayer().invokeExact(event);
+                if (playerObj instanceof Player p) {
+                    HookedPlayer hp = playerRegistry.getPlayer(p);
+                    if (hp != null) {
+                        return hp;
+                    }
+                }
             }
-        }
-        if (ppe.getChannel() instanceof Channel ch) {
-            HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-            if (hp != null) {
-                return hp;
+            if (accessors.getChannel() != null) {
+                Object channelObj = accessors.getChannel().invokeExact(event);
+                if (channelObj instanceof Channel ch) {
+                    HookedPlayer hp = PlayerChannelResolver.resolveHookedPlayer(ch, playerRegistry);
+                    if (hp != null) {
+                        return hp;
+                    }
+                }
             }
-        }
-        User user = ppe.getUser();
-        if (user != null && user.getUUID() != null) {
-            return playerRegistry.getPlayer(user.getUUID());
+            if (accessors.getUser() != null) {
+                Object userObj = accessors.getUser().invokeExact(event);
+                if (userObj != null) {
+                    Optional<MethodHandle> uuidGetter = SHADED_USER_UUID_GETTER.get(userObj.getClass());
+                    if (uuidGetter.isPresent()) {
+                        Object uuidObj = uuidGetter.get().invokeExact(userObj);
+                        if (uuidObj instanceof UUID uuid) {
+                            return playerRegistry.getPlayer(uuid);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
         }
         return null;
     }

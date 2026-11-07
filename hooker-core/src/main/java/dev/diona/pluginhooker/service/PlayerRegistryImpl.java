@@ -1,10 +1,5 @@
 package dev.diona.pluginhooker.service;
 
-import com.github.retrooper.packetevents.PacketEvents;
-import com.github.retrooper.packetevents.PacketEventsAPI;
-import com.github.retrooper.packetevents.manager.protocol.ProtocolManager;
-import com.github.retrooper.packetevents.protocol.ConnectionState;
-import com.github.retrooper.packetevents.protocol.player.User;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
@@ -12,13 +7,9 @@ import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import io.netty.channel.Channel;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -31,147 +22,69 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public final class PlayerRegistryImpl implements PlayerRegistry {
 
-    private static volatile MethodHandle peInitChannelHandle;
-    private static volatile boolean peInitChannelResolved;
-
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
     private final PluginRegistry pluginRegistry;
     private final HookConfig config;
 
-    public HookedPlayerImpl registerPreLogin(UUID uuid, String name) {
-        if (uuid == null) {
+    public HookedPlayerImpl registerLogin(Player bukkitPlayer) {
+        if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return null;
         }
-        return players.computeIfAbsent(
+        UUID uuid = bukkitPlayer.getUniqueId();
+        HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
                 uuid,
                 id -> new HookedPlayerImpl(
-                        id,
-                        name,
-                        null,
-                        pluginRegistry,
-                        config.getJoinGraceMillis()
-                )
-        );
-    }
-
-    @Override
-    public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
-        if (bukkitPlayer == null) {
-            return null;
-        }
-        HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
-                bukkitPlayer.getUniqueId(),
-                uuid -> new HookedPlayerImpl(
                         bukkitPlayer,
                         pluginRegistry,
-                        config.getJoinGraceMillis()
+                        config.getJoinGraceMillis(),
+                        false
                 )
         );
         hookedPlayer.attachBukkitPlayer(bukkitPlayer);
         hookedPlayer.refreshJoinGrace(config.getJoinGraceMillis());
-        PlayerChannelResolver.bindPlayerToChannel(bukkitPlayer, hookedPlayer);
-        syncPacketEventsChannel(bukkitPlayer);
+        bindChannelWithAutoCleanup(bukkitPlayer, hookedPlayer);
+        return hookedPlayer;
+    }
+
+    @Override
+    public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
+        if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+            return null;
+        }
+        UUID uuid = bukkitPlayer.getUniqueId();
+        HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
+                uuid,
+                id -> new HookedPlayerImpl(
+                        bukkitPlayer,
+                        pluginRegistry,
+                        config.getJoinGraceMillis(),
+                        true
+                )
+        );
+        hookedPlayer.attachBukkitPlayer(bukkitPlayer);
+        hookedPlayer.markJoined(config.getJoinGraceMillis());
+        bindChannelWithAutoCleanup(bukkitPlayer, hookedPlayer);
         return hookedPlayer;
     }
 
     @Override
     public void unregisterPlayer(Player bukkitPlayer) {
-        if (bukkitPlayer == null) {
+        if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return;
         }
         players.remove(bukkitPlayer.getUniqueId());
         PlayerChannelResolver.unbindPlayerFromChannel(bukkitPlayer);
-        cleanupPacketEventsChannel(bukkitPlayer.getUniqueId());
     }
 
-    public void unregisterPlayer(UUID uuid) {
-        if (uuid != null) {
-            players.remove(uuid);
-            cleanupPacketEventsChannel(uuid);
-        }
-    }
-
-    /**
-     * Synchronizes the player's live Netty {@link Channel} and {@link Player} reference with standalone PacketEvents
-     * if present, preventing stale closed channel references in {@code ProtocolManager.CHANNELS} after an early
-     * uninjected disconnect.
-     */
-    private static void syncPacketEventsChannel(Player bukkitPlayer) {
-        if (!Bukkit.getPluginManager().isPluginEnabled("packetevents")) {
+    private void bindChannelWithAutoCleanup(Player bukkitPlayer, HookedPlayerImpl hookedPlayer) {
+        Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
+        if (channel == null) {
             return;
         }
-        try {
-            PacketEventsAPI<?> api = PacketEvents.getAPI();
-            if (api == null) {
-                return;
-            }
-            Channel liveChannel = PlayerChannelResolver.getChannel(bukkitPlayer);
-            if (liveChannel == null || !liveChannel.isOpen()) {
-                return;
-            }
-            ProtocolManager pm = api.getProtocolManager();
-            UUID uuid = bukkitPlayer.getUniqueId();
-            Object existingChannel = pm.getChannel(uuid);
-            if (existingChannel != liveChannel) {
-                pm.setChannel(uuid, liveChannel);
-            }
-            User user = pm.getUser(liveChannel);
-            if (user == null) {
-                MethodHandle initMh = getPeInitChannelHandle(api.getClass().getClassLoader());
-                if (initMh != null) {
-                    initMh.invokeExact((Object) liveChannel, ConnectionState.PLAY);
-                    user = pm.getUser(liveChannel);
-                }
-            }
-            if (user != null) {
-                api.getInjector().setPlayer(liveChannel, bukkitPlayer);
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static MethodHandle getPeInitChannelHandle(ClassLoader loader) {
-        if (peInitChannelResolved) {
-            return peInitChannelHandle;
-        }
-        synchronized (PlayerRegistryImpl.class) {
-            if (peInitChannelResolved) {
-                return peInitChannelHandle;
-            }
-            try {
-                Class<?> initClass = Class.forName(
-                        "io.github.retrooper.packetevents.injector.connection.ServerConnectionInitializer",
-                        true,
-                        loader
-                );
-                peInitChannelHandle = MethodHandles.publicLookup().findStatic(
-                        initClass,
-                        "initChannel",
-                        MethodType.methodType(void.class, Object.class, ConnectionState.class)
-                );
-            } catch (Throwable ignored) {
-                peInitChannelHandle = null;
-            }
-            peInitChannelResolved = true;
-            return peInitChannelHandle;
-        }
-    }
-
-    private static void cleanupPacketEventsChannel(UUID uuid) {
-        if (!Bukkit.getPluginManager().isPluginEnabled("packetevents")) {
-            return;
-        }
-        try {
-            PacketEventsAPI<?> api = PacketEvents.getAPI();
-            if (api == null) {
-                return;
-            }
-            ProtocolManager pm = api.getProtocolManager();
-            Object existingChannel = pm.getChannel(uuid);
-            if (existingChannel instanceof Channel ch && (!ch.isOpen() || pm.getUser(ch) == null)) {
-                ProtocolManager.CHANNELS.remove(uuid);
-            }
-        } catch (Throwable ignored) {
+        HookedPlayer previous = channel.attr(PlayerChannelResolver.HOOKED_PLAYER_KEY).getAndSet(hookedPlayer);
+        if (previous == null) {
+            UUID uuid = hookedPlayer.getUniqueId();
+            channel.closeFuture().addListener(future -> players.remove(uuid, hookedPlayer));
         }
     }
 
@@ -183,7 +96,10 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     @Override
     public HookedPlayer getPlayer(Player player) {
-        return player != null ? players.get(player.getUniqueId()) : null;
+        if (isInvalidOrTemporaryPlayer(player)) {
+            return null;
+        }
+        return players.get(player.getUniqueId());
     }
 
     @Override
@@ -194,5 +110,9 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     @Override
     public Collection<HookedPlayer> getPlayers() {
         return Collections.unmodifiableCollection(players.values());
+    }
+
+    private static boolean isInvalidOrTemporaryPlayer(Player player) {
+        return player == null || player.getClass().getName().startsWith("com.comphenix.protocol.injector.");
     }
 }

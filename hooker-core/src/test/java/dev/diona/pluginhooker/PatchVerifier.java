@@ -57,11 +57,11 @@ public final class PatchVerifier {
             "io/netty/channel/AbstractChannelHandlerContext",
             "com/comphenix/protocol/injector/collection/InboundPacketListenerSet",
             "com/comphenix/protocol/injector/collection/OutboundPacketListenerSet",
+            "com/comphenix/protocol/async/AsyncListenerHandler",
             "com/comphenix/protocol/injector/PacketFilterManager",
             "com/github/retrooper/packetevents/event/EventManager",
             "com/github/retrooper/packetevents/event/PacketReceiveEvent",
             "com/github/retrooper/packetevents/event/PacketSendEvent",
-            "io/github/retrooper/packetevents/impl/netty/manager/protocol/ProtocolManagerAbstract",
             "io/github/retrooper/packetevents/manager/protocol/ProtocolManagerImpl"
     );
 

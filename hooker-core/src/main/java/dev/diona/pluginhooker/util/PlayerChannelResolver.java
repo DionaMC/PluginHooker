@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -29,6 +30,8 @@ public final class PlayerChannelResolver {
             AttributeKey.valueOf("pluginhooker_hooked_player");
 
     private static volatile List<MethodHandle> channelAccessorChain;
+    private static volatile MethodHandle proxyDelegateGetter;
+    private static volatile Class<?> cachedProxyClass;
 
     private PlayerChannelResolver() {
     }
@@ -90,7 +93,7 @@ public final class PlayerChannelResolver {
      * Extracts the Netty {@link Channel} for the given Bukkit {@link Player}.
      */
     public static Channel getChannel(Player player) {
-        if (player == null) {
+        if (player == null || player.getClass().getName().startsWith("com.comphenix.protocol.injector.")) {
             return null;
         }
         try {
@@ -111,9 +114,36 @@ public final class PlayerChannelResolver {
                 }
                 current = handle.invoke(current);
             }
-            return (Channel) current;
+            return unwrapChannelProxy((Channel) current);
         } catch (Throwable t) {
             return null;
+        }
+    }
+
+    /**
+     * Unwraps ProtocolLib's {@code NettyChannelProxy} (if present) so we always return the underlying
+     * Netty {@link Channel} instance.
+     */
+    public static Channel unwrapChannelProxy(Channel channel) {
+        if (channel == null || !channel.getClass().getSimpleName().equals("NettyChannelProxy")) {
+            return channel;
+        }
+        try {
+            Class<?> proxyClass = channel.getClass();
+            MethodHandle getter = proxyDelegateGetter;
+            if (getter == null || cachedProxyClass != proxyClass) {
+                Field delegateField = proxyClass.getDeclaredField("delegate");
+                delegateField.setAccessible(true);
+                getter = MethodHandles.lookup()
+                        .unreflectGetter(delegateField)
+                        .asType(MethodType.methodType(Channel.class, Object.class));
+                proxyDelegateGetter = getter;
+                cachedProxyClass = proxyClass;
+            }
+            Channel unwrapped = (Channel) getter.invokeExact((Object) channel);
+            return unwrapped != null ? unwrapped : channel;
+        } catch (Throwable ignored) {
+            return channel;
         }
     }
 

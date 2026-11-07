@@ -121,7 +121,7 @@ public final class BukkitEventPatch extends ClassPatch {
             return hookEvent.isCancelled();
         }
 
-        if (!hookedPlayer.isPluginEnabled(plugin)) {
+        if (!hookedPlayer.isPluginAllowed(plugin)) {
             return true;
         }
 

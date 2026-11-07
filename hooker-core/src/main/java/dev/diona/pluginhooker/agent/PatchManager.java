@@ -153,6 +153,7 @@ public final class PatchManager {
             case HookIds.GUARD_PROTOCOLLIB_SEND_PACKET -> protocolLibPatch.handleSendOrReceivePacket(arg0, arg1);
             case HookIds.GUARD_PACKETEVENTS_SEND_PACKET -> packetEventsPatch.handleSendPacket(arg0, arg1, arg2);
             case HookIds.GUARD_NETTY_WRITE_BYTEBUF -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1);
+            case HookIds.GUARD_PROTOCOLLIB_ASYNC -> protocolLibPatch.handleAsyncPacket(arg0, arg1);
             default -> false;
         };
     }

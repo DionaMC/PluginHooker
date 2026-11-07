@@ -19,18 +19,25 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.constant.ClassDesc;
 import java.util.logging.Logger;
 
 /**
  * Hooks ProtocolLib's {@code InboundPacketListenerSet}, {@code OutboundPacketListenerSet},
- * and active packet sending/receiving in {@code PacketFilterManager}.
+ * {@code AsyncListenerHandler}, and active packet sending/receiving in {@code PacketFilterManager}.
  */
 @RequiredArgsConstructor
 public final class ProtocolLibPatch extends ClassPatch {
 
     private static final String INBOUND_SET = "com/comphenix/protocol/injector/collection/InboundPacketListenerSet";
     private static final String OUTBOUND_SET = "com/comphenix/protocol/injector/collection/OutboundPacketListenerSet";
+    private static final String ASYNC_HANDLER = "com/comphenix/protocol/async/AsyncListenerHandler";
     private static final String PACKET_FILTER_MANAGER = "com/comphenix/protocol/injector/PacketFilterManager";
+
+    private static final ClassDesc ASYNC_HANDLER_DESC =
+            ClassDesc.ofInternalName(ASYNC_HANDLER);
+    private static final ClassDesc PACKET_LISTENER_DESC =
+            ClassDesc.ofInternalName("com/comphenix/protocol/events/PacketListener");
 
     private final Logger logger;
     private final HookConfig config;
@@ -47,6 +54,7 @@ public final class ProtocolLibPatch extends ClassPatch {
     public boolean matchesClass(String internalClassName) {
         return INBOUND_SET.equals(internalClassName)
                 || OUTBOUND_SET.equals(internalClassName)
+                || ASYNC_HANDLER.equals(internalClassName)
                 || PACKET_FILTER_MANAGER.equals(internalClassName);
     }
 
@@ -56,13 +64,27 @@ public final class ProtocolLibPatch extends ClassPatch {
             return ClassTransform.transformingMethodBodies(
                     method -> {
                         String name = method.methodName().stringValue();
-                        return (name.equals("sendServerPacket") || name.equals("receiveClientPacket"))
-                                && method.methodTypeSymbol().parameterCount() >= 2;
+                        int params = method.methodTypeSymbol().parameterCount();
+                        return ((name.equals("sendServerPacket") || name.equals("receiveClientPacket")) && params == 4)
+                                || (name.equals("sendWirePacket") && params == 2);
                     },
                     CodeTransforms.guardVoidEntry(
                             HookIds.GUARD_PROTOCOLLIB_SEND_PACKET,
                             ArgSpec.param(0),
                             ArgSpec.param(1),
+                            ArgSpec.nullConst()
+                    )
+            );
+        }
+
+        if (ASYNC_HANDLER.equals(internalClassName)) {
+            return ClassTransform.transformingMethodBodies(
+                    method -> method.methodName().stringValue().startsWith("lambda$processPacket$")
+                            && method.methodTypeSymbol().parameterCount() == 1,
+                    CodeTransforms.guardVoidEntry(
+                            HookIds.GUARD_PROTOCOLLIB_ASYNC,
+                            ArgSpec.param(0),
+                            ArgSpec.getThisField(ASYNC_HANDLER_DESC, "listener", PACKET_LISTENER_DESC),
                             ArgSpec.nullConst()
                     )
             );
@@ -92,8 +114,8 @@ public final class ProtocolLibPatch extends ClassPatch {
         if (hookedPlayer == null) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
             if (config.isDebug()) {
                 String packetDesc = packetObj != null ? packetObj.toString() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -103,6 +125,13 @@ public final class ProtocolLibPatch extends ClassPatch {
             return true;
         }
         return false;
+    }
+
+    public boolean handleAsyncPacket(Object eventObj, Object listenerObj) {
+        if (!(eventObj instanceof PacketEvent event)) {
+            return false;
+        }
+        return handlePacket(event, listenerObj, event.isServerPacket());
     }
 
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {

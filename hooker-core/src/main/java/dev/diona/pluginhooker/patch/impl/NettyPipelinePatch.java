@@ -163,8 +163,8 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (hookedPlayer == null) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader);
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from writing raw ByteBuf (" + buf.readableBytes() + " bytes)"
@@ -242,10 +242,10 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     /**
-     * Excludes server-internal handlers, ProtocolLib injectors, and standalone PacketEvents handlers
-     * (standalone PacketEvents is shared across plugins and hooked at the EventManager/PacketEvent layer
-     * by {@link PacketEventsPatch}, whereas shaded PacketEvents instances belong to a single plugin and
-     * are intercepted here at the Netty pipeline layer).
+     * Excludes server-internal handlers, ProtocolLib injectors, and PacketEvents handlers
+     * (both standalone and shaded PacketEvents are hooked at the {@code EventManager}/{@code PacketEvent}
+     * layer by {@link PacketEventsPatch}, preserving {@code PacketEventsEncoder#setHold} queue ordering
+     * and {@code handleCompression} pipeline relocation).
      */
     private static boolean isExcludedHandler(Class<?> handlerClass) {
         String name = handlerClass.getName();
@@ -256,8 +256,8 @@ public final class NettyPipelinePatch extends ClassPatch {
                 || name.startsWith("ca.spottedleaf.")
                 || name.startsWith("com.mojang.")
                 || name.startsWith("com.comphenix.protocol.")
-                || name.startsWith("com.github.retrooper.packetevents.")
-                || name.startsWith("io.github.retrooper.packetevents.")
+                || name.contains(".packetevents.")
+                || simpleName.startsWith("PacketEvents")
                 || simpleName.equals("InboundPacketInterceptor");
     }
 

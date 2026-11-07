@@ -21,34 +21,40 @@ public final class HookedPlayerImpl implements HookedPlayer {
     private volatile Player bukkitPlayer;
     @Getter
     private final UUID uniqueId;
-    @Getter
-    private volatile String name;
     private final PluginRegistry pluginRegistry;
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
+    private volatile long joinGraceDurationMillis;
     private volatile long joinGraceUntilMillis;
+    private volatile boolean joined;
 
-    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
-        this(bukkitPlayer.getUniqueId(), bukkitPlayer.getName(), bukkitPlayer, pluginRegistry, joinGraceDurationMillis);
+    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis, boolean joined) {
+        this.bukkitPlayer = bukkitPlayer;
+        this.uniqueId = bukkitPlayer.getUniqueId();
+        this.pluginRegistry = pluginRegistry;
+        this.joined = joined;
+        refreshJoinGrace(joinGraceDurationMillis);
     }
 
-    public HookedPlayerImpl(UUID uniqueId, String name, Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
-        this.uniqueId = uniqueId;
-        this.name = name != null ? name : "";
-        this.bukkitPlayer = bukkitPlayer;
-        this.pluginRegistry = pluginRegistry;
-        refreshJoinGrace(joinGraceDurationMillis);
+    @Override
+    public String getName() {
+        return bukkitPlayer.getName();
     }
 
     public void attachBukkitPlayer(Player bukkitPlayer) {
         if (bukkitPlayer != null) {
             this.bukkitPlayer = bukkitPlayer;
-            this.name = bukkitPlayer.getName();
         }
     }
 
+    public void markJoined(long joinGraceDurationMillis) {
+        this.joined = true;
+        refreshJoinGrace(joinGraceDurationMillis);
+    }
+
     public void refreshJoinGrace(long joinGraceDurationMillis) {
+        this.joinGraceDurationMillis = joinGraceDurationMillis;
         this.joinGraceUntilMillis = joinGraceDurationMillis > 0
                 ? System.currentTimeMillis() + joinGraceDurationMillis
                 : 0L;
@@ -115,6 +121,9 @@ public final class HookedPlayerImpl implements HookedPlayer {
 
     @Override
     public boolean isInJoinGracePeriod() {
-        return joinGraceUntilMillis > 0L && System.currentTimeMillis() < joinGraceUntilMillis;
+        if (joinGraceDurationMillis <= 0L) {
+            return false;
+        }
+        return !joined || System.currentTimeMillis() < joinGraceUntilMillis;
     }
 }
