@@ -541,7 +541,7 @@ public final class BukkitApiPatch extends ClassPatch {
         }
 
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
             return null;
         }
         return returnValue;
@@ -563,7 +563,7 @@ public final class BukkitApiPatch extends ClassPatch {
         for (Object element : rawCollection) {
             if (element instanceof Player player) {
                 HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-                if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+                if (hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller)) {
                     continue;
                 }
             }
@@ -576,7 +576,7 @@ public final class BukkitApiPatch extends ClassPatch {
         List<Player> filtered = new ArrayList<>(original.size());
         for (Player player : original) {
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-            if (hookedPlayer == null || hookedPlayer.isPluginEnabled(caller)) {
+            if (hookedPlayer == null || hookedPlayer.isPluginAllowed(caller)) {
                 filtered.add(player);
             }
         }

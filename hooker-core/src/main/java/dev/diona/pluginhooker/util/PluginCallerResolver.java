@@ -40,6 +40,31 @@ public final class PluginCallerResolver {
     }
 
     /**
+     * Resolves the direct plugin caller that invoked a Netty pipeline operation.
+     * Stops immediately if the first non-Netty frame belongs to the Minecraft server rather than a plugin,
+     * preventing server-internal pipeline modifications from being misattributed to plugins lower on the stack.
+     */
+    public static Plugin resolveDirectNettyCaller(PluginRegistry registry, ClassLoader selfLoader) {
+        return STACK_WALKER.walk(frames -> {
+            var iterator = frames.iterator();
+            while (iterator.hasNext()) {
+                Class<?> callerClass = iterator.next().getDeclaringClass();
+                ClassLoader loader = callerClass.getClassLoader();
+                if (loader == null || loader == selfLoader) {
+                    continue;
+                }
+                String className = callerClass.getName();
+                if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
+                    continue;
+                }
+                // The first frame outside io.netty is the direct caller of pipeline.add*
+                return registry.getPluginByClassLoader(loader);
+            }
+            return null;
+        });
+    }
+
+    /**
      * Fast-path resolver that returns the calling {@link Plugin} only if it is currently hooked.
      *
      * @param registry   the plugin registry

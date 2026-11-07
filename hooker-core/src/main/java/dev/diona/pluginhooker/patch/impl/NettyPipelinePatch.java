@@ -105,17 +105,16 @@ public final class NettyPipelinePatch extends ClassPatch {
             );
         }
 
-        // Transform AbstractChannelHandlerContext: intercept ChannelInboundHandler.channelRead and ChannelOutboundHandler.write
-        CodeTransform replaceRead = CodeTransforms.replaceInterfaceCall(
-                "io/netty/channel/ChannelInboundHandler",
+        // Transform AbstractChannelHandlerContext: intercept both invokeinterface (Netty 4.0/4.1)
+        // and devirtualized invokevirtual (Netty 4.2 ChannelDuplexHandler / ChannelOutboundHandlerAdapter)
+        CodeTransform replaceRead = CodeTransforms.replaceNettyHandlerCall(
                 "channelRead",
                 "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;)V",
                 "dispatchNettyRead",
                 BRIDGE_READ_DESC
         );
 
-        CodeTransform replaceWrite = CodeTransforms.replaceInterfaceCall(
-                "io/netty/channel/ChannelOutboundHandler",
+        CodeTransform replaceWrite = CodeTransforms.replaceNettyHandlerCall(
                 "write",
                 "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)V",
                 "dispatchNettyWrite",
@@ -130,15 +129,15 @@ public final class NettyPipelinePatch extends ClassPatch {
             return;
         }
         ChannelHandler handler = ctx.handler();
-        if (handler == null) {
+        if (handler == null || isExcludedHandler(handler.getClass())) {
             return;
         }
 
-        // 1. Check the handler's own ClassLoader first (avoids misattributing ProtocolLib/PacketEvents internal handlers)
+        // 1. Check the handler's own ClassLoader first
         Plugin owner = pluginRegistry.getPluginByClassLoader(handler.getClass().getClassLoader());
         if (owner == null) {
-            // 2. If the handler is a standard Netty class, walk the call stack to see which plugin added it
-            owner = PluginCallerResolver.resolveCallerPlugin(pluginRegistry, selfClassLoader);
+            // 2. If the handler is a standard Netty class, check if the direct non-Netty caller is a plugin
+            owner = PluginCallerResolver.resolveDirectNettyCaller(pluginRegistry, selfClassLoader);
         }
 
         if (owner != null
@@ -181,7 +180,11 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     private Plugin resolveHandlerPlugin(Object handlerObj, ChannelHandlerContext ctx) {
-        Plugin plugin = pluginRegistry.getPluginByClassLoader(handlerObj.getClass().getClassLoader());
+        Class<?> handlerClass = handlerObj.getClass();
+        if (isExcludedHandler(handlerClass)) {
+            return null;
+        }
+        Plugin plugin = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
         if (plugin != null) {
             if (plugin.getName().equalsIgnoreCase("ProtocolLib")
                     || plugin.getName().equalsIgnoreCase("packetevents")) {
@@ -190,6 +193,24 @@ public final class NettyPipelinePatch extends ClassPatch {
             return plugin;
         }
         return contextToPlugin.get(ctx);
+    }
+
+    /**
+     * Excludes server-internal handlers, ProtocolLib injectors, and PacketEvents handlers (including shaded PacketEvents,
+     * which are already hooked at the EventManager/PacketEvent layer by {@link PacketEventsPatch}).
+     */
+    private static boolean isExcludedHandler(Class<?> handlerClass) {
+        String name = handlerClass.getName();
+        String simpleName = handlerClass.getSimpleName();
+        return name.startsWith("net.minecraft.")
+                || name.startsWith("org.bukkit.")
+                || name.startsWith("io.papermc.")
+                || name.startsWith("ca.spottedleaf.")
+                || name.startsWith("com.mojang.")
+                || name.startsWith("com.comphenix.protocol.")
+                || name.contains(".packetevents.")
+                || simpleName.startsWith("PacketEvents")
+                || simpleName.equals("InboundPacketInterceptor");
     }
 
     private HookedPlayer resolveHookedPlayer(Channel channel) {

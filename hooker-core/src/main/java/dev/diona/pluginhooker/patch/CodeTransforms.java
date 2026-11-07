@@ -205,10 +205,10 @@ public final class CodeTransforms {
     }
 
     /**
-     * Replaces a specific {@code invokeinterface} instruction with a static bridge call.
+     * Replaces a Netty handler invocation ({@code invokeinterface} or Netty 4.2 devirtualized {@code invokevirtual})
+     * inside {@code AbstractChannelHandlerContext} with a static bridge call, excluding {@code HeadContext}.
      */
-    public static CodeTransform replaceInterfaceCall(
-            String targetOwnerInternalName,
+    public static CodeTransform replaceNettyHandlerCall(
             String targetMethodName,
             String targetDescriptor,
             String bridgeMethodName,
@@ -216,10 +216,10 @@ public final class CodeTransforms {
     ) {
         return (cb, element) -> {
             if (element instanceof InvokeInstruction inv
-                    && inv.opcode() == Opcode.INVOKEINTERFACE
-                    && inv.owner().asInternalName().equals(targetOwnerInternalName)
+                    && (inv.opcode() == Opcode.INVOKEINTERFACE || inv.opcode() == Opcode.INVOKEVIRTUAL)
                     && inv.name().equalsString(targetMethodName)
-                    && inv.type().equalsString(targetDescriptor)) {
+                    && inv.type().equalsString(targetDescriptor)
+                    && !inv.owner().asInternalName().endsWith("HeadContext")) {
                 cb.invokestatic(BRIDGE_DESC, bridgeMethodName, bridgeDescriptor);
             } else {
                 cb.with(element);
