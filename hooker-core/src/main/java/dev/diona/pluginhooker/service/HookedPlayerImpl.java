@@ -25,15 +25,12 @@ public final class HookedPlayerImpl implements HookedPlayer {
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
-    private volatile long joinGraceDurationMillis;
     private volatile long joinGraceUntilMillis;
-    private volatile boolean joined;
 
-    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis, boolean joined) {
+    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
         this.bukkitPlayer = bukkitPlayer;
         this.uniqueId = bukkitPlayer.getUniqueId();
         this.pluginRegistry = pluginRegistry;
-        this.joined = joined;
         refreshJoinGrace(joinGraceDurationMillis);
     }
 
@@ -42,19 +39,14 @@ public final class HookedPlayerImpl implements HookedPlayer {
         return bukkitPlayer.getName();
     }
 
-    public void attachBukkitPlayer(Player bukkitPlayer) {
+    public void updateState(Player bukkitPlayer, long joinGraceDurationMillis) {
         if (bukkitPlayer != null) {
             this.bukkitPlayer = bukkitPlayer;
         }
-    }
-
-    public void markJoined(long joinGraceDurationMillis) {
-        this.joined = true;
         refreshJoinGrace(joinGraceDurationMillis);
     }
 
     public void refreshJoinGrace(long joinGraceDurationMillis) {
-        this.joinGraceDurationMillis = joinGraceDurationMillis;
         this.joinGraceUntilMillis = joinGraceDurationMillis > 0
                 ? System.currentTimeMillis() + joinGraceDurationMillis
                 : 0L;
@@ -121,9 +113,6 @@ public final class HookedPlayerImpl implements HookedPlayer {
 
     @Override
     public boolean isInJoinGracePeriod() {
-        if (joinGraceDurationMillis <= 0L) {
-            return false;
-        }
-        return !joined || System.currentTimeMillis() < joinGraceUntilMillis;
+        return joinGraceUntilMillis > 0L && System.currentTimeMillis() < joinGraceUntilMillis;
     }
 }
