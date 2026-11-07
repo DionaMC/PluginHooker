@@ -2,15 +2,20 @@ plugins {
     java
 }
 
+val pluginVersion = providers.gradleProperty("pluginVersion")
+    .orElse("2.0.0-SNAPSHOT")
+    .get()
+
 allprojects {
     group = "dev.diona.pluginhooker"
-    version = "2.0.0-SNAPSHOT"
+    version = pluginVersion
 
     repositories {
         exclusiveContent {
-            forRepository {
-                mavenLocal()
-            }
+            forRepositories(
+                mavenLocal(),
+                maven("https://repo.codemc.io/repository/nms/")
+            )
             filter {
                 includeGroup("org.spigotmc")
             }
