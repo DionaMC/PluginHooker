@@ -1,6 +1,7 @@
 package dev.diona.pluginhooker.util;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
 import org.bukkit.Bukkit;
@@ -60,6 +61,29 @@ public final class PlayerChannelResolver {
             return null;
         }
         return channel.attr(HOOKED_PLAYER_KEY).get();
+    }
+
+    /**
+     * Resolves the {@link HookedPlayer} for a Netty {@link Channel}, checking the channel attribute first
+     * and falling back to online player channel matching (lazily binding the attribute if found).
+     */
+    public static HookedPlayer resolveHookedPlayer(Channel channel, PlayerRegistry playerRegistry) {
+        if (channel == null) {
+            return null;
+        }
+        HookedPlayer hookedPlayer = channel.attr(HOOKED_PLAYER_KEY).get();
+        if (hookedPlayer != null) {
+            return hookedPlayer;
+        }
+        Player onlinePlayer = findOnlinePlayerByChannel(channel);
+        if (onlinePlayer != null) {
+            hookedPlayer = playerRegistry.getPlayer(onlinePlayer);
+            if (hookedPlayer != null) {
+                channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
+                return hookedPlayer;
+            }
+        }
+        return null;
     }
 
     /**

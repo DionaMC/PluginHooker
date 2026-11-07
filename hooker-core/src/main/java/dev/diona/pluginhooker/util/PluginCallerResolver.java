@@ -15,6 +15,18 @@ public final class PluginCallerResolver {
     }
 
     /**
+     * Returns true if the given plugin is a shared packet framework (standalone PacketEvents or ProtocolLib)
+     * rather than a downstream consumer plugin.
+     */
+    public static boolean isSharedPacketFramework(Plugin plugin) {
+        if (plugin == null) {
+            return false;
+        }
+        String name = plugin.getName();
+        return name.equalsIgnoreCase("packetevents") || name.equalsIgnoreCase("ProtocolLib");
+    }
+
+    /**
      * Walks the call stack to find the nearest calling {@link Plugin} (excluding PluginHooker itself,
      * standalone PacketEvents, and ProtocolLib).
      *
@@ -32,9 +44,7 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin != null
-                        && !plugin.getName().equalsIgnoreCase("packetevents")
-                        && !plugin.getName().equalsIgnoreCase("ProtocolLib")) {
+                if (plugin != null && !isSharedPacketFramework(plugin)) {
                     return plugin;
                 }
             }

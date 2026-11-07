@@ -16,7 +16,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -28,6 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @RequiredArgsConstructor
 public final class PlayerRegistryImpl implements PlayerRegistry {
+
+    private static volatile MethodHandle peInitChannelHandle;
+    private static volatile boolean peInitChannelResolved;
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
     private final PluginRegistry pluginRegistry;
@@ -112,22 +117,43 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             }
             User user = pm.getUser(liveChannel);
             if (user == null) {
-                try {
-                    Class<?> initClass = Class.forName(
-                            "io.github.retrooper.packetevents.injector.connection.ServerConnectionInitializer",
-                            true,
-                            api.getClass().getClassLoader()
-                    );
-                    Method initChannel = initClass.getMethod("initChannel", Object.class, ConnectionState.class);
-                    initChannel.invoke(null, liveChannel, ConnectionState.PLAY);
+                MethodHandle initMh = getPeInitChannelHandle(api.getClass().getClassLoader());
+                if (initMh != null) {
+                    initMh.invokeExact((Object) liveChannel, ConnectionState.PLAY);
                     user = pm.getUser(liveChannel);
-                } catch (Throwable ignored) {
                 }
             }
             if (user != null) {
                 api.getInjector().setPlayer(liveChannel, bukkitPlayer);
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static MethodHandle getPeInitChannelHandle(ClassLoader loader) {
+        if (peInitChannelResolved) {
+            return peInitChannelHandle;
+        }
+        synchronized (PlayerRegistryImpl.class) {
+            if (peInitChannelResolved) {
+                return peInitChannelHandle;
+            }
+            try {
+                Class<?> initClass = Class.forName(
+                        "io.github.retrooper.packetevents.injector.connection.ServerConnectionInitializer",
+                        true,
+                        loader
+                );
+                peInitChannelHandle = MethodHandles.publicLookup().findStatic(
+                        initClass,
+                        "initChannel",
+                        MethodType.methodType(void.class, Object.class, ConnectionState.class)
+                );
+            } catch (Throwable ignored) {
+                peInitChannelHandle = null;
+            }
+            peInitChannelResolved = true;
+            return peInitChannelHandle;
         }
     }
 

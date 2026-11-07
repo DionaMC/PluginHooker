@@ -24,6 +24,7 @@ import org.bukkit.plugin.Plugin;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.constant.ClassDesc;
+import java.util.Set;
 
 /**
  * Hooks {@code org.bukkit.plugin.RegisteredListener#callEvent(Event)} to sandbox Bukkit event listeners per player.
@@ -34,6 +35,12 @@ public final class BukkitEventPatch extends ClassPatch {
     private static final String TARGET_CLASS = "org/bukkit/plugin/RegisteredListener";
     private static final ClassDesc REGISTERED_LISTENER_DESC = ClassDesc.of("org.bukkit.plugin.RegisteredListener");
     private static final ClassDesc PLUGIN_DESC = ClassDesc.of("org.bukkit.plugin.Plugin");
+
+    private static final Set<String> WHITELISTED_LIFECYCLE_EVENTS = Set.of(
+            "PlayerSpawnLocationEvent",
+            "PlayerConnectionValidateLoginEvent",
+            "PlayerInitialSpawnEvent"
+    );
 
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -78,13 +85,8 @@ public final class BukkitEventPatch extends ClassPatch {
                 || event instanceof PlayerPreLoginEvent
                 || event instanceof PlayerLoginEvent
                 || event instanceof PlayerJoinEvent
-                || event instanceof PlayerQuitEvent) {
-            return false;
-        }
-        String eventSimpleName = event.getClass().getSimpleName();
-        if (eventSimpleName.equals("PlayerSpawnLocationEvent")
-                || eventSimpleName.equals("PlayerConnectionValidateLoginEvent")
-                || eventSimpleName.equals("PlayerInitialSpawnEvent")) {
+                || event instanceof PlayerQuitEvent
+                || WHITELISTED_LIFECYCLE_EVENTS.contains(event.getClass().getSimpleName())) {
             return false;
         }
 

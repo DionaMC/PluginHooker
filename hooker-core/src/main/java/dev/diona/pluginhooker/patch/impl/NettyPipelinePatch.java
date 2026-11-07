@@ -12,7 +12,6 @@ import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
@@ -21,7 +20,6 @@ import io.netty.channel.ChannelPromise;
 import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
@@ -155,13 +153,13 @@ public final class NettyPipelinePatch extends ClassPatch {
      * calls initiated by disabled plugins (including completely obfuscated shaded PacketEvents).
      */
     public boolean handleWriteByteBuf(Object ctxObj, Object msg) {
-        if (!(msg instanceof ByteBuf) || !pluginRegistry.hasHookedPlugins()) {
+        if (!(msg instanceof ByteBuf buf) || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
         if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
             return false;
         }
-        HookedPlayer hookedPlayer = resolveHookedPlayer(ctx.channel());
+        HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
         if (hookedPlayer == null) {
             return false;
         }
@@ -169,7 +167,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
-                        + " from writing raw ByteBuf (" + ((ByteBuf) msg).readableBytes() + " bytes)"
+                        + " from writing raw ByteBuf (" + buf.readableBytes() + " bytes)"
                         + " to player " + hookedPlayer.getName());
             }
             ReferenceCountUtil.safeRelease(msg);
@@ -194,9 +192,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             owner = PluginCallerResolver.resolveDirectNettyCaller(pluginRegistry, selfClassLoader);
         }
 
-        if (owner != null
-                && !owner.getName().equalsIgnoreCase("ProtocolLib")
-                && !owner.getName().equalsIgnoreCase("packetevents")) {
+        if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
             contextToPlugin.put(ctx, owner);
         }
     }
@@ -208,7 +204,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (pluginRegistry.hasHookedPlugins()) {
             Plugin plugin = resolveHandlerPlugin(handlerObj, ctx);
             if (plugin != null && pluginRegistry.isHooked(plugin)) {
-                HookedPlayer hookedPlayer = resolveHookedPlayer(ctx.channel());
+                HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
                 if (hookedPlayer != null) {
                     if (!hookedPlayer.isPluginAllowed(plugin)) {
                         bypassHandler(ctx, msg, promiseObj, outbound);
@@ -240,11 +236,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
         Plugin plugin = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
         if (plugin != null) {
-            if (plugin.getName().equalsIgnoreCase("ProtocolLib")
-                    || plugin.getName().equalsIgnoreCase("packetevents")) {
-                return null;
-            }
-            return plugin;
+            return PluginCallerResolver.isSharedPacketFramework(plugin) ? null : plugin;
         }
         return contextToPlugin.get(ctx);
     }
@@ -269,37 +261,17 @@ public final class NettyPipelinePatch extends ClassPatch {
                 || simpleName.equals("InboundPacketInterceptor");
     }
 
-    private HookedPlayer resolveHookedPlayer(Channel channel) {
-        HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(channel);
-        if (hookedPlayer != null) {
-            return hookedPlayer;
-        }
-        Player onlinePlayer = PlayerChannelResolver.findOnlinePlayerByChannel(channel);
-        if (onlinePlayer != null) {
-            hookedPlayer = playerRegistry.getPlayer(onlinePlayer);
-            if (hookedPlayer != null) {
-                PlayerChannelResolver.bindPlayerToChannel(onlinePlayer, hookedPlayer);
-                return hookedPlayer;
-            }
-        }
-        return null;
-    }
-
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {
-        if (outbound) {
-            if (msg instanceof ByteBuf buf && !buf.isReadable()) {
-                ReferenceCountUtil.safeRelease(msg);
-                if (promiseObj instanceof ChannelPromise promise) {
-                    promise.trySuccess();
-                }
-                return;
+        if ( msg instanceof ByteBuf buf && !buf.isReadable()) {
+            ReferenceCountUtil.safeRelease(msg);
+            if (outbound && promiseObj instanceof ChannelPromise promise) {
+                promise.trySuccess();
             }
+            return;
+        }
+        if (outbound) {
             ctx.write(msg, (ChannelPromise) promiseObj);
         } else {
-            if (msg instanceof ByteBuf buf && !buf.isReadable()) {
-                ReferenceCountUtil.safeRelease(msg);
-                return;
-            }
             ctx.fireChannelRead(msg);
         }
     }

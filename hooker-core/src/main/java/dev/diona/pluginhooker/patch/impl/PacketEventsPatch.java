@@ -31,7 +31,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -40,8 +39,8 @@ import java.util.WeakHashMap;
 import java.util.logging.Logger;
 
 /**
- * Hooks PacketEvents' {@code EventManager}, {@code PacketReceiveEvent}, and {@code PacketSendEvent}.
- * Supports both standalone PacketEvents and shaded/relocated PacketEvents instances.
+ * Hooks standalone PacketEvents' {@code EventManager}, {@code PacketReceiveEvent}, and {@code PacketSendEvent},
+ * as well as both standalone and shaded {@code ProtocolManager} active packet-sending methods.
  */
 @RequiredArgsConstructor
 public final class PacketEventsPatch extends ClassPatch {
@@ -71,23 +70,6 @@ public final class PacketEventsPatch extends ClassPatch {
             "PacketLoginSendEvent",
             "PacketConfigSendEvent"
     );
-
-    private static final ClassValue<Optional<MethodHandle>> GET_PLAYER_HANDLE = new ClassValue<>() {
-        @Override
-        protected Optional<MethodHandle> computeValue(Class<?> eventClass) {
-            try {
-                Method m = eventClass.getMethod("getPlayer");
-                m.setAccessible(true);
-                return Optional.of(
-                        MethodHandles.lookup()
-                                .unreflect(m)
-                                .asType(MethodType.methodType(Object.class, Object.class))
-                );
-            } catch (ReflectiveOperationException e) {
-                return Optional.empty();
-            }
-        }
-    };
 
     private static final ClassValue<Optional<MethodHandle>> UNWRAP_LISTENER_HANDLE = new ClassValue<>() {
         @Override
@@ -203,7 +185,7 @@ public final class PacketEventsPatch extends ClassPatch {
         if (owner == null) {
             owner = PluginCallerResolver.resolveCallerPlugin(pluginRegistry, selfClassLoader);
         }
-        if (owner != null && !owner.getName().equalsIgnoreCase("packetevents")) {
+        if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
             listenerToPlugin.put(listener, owner);
         }
     }
@@ -229,19 +211,13 @@ public final class PacketEventsPatch extends ClassPatch {
             }
         }
         if (hookedPlayer == null) {
-            Player onlinePlayer = PlayerChannelResolver.findOnlinePlayerByChannel(channel);
-            if (onlinePlayer != null) {
-                hookedPlayer = playerRegistry.getPlayer(onlinePlayer);
-                if (hookedPlayer != null) {
-                    PlayerChannelResolver.bindPlayerToChannel(onlinePlayer, hookedPlayer);
-                }
-            }
+            hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(channel, playerRegistry);
             if (hookedPlayer == null) {
                 return false;
             }
         }
         Plugin caller = pluginRegistry.getPluginByClassLoader(protocolManagerObj.getClass().getClassLoader());
-        if (caller == null || caller.getName().equalsIgnoreCase("packetevents")) {
+        if (caller == null || PluginCallerResolver.isSharedPacketFramework(caller)) {
             caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
         }
         if (caller != null && pluginRegistry.isHooked(caller) && !hookedPlayer.isPluginEnabled(caller)) {
@@ -310,7 +286,7 @@ public final class PacketEventsPatch extends ClassPatch {
      */
     private Plugin resolveListenerOwner(Object listener) {
         Plugin owner = pluginRegistry.getPluginByClassLoader(listener.getClass().getClassLoader());
-        if (owner != null && !owner.getName().equalsIgnoreCase("packetevents")) {
+        if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
             return owner;
         }
         Optional<MethodHandle> unwrapOpt = UNWRAP_LISTENER_HANDLE.get(listener.getClass());
@@ -319,7 +295,7 @@ public final class PacketEventsPatch extends ClassPatch {
                 Object inner = unwrapOpt.get().invokeExact(listener);
                 if (inner != null) {
                     Plugin innerOwner = pluginRegistry.getPluginByClassLoader(inner.getClass().getClassLoader());
-                    if (innerOwner != null && !innerOwner.getName().equalsIgnoreCase("packetevents")) {
+                    if (innerOwner != null && !PluginCallerResolver.isSharedPacketFramework(innerOwner)) {
                         return innerOwner;
                     }
                 }
@@ -342,39 +318,25 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     private HookedPlayer resolveHookedPlayer(Object event) {
-        if (event instanceof ProtocolPacketEvent ppe) {
-            if (ppe.getPlayer() instanceof Player p) {
-                HookedPlayer hp = playerRegistry.getPlayer(p);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            if (ppe.getChannel() instanceof Channel ch) {
-                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            User user = ppe.getUser();
-            if (user != null && user.getUUID() != null) {
-                return playerRegistry.getPlayer(user.getUUID());
-            }
+        if (!(event instanceof ProtocolPacketEvent ppe)) {
             return null;
         }
-        Player bukkitPlayer = extractPlayer(event);
-        return bukkitPlayer != null ? playerRegistry.getPlayer(bukkitPlayer) : null;
-    }
-
-    private static Player extractPlayer(Object event) {
-        Optional<MethodHandle> mhOpt = GET_PLAYER_HANDLE.get(event.getClass());
-        if (mhOpt.isEmpty()) {
-            return null;
+        if (ppe.getPlayer() instanceof Player p) {
+            HookedPlayer hp = playerRegistry.getPlayer(p);
+            if (hp != null) {
+                return hp;
+            }
         }
-        try {
-            Object playerObj = mhOpt.get().invokeExact(event);
-            return playerObj instanceof Player p ? p : null;
-        } catch (Throwable t) {
-            return null;
+        if (ppe.getChannel() instanceof Channel ch) {
+            HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+            if (hp != null) {
+                return hp;
+            }
         }
+        User user = ppe.getUser();
+        if (user != null && user.getUUID() != null) {
+            return playerRegistry.getPlayer(user.getUUID());
+        }
+        return null;
     }
 }
