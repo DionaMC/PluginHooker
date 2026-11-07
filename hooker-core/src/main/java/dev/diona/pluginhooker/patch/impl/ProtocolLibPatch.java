@@ -115,7 +115,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 String packetDesc = packetObj != null ? packetObj.toString() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
