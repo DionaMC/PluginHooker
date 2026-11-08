@@ -9,7 +9,7 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 * **Hook Bukkit 事件**：拦截 `RegisteredListener#callEvent`，结合无锁 `ClassValue` + `MethodHandle` 自动提取事件关联玩家。
 * **Hook Bukkit 玩家与实体查询 API**：支持在 `Bukkit.getOnlinePlayers()`、`Bukkit.matchPlayer()`、`Bukkit.getPlayer(...)`、`World#getPlayers()`、`World#getPlayersSeeingChunk(...)`、`World#getEntities()`、`World#getLivingEntities()`、`World#getEntitiesByClass(...)` 及 `getNearbyEntities(...)` 中对未启用的受控插件隐藏指定玩家。
 * **Hook Bukkit 与 NMS 玩家副作用 API**：阻断未启用的受控插件对玩家调用 `Player#kickPlayer` / `Player#kick(Component)`、`Bukkit.dispatchCommand`、`Player#teleport` / `Player#teleportAsync`、`Player#setVelocity`、`Player#sendMessage`、`Player.Spigot#sendMessage`、`Bukkit.broadcast` 以及直接调用 NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`。
-* **Hook NMS 连接生命周期**：直接插桩 `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>`，在服务端发出第一个 `JOIN_GAME` 包之前即完成玩家注册与 Netty `Channel` 绑定，通过 `channel.closeFuture()` 自动清理断线玩家，并对假人/Bot（如 `EmptyChannel`）实行 0 宽限期保护。
+* **Hook NMS 连接生命周期**：直接插桩 `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>`，在服务端发出第一个 `JOIN_GAME` 包之前即完成玩家注册、Netty `Channel` 绑定并触发 `PlayerHookRegisterEvent`，通过 `channel.closeFuture()` 自动清理断线玩家，并对假人/Bot（如 `EmptyChannel`）实行 0 宽限期保护。
 * **Hook Netty Pipeline 与通道关闭**：直接在 `AbstractChannelHandlerContext` 调用点拦截读写，完整支持 `addFirst`、`addLast`、`addBefore`、`addAfter`、`replace`，拦截未启用插件的底层 `ByteBuf` 直写，并拦截 `Channel#close` / `ChannelHandlerContext#close` 触发 `PlayerKickHookEvent`（防止反作弊直接关闭 Netty 连接踢人）。
 * **Hook ProtocolLib**：接管同步与 `AsyncListenerHandler` 异步双向数据包监听器，并拦截未启用插件主动调用 `sendServerPacket` / `receiveClientPacket` / `sendWirePacket`。
 * **Hook PacketEvents**：同时支持独立插件版与被其他插件打包（Shaded/Relocated）的 PacketEvents（涵盖 `EventManager`、`PacketReceiveEvent`、`PacketSendEvent` 及 `ProtocolManagerImpl#sendPacket` 主动发包拦截）。
@@ -39,7 +39,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.9")
+    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.10")
 }
 ```
 
@@ -54,7 +54,7 @@ dependencies {
 <dependency>
     <groupId>com.github.DionaMC.PluginHooker</groupId>
     <artifactId>hooker-api</artifactId>
-    <version>2.0.9</version>
+    <version>2.0.10</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -95,6 +95,7 @@ public class SandboxExample {
 
 ```java
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
+import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
 import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
 import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
@@ -102,6 +103,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
 public class ExampleHookListener implements Listener {
+
+    @EventHandler
+    public void onPlayerHookRegister(PlayerHookRegisterEvent event) {
+        // 在 PlayerConnection.<init> / ServerGamePacketListenerImpl.<init> 末尾、JOIN_GAME 发送前触发
+        // 可在此处提前启用玩家选中的插件，使其原生接收完整的进服数据包流
+    }
 
     @EventHandler
     public void onPlayerKickHook(PlayerKickHookEvent event) {

@@ -1,5 +1,6 @@
 package dev.diona.pluginhooker.patch.impl;
 
+import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
 import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
@@ -662,7 +663,10 @@ public final class BukkitApiPatch extends ClassPatch {
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
             if (bukkitPlayer != null) {
-                playerRegistry.registerPlayer(bukkitPlayer);
+                HookedPlayer hookedPlayer = playerRegistry.registerPlayer(bukkitPlayer);
+                if (hookedPlayer != null) {
+                    Bukkit.getPluginManager().callEvent(new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
+                }
             }
         } catch (Throwable ignored) {
         }
