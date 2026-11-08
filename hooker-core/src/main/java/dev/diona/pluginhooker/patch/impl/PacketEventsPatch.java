@@ -197,14 +197,15 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     private static MethodHandle findListenerInvoker(MethodHandles.Lookup lookup, Class<?> eventClass) {
-        String methodName = eventClass.getSimpleName().equals("PacketSendEvent")
-                ? "onPacketSend"
-                : "onPacketReceive";
         for (Method callMethod : eventClass.getMethods()) {
             if (callMethod.getName().equals("call") && callMethod.getParameterCount() == 1) {
+                Class<?> baseEventClass = callMethod.getDeclaringClass();
+                String methodName = baseEventClass.getSimpleName().equals("PacketSendEvent")
+                        ? "onPacketSend"
+                        : "onPacketReceive";
                 Class<?> listenerClass = callMethod.getParameterTypes()[0];
                 try {
-                    Method m = listenerClass.getDeclaredMethod(methodName, eventClass);
+                    Method m = listenerClass.getDeclaredMethod(methodName, baseEventClass);
                     m.setAccessible(true);
                     return lookup.unreflect(m).asType(MethodType.methodType(void.class, Object.class, Object.class));
                 } catch (ReflectiveOperationException ignored) {
