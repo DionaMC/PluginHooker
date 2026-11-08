@@ -8,11 +8,12 @@ PluginHooker is a per-player plugin sandbox for Bukkit/Spigot/Paper servers (1.8
 
 * **Hook Bukkit Events**: Per-player isolation at `RegisteredListener#callEvent` with lock-free `ClassValue` `MethodHandle` player extraction.
 * **Hook Bukkit Player & Entity Lookup APIs**: Hide disabled players from hooked plugins in `Bukkit.getOnlinePlayers()`, `Bukkit.matchPlayer()`, `Bukkit.getPlayer(...)`, `World#getPlayers()`, `World#getPlayersSeeingChunk(...)`, `World#getEntities()`, `World#getLivingEntities()`, `World#getEntitiesByClass(...)`, and `getNearbyEntities(...)`.
-* **Hook Bukkit Player Side-Effects**: Block disabled plugins from interfering with players via `Player#kickPlayer` / `Player#kick(Component)`, `Bukkit.dispatchCommand`, `Player#teleport` / `Player#teleportAsync`, `Player#setVelocity`, `Player#sendMessage`, `Player.Spigot#sendMessage`, and `Bukkit.broadcast`.
-* **Hook Netty Pipeline**: Direct context-level interception (`AbstractChannelHandlerContext`) supporting `addFirst`, `addLast`, `addBefore`, `addAfter`, and `replace` without replacing or breaking underlying handlers.
-* **Hook ProtocolLib**: Inbound & outbound `PacketListener` interception.
-* **Hook PacketEvents**: Supports both standalone and shaded/relocated PacketEvents instances.
-* **Whitelist & Blacklist Modes**: Configure each hooked plugin as default-disabled (`WHITELIST`) or default-enabled (`BLACKLIST`), with configurable post-join grace ticks (`join-grace-ticks`) for anticheat `PlayerData` initialization.
+* **Hook Bukkit & NMS Player Side-Effects**: Block disabled plugins from interfering with players via `Player#kickPlayer` / `Player#kick(Component)`, `Bukkit.dispatchCommand`, `Player#teleport` / `Player#teleportAsync`, `Player#setVelocity`, `Player#sendMessage`, `Player.Spigot#sendMessage`, `Bukkit.broadcast`, and direct NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`.
+* **Hook NMS Connection Lifecycle**: Hooks `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>` directly to bind the player's Netty `Channel` before the very first `JOIN_GAME` packet is sent, with automatic `channel.closeFuture()` cleanup and zero-grace protection for NPC / fake players (`EmptyChannel`).
+* **Hook Netty Pipeline & Channel Close**: Direct context-level interception (`AbstractChannelHandlerContext`) supporting `addFirst`, `addLast`, `addBefore`, `addAfter`, and `replace`, blocking raw `ByteBuf` writes from disabled plugins, and intercepting `Channel#close` / `ChannelHandlerContext#close` via `PlayerKickHookEvent`.
+* **Hook ProtocolLib**: Synchronous and `AsyncListenerHandler` inbound/outbound `PacketListener` interception, plus active `sendServerPacket` / `receiveClientPacket` / `sendWirePacket` blocking.
+* **Hook PacketEvents**: Supports both standalone and shaded/relocated PacketEvents instances (`EventManager`, `PacketReceiveEvent`, `PacketSendEvent`, and `ProtocolManagerImpl#sendPacket`).
+* **Whitelist & Blacklist Modes with Read-Only Join Grace**: Configure each hooked plugin as default-disabled (`WHITELIST`) or default-enabled (`BLACKLIST`), with configurable `join-grace-ticks` during which disabled plugins observe initial join packets in strict **read-only mode** (automatically reverting `setCancelled`, packet wrapper mutations, ProtocolLib `NetworkMarker` scheduled packets, and PacketEvents `postTasks` / `tasksAfterSend`).
 
 ## Requirements & Compatibility
 
@@ -38,7 +39,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.3")
+    compileOnly("com.github.DionaMC.PluginHooker:hooker-api:2.0.8")
 }
 ```
 
@@ -53,7 +54,7 @@ dependencies {
 <dependency>
     <groupId>com.github.DionaMC.PluginHooker</groupId>
     <artifactId>hooker-api</artifactId>
-    <version>2.0.3</version>
+    <version>2.0.8</version>
     <scope>provided</scope>
 </dependency>
 ```
