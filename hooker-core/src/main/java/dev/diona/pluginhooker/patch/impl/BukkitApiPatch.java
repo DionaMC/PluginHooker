@@ -650,7 +650,12 @@ public final class BukkitApiPatch extends ClassPatch {
         if (connectionObj == null) {
             return;
         }
-        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
+        Class<?> connClass = connectionObj.getClass();
+        String simpleName = connClass.getSimpleName();
+        if (!simpleName.equals("PlayerConnection") && !simpleName.equals("ServerGamePacketListenerImpl")) {
+            return;
+        }
+        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connClass);
         if (getterOpt.isEmpty()) {
             return;
         }

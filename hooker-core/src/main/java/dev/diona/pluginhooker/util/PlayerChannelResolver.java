@@ -37,12 +37,23 @@ public final class PlayerChannelResolver {
     }
 
     /**
+     * Returns true if the given channel is a real Netty network channel
+     * (not null and not a plugin dummy/embedded channel such as {@code EmptyChannel}).
+     */
+    public static boolean isRealNetworkChannel(Channel channel) {
+        if (channel == null) {
+            return false;
+        }
+        String className = channel.getClass().getName();
+        return className.startsWith("io.netty.") && !className.startsWith("io.netty.channel.embedded.");
+    }
+
+    /**
      * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup,
      * and registers a cleanup callback on the channel's close future.
      */
-    public static void bindPlayerToChannel(Player bukkitPlayer, HookedPlayer hookedPlayer, Runnable onChannelClose) {
-        Channel channel = getChannel(bukkitPlayer);
-        if (channel == null) {
+    public static void bindPlayerToChannel(Channel channel, HookedPlayer hookedPlayer, Runnable onChannelClose) {
+        if (!isRealNetworkChannel(channel)) {
             return;
         }
         HookedPlayer previous = channel.attr(HOOKED_PLAYER_KEY).getAndSet(hookedPlayer);

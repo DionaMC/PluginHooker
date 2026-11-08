@@ -31,7 +31,9 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return null;
         }
-        long graceMillis = config.getJoinGraceMillis();
+        Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
+        boolean realChannel = PlayerChannelResolver.isRealNetworkChannel(channel);
+        long graceMillis = realChannel ? config.getJoinGraceMillis() : 0L;
         UUID uuid = bukkitPlayer.getUniqueId();
         HookedPlayerImpl hookedPlayer = players.compute(uuid, (id, existing) -> {
             if (existing != null && existing.getBukkitPlayer() == bukkitPlayer) {
@@ -40,11 +42,13 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             }
             return new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis);
         });
-        PlayerChannelResolver.bindPlayerToChannel(
-                bukkitPlayer,
-                hookedPlayer,
-                () -> players.remove(uuid, hookedPlayer)
-        );
+        if (realChannel) {
+            PlayerChannelResolver.bindPlayerToChannel(
+                    channel,
+                    hookedPlayer,
+                    () -> players.remove(uuid, hookedPlayer)
+            );
+        }
         return hookedPlayer;
     }
 
@@ -73,7 +77,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return hookedPlayer;
         }
         Channel channel = PlayerChannelResolver.getChannel(player);
-        if (channel != null && channel.isOpen()) {
+        if (!PlayerChannelResolver.isRealNetworkChannel(channel) || channel.isOpen()) {
             return registerPlayer(player);
         }
         return null;
