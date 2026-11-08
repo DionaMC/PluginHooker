@@ -65,7 +65,7 @@ public final class PluginHookerAPI {
             return true;
         }
         HookedPlayer hookedPlayer = getPlayer(player);
-        return hookedPlayer == null || hookedPlayer.isPluginAllowed(plugin);
+        return hookedPlayer == null || hookedPlayer.isPluginEnabled(plugin);
     }
 
     private static Provider getProvider() {

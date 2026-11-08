@@ -5,6 +5,7 @@ import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
+import io.netty.channel.Channel;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -31,12 +32,17 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return null;
         }
         long graceMillis = config.getJoinGraceMillis();
+        UUID uuid = bukkitPlayer.getUniqueId();
         HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
-                bukkitPlayer.getUniqueId(),
+                uuid,
                 id -> new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis)
         );
         hookedPlayer.updateState(bukkitPlayer, graceMillis);
-        PlayerChannelResolver.bindPlayerToChannel(bukkitPlayer, hookedPlayer);
+        PlayerChannelResolver.bindPlayerToChannel(
+                bukkitPlayer,
+                hookedPlayer,
+                () -> players.remove(uuid, hookedPlayer)
+        );
         return hookedPlayer;
     }
 
@@ -60,7 +66,15 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (isInvalidOrTemporaryPlayer(player)) {
             return null;
         }
-        return players.get(player.getUniqueId());
+        HookedPlayerImpl hookedPlayer = players.get(player.getUniqueId());
+        if (hookedPlayer != null) {
+            return hookedPlayer;
+        }
+        Channel channel = PlayerChannelResolver.getChannel(player);
+        if (channel != null && channel.isOpen()) {
+            return registerPlayer(player);
+        }
+        return null;
     }
 
     @Override

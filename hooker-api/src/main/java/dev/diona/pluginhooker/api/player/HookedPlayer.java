@@ -55,18 +55,7 @@ public interface HookedPlayer {
     void resetPlugin(Plugin plugin);
 
     /**
-     * Checks whether the specified plugin is currently allowed to process events/packets
-     * for this player (accounting for whether the plugin is hooked, join grace period,
-     * and per-player overrides).
-     *
-     * @param plugin the plugin to check
-     * @return true if allowed, false if blocked by the sandbox
-     */
-    boolean isPluginAllowed(Plugin plugin);
-
-    /**
-     * Checks whether the specified hooked plugin is active for this player
-     * (ignoring the temporary join grace period).
+     * Checks whether the specified hooked plugin is active for this player.
      *
      * @param plugin the hooked plugin
      * @return true if active for this player

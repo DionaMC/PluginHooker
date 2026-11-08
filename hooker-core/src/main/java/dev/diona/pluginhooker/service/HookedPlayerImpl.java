@@ -82,17 +82,6 @@ public final class HookedPlayerImpl implements HookedPlayer {
     }
 
     @Override
-    public boolean isPluginAllowed(Plugin plugin) {
-        if (plugin == null || !pluginRegistry.isHooked(plugin)) {
-            return true;
-        }
-        if (isInJoinGracePeriod()) {
-            return true;
-        }
-        return isPluginEnabled(plugin);
-    }
-
-    @Override
     public boolean isPluginEnabled(Plugin plugin) {
         HookMode mode = pluginRegistry.getHookMode(plugin);
         if (mode == null) {

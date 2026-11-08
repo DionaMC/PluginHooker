@@ -37,12 +37,17 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup.
+     * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup,
+     * and registers a cleanup callback on the channel's close future.
      */
-    public static void bindPlayerToChannel(Player bukkitPlayer, HookedPlayer hookedPlayer) {
+    public static void bindPlayerToChannel(Player bukkitPlayer, HookedPlayer hookedPlayer, Runnable onChannelClose) {
         Channel channel = getChannel(bukkitPlayer);
-        if (channel != null) {
-            channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
+        if (channel == null) {
+            return;
+        }
+        HookedPlayer previous = channel.attr(HOOKED_PLAYER_KEY).getAndSet(hookedPlayer);
+        if (previous == null && onChannelClose != null) {
+            channel.closeFuture().addListener(future -> onChannelClose.run());
         }
     }
 

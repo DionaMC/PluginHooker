@@ -602,7 +602,7 @@ public final class BukkitApiPatch extends ClassPatch {
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-            if (hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller)) {
+            if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
                 if (config.isDebug()) {
                     String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                     logger.info("[Debug] Blocked " + caller.getName()
@@ -664,7 +664,7 @@ public final class BukkitApiPatch extends ClassPatch {
         }
 
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller) && !hookedPlayer.isInJoinGracePeriod()) {
             return null;
         }
         return returnValue;
@@ -686,7 +686,7 @@ public final class BukkitApiPatch extends ClassPatch {
         for (Object element : rawCollection) {
             if (element instanceof Player player) {
                 HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-                if (hookedPlayer != null && !hookedPlayer.isPluginAllowed(caller)) {
+                if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller) && !hookedPlayer.isInJoinGracePeriod()) {
                     continue;
                 }
             }
@@ -699,7 +699,7 @@ public final class BukkitApiPatch extends ClassPatch {
         List<Player> filtered = new ArrayList<>(original.size());
         for (Player player : original) {
             HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-            if (hookedPlayer == null || hookedPlayer.isPluginAllowed(caller)) {
+            if (hookedPlayer == null || hookedPlayer.isPluginEnabled(caller) || hookedPlayer.isInJoinGracePeriod()) {
                 filtered.add(player);
             }
         }

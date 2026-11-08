@@ -182,7 +182,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from writing raw ByteBuf (" + buf.readableBytes() + " bytes)"
@@ -253,7 +253,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             if (plugin != null && pluginRegistry.isHooked(plugin)) {
                 HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
                 if (hookedPlayer != null) {
-                    if (!hookedPlayer.isPluginAllowed(plugin)) {
+                    if (!hookedPlayer.isPluginEnabled(plugin)) {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
                     }

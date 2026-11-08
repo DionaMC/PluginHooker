@@ -2,9 +2,11 @@ package dev.diona.pluginhooker.patch.impl;
 
 import com.github.retrooper.packetevents.event.PacketEvent;
 import com.github.retrooper.packetevents.event.PacketListenerCommon;
+import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
 import com.github.retrooper.packetevents.manager.protocol.ProtocolManager;
 import com.github.retrooper.packetevents.protocol.player.User;
+import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import dev.diona.pluginhooker.api.event.PacketEventsHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
@@ -33,6 +35,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -75,7 +78,18 @@ public final class PacketEventsPatch extends ClassPatch {
     private record ShadedEventAccessors(
             MethodHandle getPlayer,
             MethodHandle getChannel,
-            MethodHandle getUser
+            MethodHandle getUser,
+            MethodHandle isCancelled,
+            MethodHandle setCancelled,
+            MethodHandle needsReEncode,
+            MethodHandle markForReEncode,
+            MethodHandle getLastUsedWrapper,
+            MethodHandle setLastUsedWrapper,
+            MethodHandle hasPostTasks,
+            MethodHandle getPostTasks,
+            MethodHandle hasTasksAfterSend,
+            MethodHandle getTasksAfterSend,
+            MethodHandle invokeListener
     ) {
     }
 
@@ -103,7 +117,18 @@ public final class PacketEventsPatch extends ClassPatch {
             return new ShadedEventAccessors(
                     findNoArgGetter(lookup, eventClass, "getPlayer"),
                     findNoArgGetter(lookup, eventClass, "getChannel"),
-                    findNoArgGetter(lookup, eventClass, "getUser")
+                    findNoArgGetter(lookup, eventClass, "getUser"),
+                    findBooleanGetter(lookup, eventClass, "isCancelled"),
+                    findBooleanSetter(lookup, eventClass, "setCancelled"),
+                    findBooleanGetter(lookup, eventClass, "needsReEncode"),
+                    findBooleanSetter(lookup, eventClass, "markForReEncode"),
+                    findNoArgGetter(lookup, eventClass, "getLastUsedWrapper"),
+                    findOneArgSetter(lookup, eventClass, "setLastUsedWrapper"),
+                    findBooleanGetter(lookup, eventClass, "hasPostTasks"),
+                    findListGetter(lookup, eventClass, "getPostTasks"),
+                    findBooleanGetter(lookup, eventClass, "hasTasksAfterSend"),
+                    findListGetter(lookup, eventClass, "getTasksAfterSend"),
+                    findListenerInvoker(lookup, eventClass)
             );
         }
     };
@@ -123,6 +148,70 @@ public final class PacketEventsPatch extends ClassPatch {
         } catch (ReflectiveOperationException e) {
             return null;
         }
+    }
+
+    private static MethodHandle findBooleanGetter(MethodHandles.Lookup lookup, Class<?> clazz, String name) {
+        try {
+            Method m = clazz.getMethod(name);
+            m.setAccessible(true);
+            return lookup.unreflect(m).asType(MethodType.methodType(boolean.class, Object.class));
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
+    private static MethodHandle findBooleanSetter(MethodHandles.Lookup lookup, Class<?> clazz, String name) {
+        try {
+            Method m = clazz.getMethod(name, boolean.class);
+            m.setAccessible(true);
+            return lookup.unreflect(m).asType(MethodType.methodType(void.class, Object.class, boolean.class));
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
+    private static MethodHandle findOneArgSetter(MethodHandles.Lookup lookup, Class<?> clazz, String name) {
+        for (Method m : clazz.getMethods()) {
+            if (m.getName().equals(name) && m.getParameterCount() == 1) {
+                try {
+                    m.setAccessible(true);
+                    return lookup.unreflect(m).asType(MethodType.methodType(void.class, Object.class, Object.class));
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static MethodHandle findListGetter(MethodHandles.Lookup lookup, Class<?> clazz, String name) {
+        try {
+            Method m = clazz.getMethod(name);
+            if (List.class.isAssignableFrom(m.getReturnType())) {
+                m.setAccessible(true);
+                return lookup.unreflect(m).asType(MethodType.methodType(List.class, Object.class));
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return null;
+    }
+
+    private static MethodHandle findListenerInvoker(MethodHandles.Lookup lookup, Class<?> eventClass) {
+        String methodName = eventClass.getSimpleName().equals("PacketSendEvent")
+                ? "onPacketSend"
+                : "onPacketReceive";
+        for (Method callMethod : eventClass.getMethods()) {
+            if (callMethod.getName().equals("call") && callMethod.getParameterCount() == 1) {
+                Class<?> listenerClass = callMethod.getParameterTypes()[0];
+                try {
+                    Method m = listenerClass.getDeclaredMethod(methodName, eventClass);
+                    m.setAccessible(true);
+                    return lookup.unreflect(m).asType(MethodType.methodType(void.class, Object.class, Object.class));
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return null;
     }
 
     private final Logger logger;
@@ -253,7 +342,7 @@ public final class PacketEventsPatch extends ClassPatch {
             }
         }
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -293,7 +382,10 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
 
-        if (!hookedPlayer.isPluginAllowed(plugin)) {
+        if (!hookedPlayer.isPluginEnabled(plugin)) {
+            if (hookedPlayer.isInJoinGracePeriod()) {
+                invokeReadOnlyListener(listener, event, outbound);
+            }
             return true;
         }
 
@@ -311,6 +403,102 @@ public final class PacketEventsPatch extends ClassPatch {
             return hookEvent.isCancelled();
         }
         return false;
+    }
+
+    /**
+     * Executes a disabled plugin's PacketEvents listener in read-only mode during the join grace period
+     * so it can observe join initialization packets without cancelling, re-encoding, or queuing post-send tasks.
+     */
+    @SuppressWarnings("rawtypes")
+    private static void invokeReadOnlyListener(Object listener, Object event, boolean outbound) {
+        if (event instanceof ProtocolPacketEvent ppe && listener instanceof PacketListenerCommon) {
+            MethodHandle invoker = SHADED_EVENT_ACCESSORS.get(event.getClass()).invokeListener();
+            if (invoker == null) {
+                return;
+            }
+            boolean wasCancelled = ppe.isCancelled();
+            boolean wasNeedsReEncode = ppe.needsReEncode();
+            PacketWrapper<?> prevWrapper = ppe.getLastUsedWrapper();
+            int prevPostTasksSize = ppe.hasPostTasks() ? ppe.getPostTasks().size() : 0;
+            PacketSendEvent pse = outbound && event instanceof PacketSendEvent s ? s : null;
+            int prevAfterSendSize = pse != null && pse.hasTasksAfterSend() ? pse.getTasksAfterSend().size() : 0;
+            try {
+                invoker.invokeExact(listener, event);
+            } catch (Throwable ignored) {
+            } finally {
+                if (ppe.isCancelled() != wasCancelled) {
+                    ppe.setCancelled(wasCancelled);
+                }
+                ppe.setLastUsedWrapper(prevWrapper);
+                ppe.markForReEncode(wasNeedsReEncode);
+                if (ppe.hasPostTasks()) {
+                    trimList(ppe.getPostTasks(), prevPostTasksSize);
+                }
+                if (pse != null && pse.hasTasksAfterSend()) {
+                    trimList(pse.getTasksAfterSend(), prevAfterSendSize);
+                }
+            }
+            return;
+        }
+
+        ShadedEventAccessors acc = SHADED_EVENT_ACCESSORS.get(event.getClass());
+        if (acc.invokeListener() == null) {
+            return;
+        }
+        try {
+            boolean wasCancelled = acc.isCancelled() != null && (boolean) acc.isCancelled().invokeExact(event);
+            boolean wasNeedsReEncode = acc.needsReEncode() != null && (boolean) acc.needsReEncode().invokeExact(event);
+            Object prevWrapper = acc.getLastUsedWrapper() != null ? acc.getLastUsedWrapper().invokeExact(event) : null;
+            int prevPostTasksSize = acc.hasPostTasks() != null
+                    && acc.getPostTasks() != null
+                    && (boolean) acc.hasPostTasks().invokeExact(event)
+                    ? ((List) acc.getPostTasks().invokeExact(event)).size()
+                    : 0;
+            int prevAfterSendSize = outbound
+                    && acc.hasTasksAfterSend() != null
+                    && acc.getTasksAfterSend() != null
+                    && (boolean) acc.hasTasksAfterSend().invokeExact(event)
+                    ? ((List) acc.getTasksAfterSend().invokeExact(event)).size()
+                    : 0;
+            try {
+                acc.invokeListener().invokeExact(listener, event);
+            } catch (Throwable ignored) {
+            } finally {
+                if (acc.isCancelled() != null && acc.setCancelled() != null) {
+                    boolean nowCancelled = (boolean) acc.isCancelled().invokeExact(event);
+                    if (nowCancelled != wasCancelled) {
+                        acc.setCancelled().invokeExact(event, wasCancelled);
+                    }
+                }
+                if (acc.setLastUsedWrapper() != null) {
+                    acc.setLastUsedWrapper().invokeExact(event, prevWrapper);
+                }
+                if (acc.markForReEncode() != null) {
+                    acc.markForReEncode().invokeExact(event, wasNeedsReEncode);
+                }
+                if (acc.hasPostTasks() != null
+                        && acc.getPostTasks() != null
+                        && (boolean) acc.hasPostTasks().invokeExact(event)) {
+                    trimList((List) acc.getPostTasks().invokeExact(event), prevPostTasksSize);
+                }
+                if (outbound
+                        && acc.hasTasksAfterSend() != null
+                        && acc.getTasksAfterSend() != null
+                        && (boolean) acc.hasTasksAfterSend().invokeExact(event)) {
+                    trimList((List) acc.getTasksAfterSend().invokeExact(event), prevAfterSendSize);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void trimList(List<?> list, int targetSize) {
+        if (list == null) {
+            return;
+        }
+        while (list.size() > targetSize) {
+            list.remove(list.size() - 1);
+        }
     }
 
     /**

@@ -1,7 +1,10 @@
 package dev.diona.pluginhooker.patch.impl;
 
+import com.comphenix.protocol.events.NetworkMarker;
+import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
+import com.comphenix.protocol.events.ScheduledPacket;
 import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
@@ -20,6 +23,7 @@ import org.bukkit.plugin.Plugin;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.constant.ClassDesc;
+import java.util.Deque;
 import java.util.logging.Logger;
 
 /**
@@ -115,7 +119,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginAllowed(caller)) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 String packetDesc = packetObj != null ? packetObj.toString() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -152,7 +156,10 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
 
-        if (!hookedPlayer.isPluginAllowed(plugin)) {
+        if (!hookedPlayer.isPluginEnabled(plugin)) {
+            if (hookedPlayer.isInJoinGracePeriod()) {
+                invokeReadOnlyListener(event, listener, outbound);
+            }
             return true;
         }
 
@@ -168,5 +175,71 @@ public final class ProtocolLibPatch extends ClassPatch {
             return hookEvent.isCancelled();
         }
         return false;
+    }
+
+    /**
+     * Executes a disabled plugin's listener in read-only mode during the join grace period so it can
+     * observe join initialization packets without cancelling, replacing, or scheduling packets.
+     */
+    private static void invokeReadOnlyListener(PacketEvent event, PacketListener listener, boolean outbound) {
+        boolean wasCancelled = event.isCancelled();
+        boolean wasReadOnly = event.isReadOnly();
+        PacketContainer prevPacket = event.getPacket();
+        NetworkMarker prevMarker = NetworkMarker.getNetworkMarker(event);
+        Deque<ScheduledPacket> prevScheduled = prevMarker != null
+                ? NetworkMarker.readScheduledPackets(prevMarker)
+                : null;
+        int prevScheduledSize = prevScheduled != null ? prevScheduled.size() : 0;
+        int prevPostListenersSize = NetworkMarker.hasPostListeners(prevMarker)
+                ? prevMarker.getPostListeners().size()
+                : 0;
+        try {
+            if (outbound) {
+                listener.onPacketSending(event);
+            } else {
+                listener.onPacketReceiving(event);
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            event.setReadOnly(false);
+            if (event.isCancelled() != wasCancelled) {
+                event.setCancelled(wasCancelled);
+            }
+            if (prevPacket != null && event.getPacket() != prevPacket) {
+                event.setPacket(prevPacket);
+            }
+            event.setReadOnly(wasReadOnly);
+            revertNetworkMarker(event, prevMarker, prevScheduled, prevScheduledSize, prevPostListenersSize);
+        }
+    }
+
+    private static void revertNetworkMarker(
+            PacketEvent event,
+            NetworkMarker prevMarker,
+            Deque<ScheduledPacket> prevScheduled,
+            int prevScheduledSize,
+            int prevPostListenersSize
+    ) {
+        NetworkMarker currentMarker = NetworkMarker.getNetworkMarker(event);
+        if (currentMarker == null) {
+            return;
+        }
+        if (prevMarker == null) {
+            event.setNetworkMarker(null);
+            return;
+        }
+        Deque<ScheduledPacket> currentScheduled = NetworkMarker.readScheduledPackets(currentMarker);
+        if (currentScheduled != null) {
+            if (prevScheduled == null) {
+                currentScheduled.clear();
+            } else {
+                while (currentScheduled.size() > prevScheduledSize) {
+                    currentScheduled.removeLast();
+                }
+            }
+        }
+        if (prevPostListenersSize == 0 && NetworkMarker.hasPostListeners(currentMarker)) {
+            currentMarker.getPostListeners().clear();
+        }
     }
 }
