@@ -33,6 +33,7 @@ public final class HookIds {
     public static final int NOTIFY_NETTY_HANDLER_ADD = 201;
     public static final int NOTIFY_PACKETEVENTS_REGISTER = 202;
     public static final int NOTIFY_PACKETEVENTS_UNREGISTER = 203;
+    public static final int NOTIFY_NMS_PLAYER_CONNECTION_INIT = 204;
 
     private HookIds() {
     }

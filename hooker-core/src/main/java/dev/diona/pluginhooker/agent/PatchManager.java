@@ -174,6 +174,7 @@ public final class PatchManager {
             case HookIds.NOTIFY_NETTY_HANDLER_ADD -> nettyPipelinePatch.handlePipelineAdd(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_REGISTER -> packetEventsPatch.handleListenerRegister(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER -> packetEventsPatch.handleListenerUnregister(arg0);
+            case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> bukkitApiPatch.handleNmsConnectionInit(arg0);
             default -> {
             }
         }

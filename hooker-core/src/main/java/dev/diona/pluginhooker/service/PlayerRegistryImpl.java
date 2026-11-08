@@ -33,11 +33,13 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         }
         long graceMillis = config.getJoinGraceMillis();
         UUID uuid = bukkitPlayer.getUniqueId();
-        HookedPlayerImpl hookedPlayer = players.computeIfAbsent(
-                uuid,
-                id -> new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis)
-        );
-        hookedPlayer.updateState(bukkitPlayer, graceMillis);
+        HookedPlayerImpl hookedPlayer = players.compute(uuid, (id, existing) -> {
+            if (existing != null && existing.getBukkitPlayer() == bukkitPlayer) {
+                existing.updateState(bukkitPlayer, graceMillis);
+                return existing;
+            }
+            return new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis);
+        });
         PlayerChannelResolver.bindPlayerToChannel(
                 bukkitPlayer,
                 hookedPlayer,

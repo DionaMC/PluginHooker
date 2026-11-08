@@ -128,7 +128,8 @@ public final class BukkitApiPatch extends ClassPatch {
     public boolean matchesClass(String internalClassName) {
         if (internalClassName.startsWith("net/minecraft/server/")) {
             return internalClassName.endsWith("/PlayerConnection")
-                    || internalClassName.equals("net/minecraft/server/network/ServerCommonPacketListenerImpl");
+                    || internalClassName.equals("net/minecraft/server/network/ServerCommonPacketListenerImpl")
+                    || internalClassName.equals("net/minecraft/server/network/ServerGamePacketListenerImpl");
         }
         if (!internalClassName.startsWith("org/bukkit/craftbukkit/")) {
             return false;
@@ -368,24 +369,52 @@ public final class BukkitApiPatch extends ClassPatch {
 
     private ClassTransform createNmsPlayerConnectionTransform(String internalClassName) {
         boolean isModernCommon = internalClassName.endsWith("/ServerCommonPacketListenerImpl");
-        return ClassTransform.transformingMethodBodies(
+        boolean isGameConnection = internalClassName.endsWith("/PlayerConnection")
+                || internalClassName.endsWith("/ServerGamePacketListenerImpl");
+
+        return ClassTransform.transformingMethods(
                 method -> {
                     String name = method.methodName().stringValue();
                     var mtd = method.methodTypeSymbol();
                     if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
                         return false;
                     }
+                    if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
+                        return true;
+                    }
                     if (isModernCommon) {
                         return name.equals("send") && mtd.parameterCount() == 2;
                     }
-                    return name.equals("sendPacket") && mtd.parameterCount() == 1;
+                    return (name.equals("sendPacket") || name.equals("send"))
+                            && (mtd.parameterCount() == 1 || mtd.parameterCount() == 2);
                 },
-                CodeTransforms.guardVoidEntry(
-                        HookIds.GUARD_NMS_SEND_PACKET,
-                        ArgSpec.thisRef(),
-                        ArgSpec.param(0),
-                        ArgSpec.nullConst()
-                )
+                (mb, element) -> {
+                    if (element instanceof CodeModel codeModel) {
+                        String name = codeModel.parent().map(m -> m.methodName().stringValue()).orElse("");
+                        if (name.equals(ConstantDescs.INIT_NAME)) {
+                            mb.transformCode(
+                                    codeModel,
+                                    CodeTransforms.notifyBeforeReturn(
+                                            HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT,
+                                            ArgSpec.thisRef(),
+                                            ArgSpec.nullConst()
+                                    )
+                            );
+                        } else {
+                            mb.transformCode(
+                                    codeModel,
+                                    CodeTransforms.guardVoidEntry(
+                                            HookIds.GUARD_NMS_SEND_PACKET,
+                                            ArgSpec.thisRef(),
+                                            ArgSpec.param(0),
+                                            ArgSpec.nullConst()
+                                    )
+                            );
+                        }
+                    } else {
+                        mb.with(element);
+                    }
+                }
         );
     }
 
@@ -614,6 +643,23 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    public void handleNmsConnectionInit(Object connectionObj) {
+        if (connectionObj == null) {
+            return;
+        }
+        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
+        if (getterOpt.isEmpty()) {
+            return;
+        }
+        try {
+            Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
+            if (bukkitPlayer != null) {
+                playerRegistry.registerPlayer(bukkitPlayer);
+            }
+        } catch (Throwable ignored) {
         }
     }
 

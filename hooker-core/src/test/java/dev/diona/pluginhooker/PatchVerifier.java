@@ -74,6 +74,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/entity/CraftPlayer$2",
             "org/bukkit/craftbukkit/entity/CraftEntity",
             "net/minecraft/server/network/ServerCommonPacketListenerImpl",
+            "net/minecraft/server/network/ServerGamePacketListenerImpl",
             "io/netty/channel/DefaultChannelPipeline",
             "io/netty/channel/AbstractChannelHandlerContext"
     );

@@ -72,7 +72,7 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
         }
 
         Bukkit.getPluginManager().registerEvents(
-                new PlayerConnectionListener(this.playerRegistry, this.pluginRegistry),
+                new PlayerConnectionListener(this.pluginRegistry),
                 this
         );
     }
