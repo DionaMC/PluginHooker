@@ -67,6 +67,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/v1_8_R3/CraftWorld",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftPlayer$1",
+            "org/bukkit/craftbukkit/v1_8_R3/entity/CraftHumanEntity",
             "org/bukkit/craftbukkit/v1_8_R3/entity/CraftEntity",
             "net/minecraft/server/v1_8_R3/PlayerConnection",
             "io/netty/channel/DefaultChannelPipeline",
@@ -88,6 +89,7 @@ public final class PatchVerifier {
             "org/bukkit/craftbukkit/CraftRegionAccessor",
             "org/bukkit/craftbukkit/entity/CraftPlayer",
             "org/bukkit/craftbukkit/entity/CraftPlayer$2",
+            "org/bukkit/craftbukkit/entity/CraftHumanEntity",
             "org/bukkit/craftbukkit/entity/CraftEntity",
             "net/minecraft/server/network/ServerCommonPacketListenerImpl",
             "net/minecraft/server/network/ServerGamePacketListenerImpl",
@@ -474,6 +476,55 @@ public final class PatchVerifier {
                 }
                 config.bukkitApi().setHideFromEntityLists(false);
 
+                // 8. Command target disambiguation (subcommand keyword collision + UUID) & closeInventory guard
+                org.bukkit.entity.Player subcmdNamedPlayer = createStubBukkitPlayer(java.util.UUID.randomUUID(), "kick");
+                playerRegistry.registerPlayer(subcmdNamedPlayer); // disabled for mockPlugin
+
+                // "ac kick EnabledPlayer Hacking" must target EnabledPlayer (allowed), NOT disabled player "kick"
+                java.util.function.Supplier<Boolean> cmdTargetingEnabled = () -> dev.diona.pluginhooker.bridge.HookBridge.checkGuard(
+                        dev.diona.pluginhooker.patch.HookIds.GUARD_DISPATCH_COMMAND,
+                        enabledPlayer,
+                        "ac kick EnabledPlayer Hacking",
+                        null
+                );
+                if ((Boolean) actorClass.getMethod("callViaAdventureWrapper", java.util.function.Supplier.class).invoke(null, cmdTargetingEnabled)) {
+                    throw new AssertionError("Subcommand keyword 'kick' falsely matched disabled player 'kick' instead of 'EnabledPlayer'");
+                }
+
+                // "kick kick Hacking" (where 'kick' really is the target) must target disabled player "kick" (blocked)
+                java.util.function.Supplier<Boolean> cmdTargetingKickUser = () -> dev.diona.pluginhooker.bridge.HookBridge.checkGuard(
+                        dev.diona.pluginhooker.patch.HookIds.GUARD_DISPATCH_COMMAND,
+                        enabledPlayer,
+                        "kick kick Hacking",
+                        null
+                );
+                if (!(Boolean) actorClass.getMethod("callViaAdventureWrapper", java.util.function.Supplier.class).invoke(null, cmdTargetingKickUser)) {
+                    throw new AssertionError("Command 'kick kick Hacking' failed to block targeting disabled player 'kick'");
+                }
+
+                // UUID command targeting disabled player must also be blocked
+                java.util.function.Supplier<Boolean> cmdTargetingUuid = () -> dev.diona.pluginhooker.bridge.HookBridge.checkGuard(
+                        dev.diona.pluginhooker.patch.HookIds.GUARD_DISPATCH_COMMAND,
+                        enabledPlayer,
+                        "litebans:ban -s " + mockUuid + " Cheating",
+                        null
+                );
+                if (!(Boolean) actorClass.getMethod("callViaAdventureWrapper", java.util.function.Supplier.class).invoke(null, cmdTargetingUuid)) {
+                    throw new AssertionError("UUID command targeting disabled player was not blocked");
+                }
+
+                // closeInventory guard must block disabled player and allow enabled player
+                java.util.function.Supplier<Boolean> closeInvDisabled = () -> dev.diona.pluginhooker.bridge.HookBridge.checkGuard(
+                        dev.diona.pluginhooker.patch.HookIds.GUARD_PLAYER_CLOSE_INVENTORY,
+                        mockBukkitPlayer,
+                        null,
+                        null
+                );
+                if (!(Boolean) actorClass.getMethod("callViaAdventureWrapper", java.util.function.Supplier.class).invoke(null, closeInvDisabled)) {
+                    throw new AssertionError("closeInventory on disabled player was not blocked");
+                }
+
+                playerRegistry.unregisterPlayer(subcmdNamedPlayer);
                 playerRegistry.unregisterPlayer(enabledPlayer);
                 playerRegistry.unregisterPlayer(mockBukkitPlayer);
             } finally {

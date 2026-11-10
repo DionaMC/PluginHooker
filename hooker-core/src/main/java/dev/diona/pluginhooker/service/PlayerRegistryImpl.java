@@ -12,6 +12,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PlayerRegistryImpl implements PlayerRegistry {
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
+    private final Map<String, HookedPlayerImpl> playersByLowerName = new ConcurrentHashMap<>();
     private final PluginRegistry pluginRegistry;
     private final HookConfig config;
 
@@ -45,11 +47,21 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             }
             return new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis);
         });
+        String name = bukkitPlayer.getName();
+        if (name != null && !name.isEmpty()) {
+            playersByLowerName.put(name.toLowerCase(Locale.ROOT), hookedPlayer);
+        }
         if (realChannel) {
             PlayerChannelResolver.bindPlayerToChannel(
                     channel,
                     hookedPlayer,
-                    closedPlayer -> players.remove(uuid, closedPlayer)
+                    closedPlayer -> {
+                        players.remove(uuid, closedPlayer);
+                        String closedName = closedPlayer.getName();
+                        if (closedName != null) {
+                            playersByLowerName.remove(closedName.toLowerCase(Locale.ROOT), closedPlayer);
+                        }
+                    }
             );
         }
         return hookedPlayer;
@@ -60,8 +72,23 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return;
         }
-        players.remove(bukkitPlayer.getUniqueId());
+        HookedPlayerImpl removed = players.remove(bukkitPlayer.getUniqueId());
+        String name = bukkitPlayer.getName();
+        if (name != null) {
+            if (removed != null) {
+                playersByLowerName.remove(name.toLowerCase(Locale.ROOT), removed);
+            } else {
+                playersByLowerName.remove(name.toLowerCase(Locale.ROOT));
+            }
+        }
         PlayerChannelResolver.unbindPlayerFromChannel(bukkitPlayer);
+    }
+
+    public HookedPlayer getPlayerByName(String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+        return playersByLowerName.get(name.toLowerCase(Locale.ROOT));
     }
 
     public void clearPluginFromAllPlayers(Plugin plugin) {

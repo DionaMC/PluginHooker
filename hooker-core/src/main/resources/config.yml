@@ -46,8 +46,10 @@ hook:
     block-disabled-teleport: true
     # Block disabled plugins from modifying player velocity via Player#setVelocity
     block-disabled-velocity: true
-    # Block disabled plugins from sending messages or broadcasts to disabled players via Player#sendMessage
+    # Block disabled plugins from sending messages, action bars, titles, or broadcasts to disabled players
     block-disabled-send-message: true
+    # Block disabled plugins from closing open inventories on disabled players via HumanEntity#closeInventory
+    block-disabled-close-inventory: true
 
   protocollib:
     # Hook ProtocolLib InboundPacketListenerSet & OutboundPacketListenerSet

@@ -68,6 +68,7 @@ public final class HookConfig {
             this.bukkitApi.blockDisabledTeleport = yaml.getBoolean("hook.bukkit-api.block-disabled-teleport", true);
             this.bukkitApi.blockDisabledVelocity = yaml.getBoolean("hook.bukkit-api.block-disabled-velocity", true);
             this.bukkitApi.blockDisabledSendMessage = yaml.getBoolean("hook.bukkit-api.block-disabled-send-message", true);
+            this.bukkitApi.blockDisabledCloseInventory = yaml.getBoolean("hook.bukkit-api.block-disabled-close-inventory", true);
 
             this.protocolLib.enabled = yaml.getBoolean("hook.protocollib.enabled", true);
             this.protocolLib.callEvent = yaml.getBoolean("hook.protocollib.call-event", false);
@@ -109,6 +110,7 @@ public final class HookConfig {
         private boolean blockDisabledTeleport = true;
         private boolean blockDisabledVelocity = true;
         private boolean blockDisabledSendMessage = true;
+        private boolean blockDisabledCloseInventory = true;
     }
 
     @Getter

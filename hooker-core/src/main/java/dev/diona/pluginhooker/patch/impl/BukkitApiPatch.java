@@ -34,9 +34,11 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.RandomAccess;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
 
@@ -64,6 +66,26 @@ public final class BukkitApiPatch extends ClassPatch {
             "getEntitiesByClass",
             "getEntitiesByClasses",
             "getNearbyEntities"
+    );
+
+    private static final Set<String> PLAYER_HUD_MESSAGE_METHODS = Set.of(
+            "sendMessage",
+            "sendActionBar",
+            "sendTitle",
+            "showTitle",
+            "sendTitlePart",
+            "setSubtitle",
+            "updateTitle",
+            "resetTitle",
+            "clearTitle",
+            "hideTitle"
+    );
+
+    private static final Set<String> COMMON_SUBCOMMAND_KEYWORDS = Set.of(
+            "kick", "ban", "tempban", "ipban", "warn", "mute", "tempmute", "unban", "unmute",
+            "punish", "kill", "tp", "teleport", "give", "take", "add", "remove", "set", "reset",
+            "clear", "alert", "alerts", "verbose", "notify", "flag", "send", "msg", "tell",
+            "title", "actionbar", "effect", "smite", "freeze", "player", "user"
     );
 
     private static final ClassValue<Optional<MethodHandle>> REASON_STRING_EXTRACTOR = new ClassValue<>() {
@@ -195,6 +217,7 @@ public final class BukkitApiPatch extends ClassPatch {
                 || internalClassName.endsWith("/CraftRegionAccessor")
                 || internalClassName.endsWith("/entity/CraftPlayer")
                 || isAnonymousInnerClass(internalClassName, "/entity/CraftPlayer$")
+                || internalClassName.endsWith("/entity/CraftHumanEntity")
                 || internalClassName.endsWith("/entity/CraftEntity");
     }
 
@@ -223,6 +246,9 @@ public final class BukkitApiPatch extends ClassPatch {
         }
         if (internalClassName.contains("/entity/CraftPlayer$")) {
             return createCraftPlayerSpigotTransform(internalClassName, classModel);
+        }
+        if (internalClassName.endsWith("/entity/CraftHumanEntity")) {
+            return createCraftHumanEntityTransform();
         }
         return createCraftEntityTransform();
     }
@@ -335,7 +361,8 @@ public final class BukkitApiPatch extends ClassPatch {
     private ClassTransform createCraftPlayerTransform() {
         return ClassTransform.transformingMethods(
                 method -> {
-                    if ((method.flags().flagsMask() & ClassFile.ACC_BRIDGE) != 0) {
+                    int flags = method.flags().flagsMask();
+                    if ((flags & (ClassFile.ACC_BRIDGE | ClassFile.ACC_ABSTRACT)) != 0) {
                         return false;
                     }
                     String name = method.methodName().stringValue();
@@ -350,10 +377,10 @@ public final class BukkitApiPatch extends ClassPatch {
                             || (name.equals("teleport0") && mtd.parameterCount() == 3)) {
                         return mtd.returnType().equals(ConstantDescs.CD_boolean);
                     }
-                    // Spigot & Paper sendMessage overloads
-                    return name.equals("sendMessage")
-                            && mtd.parameterCount() >= 1
-                            && mtd.returnType().equals(ConstantDescs.CD_void);
+                    // Spigot & Paper sendMessage, sendActionBar, and title overloads
+                    return (flags & ClassFile.ACC_PUBLIC) != 0
+                            && mtd.returnType().equals(ConstantDescs.CD_void)
+                            && PLAYER_HUD_MESSAGE_METHODS.contains(name);
                 },
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
@@ -377,21 +404,35 @@ public final class BukkitApiPatch extends ClassPatch {
                                             ArgSpec.param(1)
                                     )
                             );
-                            case "sendMessage" -> mb.transformCode(
+                            default -> mb.transformCode(
                                     codeModel,
                                     CodeTransforms.guardVoidEntry(
                                             HookIds.GUARD_PLAYER_SEND_MESSAGE,
                                             ArgSpec.thisRef(),
-                                            ArgSpec.param(0),
+                                            ArgSpec.nullConst(),
                                             ArgSpec.nullConst()
                                     )
                             );
-                            default -> mb.with(element);
                         }
                     } else {
                         mb.with(element);
                     }
                 }
+        );
+    }
+
+    private ClassTransform createCraftHumanEntityTransform() {
+        return ClassTransform.transformingMethodBodies(
+                method -> (method.flags().flagsMask() & (ClassFile.ACC_PUBLIC | ClassFile.ACC_BRIDGE | ClassFile.ACC_ABSTRACT)) == ClassFile.ACC_PUBLIC
+                        && method.methodName().equalsString("closeInventory")
+                        && method.methodTypeSymbol().parameterCount() <= 1
+                        && method.methodTypeSymbol().returnType().equals(ConstantDescs.CD_void),
+                CodeTransforms.guardVoidEntry(
+                        HookIds.GUARD_PLAYER_CLOSE_INVENTORY,
+                        ArgSpec.thisRef(),
+                        ArgSpec.nullConst(),
+                        ArgSpec.nullConst()
+                )
         );
     }
 
@@ -569,7 +610,7 @@ public final class BukkitApiPatch extends ClassPatch {
         boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
         String reason = serializeKickReason(reasonObj);
 
-        if (config.bukkitApi().isCallKickEvent()) {
+        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
             PlayerKickHookEvent hookEvent = new PlayerKickHookEvent(
                     caller,
                     hookedPlayer,
@@ -603,7 +644,7 @@ public final class BukkitApiPatch extends ClassPatch {
         boolean enabledForTarget = targetPlayer == null || targetPlayer.isPluginEnabled(caller);
         boolean shouldBlock = !enabledForTarget && config.bukkitApi().isBlockDisabledDispatchCommand();
 
-        if (config.bukkitApi().isCallDispatchCommandEvent()) {
+        if (config.bukkitApi().isCallDispatchCommandEvent() && Bukkit.getServer() != null) {
             PluginDispatchCommandEvent hookEvent = new PluginDispatchCommandEvent(
                     caller,
                     sender,
@@ -658,7 +699,19 @@ public final class BukkitApiPatch extends ClassPatch {
         }
         if (config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
-                    + " from sending message to player " + ((Player) playerObj).getName());
+                    + " from sending message/HUD to player " + ((Player) playerObj).getName());
+        }
+        return true;
+    }
+
+    public boolean handlePlayerCloseInventory(Object humanObj) {
+        Plugin caller = resolveDisabledCallerForPlayer(humanObj, config.bukkitApi().isBlockDisabledCloseInventory());
+        if (caller == null) {
+            return false;
+        }
+        if (config.isDebug()) {
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from closing inventory of player " + ((Player) humanObj).getName());
         }
         return true;
     }
@@ -667,7 +720,7 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!blockEnabled || !(playerObj instanceof Player bukkitPlayer)) {
             return null;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        HookedPlayer hookedPlayer = resolveHookedPlayerFast(bukkitPlayer);
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return null;
         }
@@ -957,24 +1010,98 @@ public final class BukkitApiPatch extends ClassPatch {
         return reasonObj.toString();
     }
 
-    private HookedPlayer resolveTargetPlayerFromCommand(String commandLine) {
-        String[] tokens = commandLine.split("\\s+");
-        if (tokens.length < 2) {
+    HookedPlayer resolveTargetPlayerFromCommand(String commandLine) {
+        if (commandLine == null || commandLine.isEmpty()) {
             return null;
         }
         Collection<HookedPlayer> trackedPlayers = playerRegistry.getPlayers();
         if (trackedPlayers.isEmpty()) {
             return null;
         }
-        for (int i = 1; i < tokens.length; i++) {
-            String token = tokens[i];
-            if (token.isEmpty()) {
+
+        int len = commandLine.length();
+        int idx = 0;
+        // Skip leading whitespace and root command token
+        while (idx < len && Character.isWhitespace(commandLine.charAt(idx))) {
+            idx++;
+        }
+        while (idx < len && !Character.isWhitespace(commandLine.charAt(idx))) {
+            idx++;
+        }
+
+        HookedPlayer deferredSubcommandMatch = null;
+        int nonFlagArgIndex = 0;
+
+        while (idx < len) {
+            while (idx < len && Character.isWhitespace(commandLine.charAt(idx))) {
+                idx++;
+            }
+            if (idx >= len) {
+                break;
+            }
+            int start = idx;
+            while (idx < len && !Character.isWhitespace(commandLine.charAt(idx))) {
+                idx++;
+            }
+            String token = commandLine.substring(start, idx);
+            if (token.charAt(0) == '-') {
                 continue;
             }
-            for (HookedPlayer hp : trackedPlayers) {
-                if (hp.getName().equalsIgnoreCase(token)) {
-                    return hp;
+
+            // 1. Check UUID match at any argument position
+            UUID parsedUuid = tryParseUuid(token);
+            if (parsedUuid != null) {
+                HookedPlayer byUuid = playerRegistry.getPlayer(parsedUuid);
+                if (byUuid != null) {
+                    return byUuid;
                 }
+            }
+
+            // 2. Check player name within the first 4 non-flag arguments (avoids matching words inside reason text)
+            if (nonFlagArgIndex < 4) {
+                HookedPlayer byName = lookupPlayerByNameFast(token, trackedPlayers);
+                if (byName != null) {
+                    if (nonFlagArgIndex == 0
+                            && COMMON_SUBCOMMAND_KEYWORDS.contains(token.toLowerCase(Locale.ROOT))) {
+                        // Hold subcommand keyword match (e.g. "ac kick Steve") in case the real target follows
+                        deferredSubcommandMatch = byName;
+                    } else {
+                        return byName;
+                    }
+                }
+            }
+            nonFlagArgIndex++;
+        }
+        return deferredSubcommandMatch;
+    }
+
+    private HookedPlayer lookupPlayerByNameFast(String name, Collection<HookedPlayer> fallbackPlayers) {
+        if (playerRegistry instanceof PlayerRegistryImpl impl) {
+            return impl.getPlayerByName(name);
+        }
+        for (HookedPlayer hp : fallbackPlayers) {
+            if (hp.getName().equalsIgnoreCase(name)) {
+                return hp;
+            }
+        }
+        return null;
+    }
+
+    private static UUID tryParseUuid(String token) {
+        int len = token.length();
+        if (len == 36 && token.charAt(8) == '-' && token.charAt(13) == '-' && token.charAt(18) == '-' && token.charAt(23) == '-') {
+            for (int i = 0; i < 36; i++) {
+                if (i == 8 || i == 13 || i == 18 || i == 23) {
+                    continue;
+                }
+                if (Character.digit(token.charAt(i), 16) < 0) {
+                    return null;
+                }
+            }
+            try {
+                return UUID.fromString(token);
+            } catch (IllegalArgumentException ignored) {
+                return null;
             }
         }
         return null;
