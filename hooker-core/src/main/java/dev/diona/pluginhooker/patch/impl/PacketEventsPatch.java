@@ -33,6 +33,7 @@ import java.lang.classfile.CodeModel;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.Optional;
 import java.util.Set;
@@ -112,6 +113,23 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     };
 
+    private static final class ListenerOwnerSlot {
+        final boolean excluded;
+        final boolean unwrapInner;
+        final WeakReference<Plugin> ownerRef;
+        volatile int syncedVersion;
+        volatile boolean hooked;
+
+        private ListenerOwnerSlot(boolean excluded, boolean unwrapInner, WeakReference<Plugin> ownerRef) {
+            this.excluded = excluded;
+            this.unwrapInner = unwrapInner;
+            this.ownerRef = ownerRef;
+        }
+
+        static final ListenerOwnerSlot EXCLUDED = new ListenerOwnerSlot(true, false, null);
+        static final ListenerOwnerSlot UNWRAP_OR_FALLBACK = new ListenerOwnerSlot(false, true, null);
+    }
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
@@ -121,6 +139,20 @@ public final class PacketEventsPatch extends ClassPatch {
     private final ConcurrentMap<Object, Plugin> listenerToPlugin =
             new MapMaker().weakKeys().makeMap();
     private volatile boolean hasFallbackListeners;
+
+    private final ClassValue<ListenerOwnerSlot> listenerOwnerCache = new ClassValue<>() {
+        @Override
+        protected ListenerOwnerSlot computeValue(Class<?> listenerClass) {
+            if (INTERNAL_LISTENER_CACHE.get(listenerClass)) {
+                return ListenerOwnerSlot.EXCLUDED;
+            }
+            Plugin owner = pluginRegistry.getPluginByClassLoader(listenerClass.getClassLoader());
+            if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
+                return new ListenerOwnerSlot(false, false, new WeakReference<>(owner));
+            }
+            return ListenerOwnerSlot.UNWRAP_OR_FALLBACK;
+        }
+    };
 
     @Override
     public boolean isEnabled() {
@@ -284,16 +316,15 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     public boolean handlePacketEvent(Object listener, Object event, boolean outbound) {
-        if (listener == null || event == null) {
+        if (!pluginRegistry.hasHookedPlugins() || listener == null || event == null) {
             return false;
         }
-        if (IGNORED_EVENT_CACHE.get(event.getClass()) || INTERNAL_LISTENER_CACHE.get(listener.getClass())) {
+        if (IGNORED_EVENT_CACHE.get(event.getClass())) {
             return false;
         }
 
-        Plugin owner = resolveListenerOwner(listener);
-        Plugin plugin = (owner == null && hasFallbackListeners) ? listenerToPlugin.get(listener) : owner;
-        if (plugin == null || !pluginRegistry.isHooked(plugin)) {
+        Plugin plugin = resolveHookedListenerPlugin(listener);
+        if (plugin == null) {
             return false;
         }
 
@@ -319,9 +350,43 @@ public final class PacketEventsPatch extends ClassPatch {
         return false;
     }
 
+    private Plugin resolveHookedListenerPlugin(Object listener) {
+        ListenerOwnerSlot slot = listenerOwnerCache.get(listener.getClass());
+        if (slot.excluded) {
+            return null;
+        }
+        if (!slot.unwrapInner) {
+            return checkSlotHooked(slot);
+        }
+        Object inner = PacketEventsReflector.unwrapListener(listener);
+        if (inner != null) {
+            ListenerOwnerSlot innerSlot = listenerOwnerCache.get(inner.getClass());
+            if (!innerSlot.excluded && !innerSlot.unwrapInner) {
+                return checkSlotHooked(innerSlot);
+            }
+        }
+        if (hasFallbackListeners) {
+            Plugin fallback = listenerToPlugin.get(listener);
+            return fallback != null && pluginRegistry.isHooked(fallback) ? fallback : null;
+        }
+        return null;
+    }
+
+    private Plugin checkSlotHooked(ListenerOwnerSlot slot) {
+        Plugin owner = slot.ownerRef.get();
+        if (owner == null) {
+            return null;
+        }
+        int currentVersion = pluginRegistry.getVersion();
+        if (slot.syncedVersion != currentVersion) {
+            slot.hooked = pluginRegistry.isHooked(owner);
+            slot.syncedVersion = currentVersion;
+        }
+        return slot.hooked ? owner : null;
+    }
+
     /**
-     * Resolves the owning {@link Plugin} of a PacketEvents listener, unwrapping {@code PacketListener$1.this$0}
-     * when a plugin implements {@code PacketListener} and registers via {@code PacketListener#asAbstract}.
+     * Resolves the owning {@link Plugin} of a PacketEvents listener during registration.
      */
     private Plugin resolveListenerOwner(Object listener) {
         Plugin owner = pluginRegistry.getPluginByClassLoader(listener.getClass().getClassLoader());

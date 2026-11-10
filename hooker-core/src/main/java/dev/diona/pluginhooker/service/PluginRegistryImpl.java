@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Thread-safe implementation of {@link PluginRegistry}.
@@ -28,6 +29,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
     private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
     private final ConcurrentMap<ClassLoader, Plugin> classLoaderToPlugin =
             new MapMaker().weakKeys().makeMap();
+    private final AtomicInteger version = new AtomicInteger(1);
     private volatile boolean hasWhitelistPlugins = false;
     @Setter
     private PlayerRegistryImpl playerRegistry;
@@ -89,11 +91,16 @@ public final class PluginRegistryImpl implements PluginRegistry {
         }
     }
 
+    public int getVersion() {
+        return version.get();
+    }
+
     public boolean hasWhitelistPlugins() {
         return hasWhitelistPlugins;
     }
 
     private void updateWhitelistFlag() {
+        version.incrementAndGet();
         BridgeInjector.setHasHookedPlugins(!hookedPlugins.isEmpty());
         for (HookMode mode : hookedPlugins.values()) {
             if (mode == HookMode.WHITELIST) {

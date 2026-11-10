@@ -28,6 +28,7 @@ import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.CodeTransform;
 import java.lang.constant.MethodTypeDesc;
+import java.lang.ref.WeakReference;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
@@ -84,6 +85,23 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     };
 
+    private static final class HandlerOwnerSlot {
+        final boolean permanentlyExcluded;
+        final boolean needsContextFallback;
+        final WeakReference<Plugin> ownerRef;
+        volatile int syncedVersion;
+        volatile boolean hooked;
+
+        private HandlerOwnerSlot(boolean permanentlyExcluded, boolean needsContextFallback, WeakReference<Plugin> ownerRef) {
+            this.permanentlyExcluded = permanentlyExcluded;
+            this.needsContextFallback = needsContextFallback;
+            this.ownerRef = ownerRef;
+        }
+
+        static final HandlerOwnerSlot EXCLUDED = new HandlerOwnerSlot(true, false, null);
+        static final HandlerOwnerSlot CONTEXT_FALLBACK = new HandlerOwnerSlot(false, true, null);
+    }
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
@@ -92,6 +110,23 @@ public final class NettyPipelinePatch extends ClassPatch {
     private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
             new MapMaker().weakKeys().makeMap();
     private volatile boolean hasFallbackContexts;
+
+    private final ClassValue<HandlerOwnerSlot> handlerOwnerCache = new ClassValue<>() {
+        @Override
+        protected HandlerOwnerSlot computeValue(Class<?> handlerClass) {
+            if (EXCLUDED_HANDLER_CACHE.get(handlerClass)) {
+                return HandlerOwnerSlot.EXCLUDED;
+            }
+            Plugin owner = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
+            if (owner == null) {
+                return HandlerOwnerSlot.CONTEXT_FALLBACK;
+            }
+            if (PluginCallerResolver.isSharedPacketFramework(owner)) {
+                return HandlerOwnerSlot.EXCLUDED;
+            }
+            return new HandlerOwnerSlot(false, false, new WeakReference<>(owner));
+        }
+    };
 
     @Override
     public boolean isEnabled() {
@@ -307,8 +342,8 @@ public final class NettyPipelinePatch extends ClassPatch {
         boolean outbound = isOutbound != 0;
 
         if (pluginRegistry.hasHookedPlugins()) {
-            Plugin plugin = resolveHandlerPlugin(handlerObj, ctx);
-            if (plugin != null && pluginRegistry.isHooked(plugin)) {
+            Plugin plugin = resolveHookedHandlerPlugin(handlerObj, ctx);
+            if (plugin != null) {
                 HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
                 if (hookedPlayer != null) {
                     if (!hookedPlayer.isPluginEnabled(plugin)) {
@@ -334,16 +369,28 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     }
 
-    private Plugin resolveHandlerPlugin(Object handlerObj, ChannelHandlerContext ctx) {
-        Class<?> handlerClass = handlerObj.getClass();
-        if (EXCLUDED_HANDLER_CACHE.get(handlerClass)) {
+    private Plugin resolveHookedHandlerPlugin(Object handlerObj, ChannelHandlerContext ctx) {
+        HandlerOwnerSlot slot = handlerOwnerCache.get(handlerObj.getClass());
+        if (slot.permanentlyExcluded) {
             return null;
         }
-        Plugin plugin = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
-        if (plugin != null) {
-            return PluginCallerResolver.isSharedPacketFramework(plugin) ? null : plugin;
+        if (slot.needsContextFallback) {
+            if (!hasFallbackContexts) {
+                return null;
+            }
+            Plugin fallback = contextToPlugin.get(ctx);
+            return fallback != null && pluginRegistry.isHooked(fallback) ? fallback : null;
         }
-        return hasFallbackContexts ? contextToPlugin.get(ctx) : null;
+        int currentVersion = pluginRegistry.getVersion();
+        Plugin owner = slot.ownerRef.get();
+        if (owner == null) {
+            return null;
+        }
+        if (slot.syncedVersion != currentVersion) {
+            slot.hooked = pluginRegistry.isHooked(owner);
+            slot.syncedVersion = currentVersion;
+        }
+        return slot.hooked ? owner : null;
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {
