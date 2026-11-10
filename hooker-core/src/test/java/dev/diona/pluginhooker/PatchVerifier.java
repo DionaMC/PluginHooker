@@ -101,7 +101,7 @@ public final class PatchVerifier {
                 new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, cl),
                 new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, cl),
                 new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new NettyPipelinePatch(logger, config, pluginRegistry, playerRegistry, cl)
+                new NettyPipelinePatch(logger, config, pluginRegistry, cl)
         );
 
         // 2. Verify Spigot 1.8.8 + ProtocolLib 5.4.0 + PacketEvents 2.14.0
