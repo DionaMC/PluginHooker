@@ -555,62 +555,53 @@ public final class BukkitApiPatch extends ClassPatch {
     }
 
     public boolean handlePlayerTeleport(Object playerObj, Object locationObj, Object causeObj) {
-        if (!config.bukkitApi().isBlockDisabledTeleport() || !(playerObj instanceof Player bukkitPlayer)) {
+        Plugin caller = resolveDisabledCallerForPlayer(playerObj, config.bukkitApi().isBlockDisabledTeleport());
+        if (caller == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
-            return false;
+        if (config.isDebug()) {
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from teleporting player " + ((Player) playerObj).getName()
+                    + " (cause: " + causeObj + ")");
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-            if (config.isDebug()) {
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from teleporting player " + bukkitPlayer.getName()
-                        + " (cause: " + causeObj + ")");
-            }
-            return true;
-        }
-        return false;
+        return true;
     }
 
     public boolean handleEntityVelocity(Object entityObj, Object velocityObj) {
-        if (!config.bukkitApi().isBlockDisabledVelocity() || !(entityObj instanceof Player bukkitPlayer)) {
+        Plugin caller = resolveDisabledCallerForPlayer(entityObj, config.bukkitApi().isBlockDisabledVelocity());
+        if (caller == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
-            return false;
+        if (config.isDebug()) {
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from setting velocity on player " + ((Player) entityObj).getName()
+                    + " (" + velocityObj + ")");
         }
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-            if (config.isDebug()) {
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from setting velocity on player " + bukkitPlayer.getName()
-                        + " (" + velocityObj + ")");
-            }
-            return true;
-        }
-        return false;
+        return true;
     }
 
     public boolean handlePlayerSendMessage(Object playerObj, Object msgObj) {
-        if (!config.bukkitApi().isBlockDisabledSendMessage() || !(playerObj instanceof Player bukkitPlayer)) {
+        Plugin caller = resolveDisabledCallerForPlayer(playerObj, config.bukkitApi().isBlockDisabledSendMessage());
+        if (caller == null) {
             return false;
+        }
+        if (config.isDebug()) {
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from sending message to player " + ((Player) playerObj).getName());
+        }
+        return true;
+    }
+
+    private Plugin resolveDisabledCallerForPlayer(Object playerObj, boolean blockEnabled) {
+        if (!blockEnabled || !(playerObj instanceof Player bukkitPlayer)) {
+            return null;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
-            return false;
+            return null;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-            if (config.isDebug()) {
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from sending message to player " + bukkitPlayer.getName());
-            }
-            return true;
-        }
-        return false;
+        return caller != null && !hookedPlayer.isPluginEnabled(caller) ? caller : null;
     }
 
     public boolean handleNmsSendPacket(Object connectionObj, Object packetObj) {
@@ -679,25 +670,17 @@ public final class BukkitApiPatch extends ClassPatch {
     // Return-Value Filter Handlers (Player & Entity Lookups)
     // =========================================================================
 
-    @SuppressWarnings("unchecked")
     public Object filterOnlinePlayers(Object returnValue) {
-        if (!config.bukkitApi().isHideFromOnlinePlayers()
-                || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()) {
-            return returnValue;
-        }
+        return filterPlayerCollection(returnValue, config.bukkitApi().isHideFromOnlinePlayers());
+    }
 
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
-            return returnValue;
-        }
-
-        return filterPlayerList((Collection<? extends Player>) rawCollection, caller);
+    public Object filterWorldPlayers(Object returnValue) {
+        return filterPlayerCollection(returnValue, config.bukkitApi().isHideFromWorldPlayers());
     }
 
     @SuppressWarnings("unchecked")
-    public Object filterWorldPlayers(Object returnValue) {
-        if (!config.bukkitApi().isHideFromWorldPlayers()
+    private Object filterPlayerCollection(Object returnValue, boolean hideEnabled) {
+        if (!hideEnabled
                 || !(returnValue instanceof Collection<?> rawCollection)
                 || rawCollection.isEmpty()) {
             return returnValue;
