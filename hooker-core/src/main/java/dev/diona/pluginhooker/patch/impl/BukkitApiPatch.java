@@ -559,7 +559,7 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
@@ -579,7 +579,7 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
@@ -599,7 +599,7 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
@@ -617,22 +617,25 @@ public final class BukkitApiPatch extends ClassPatch {
         if (connectionObj == null || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
-                pluginRegistry,
-                selfClassLoader,
-                connectionObj.getClass()
-        );
-        if (caller == null) {
-            return false;
-        }
         Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
         if (getterOpt.isEmpty()) {
             return false;
         }
         try {
             Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
-            HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-            if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (bukkitPlayer == null) {
+                return false;
+            }
+            HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer.getUniqueId());
+            if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
+                return false;
+            }
+            Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
+                    pluginRegistry,
+                    selfClassLoader,
+                    connectionObj.getClass()
+            );
+            if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
                 if (config.isDebug()) {
                     String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                     logger.info("[Debug] Blocked " + caller.getName()

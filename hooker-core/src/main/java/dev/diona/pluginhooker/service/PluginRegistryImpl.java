@@ -27,6 +27,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
     private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
     private final Map<ClassLoader, Plugin> classLoaderToPlugin = new ConcurrentHashMap<>();
     private volatile boolean cacheInitialized = false;
+    private volatile boolean hasWhitelistPlugins = false;
     @Setter
     private PlayerRegistryImpl playerRegistry;
 
@@ -40,7 +41,9 @@ public final class PluginRegistryImpl implements PluginRegistry {
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(mode, "mode");
         classLoaderToPlugin.put(plugin.getClass().getClassLoader(), plugin);
-        return hookedPlugins.put(plugin, mode) == null;
+        boolean added = hookedPlugins.put(plugin, mode) == null;
+        updateWhitelistFlag();
+        return added;
     }
 
     @Override
@@ -49,8 +52,11 @@ public final class PluginRegistryImpl implements PluginRegistry {
             return false;
         }
         boolean removed = hookedPlugins.remove(plugin) != null;
-        if (removed && playerRegistry != null) {
-            playerRegistry.clearPluginFromAllPlayers(plugin);
+        if (removed) {
+            updateWhitelistFlag();
+            if (playerRegistry != null) {
+                playerRegistry.clearPluginFromAllPlayers(plugin);
+            }
         }
         return removed;
     }
@@ -77,7 +83,23 @@ public final class PluginRegistryImpl implements PluginRegistry {
     public void setHookMode(Plugin plugin, HookMode mode) {
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(mode, "mode");
-        hookedPlugins.computeIfPresent(plugin, (k, old) -> mode);
+        if (hookedPlugins.computeIfPresent(plugin, (k, old) -> mode) != null) {
+            updateWhitelistFlag();
+        }
+    }
+
+    public boolean hasWhitelistPlugins() {
+        return hasWhitelistPlugins;
+    }
+
+    private void updateWhitelistFlag() {
+        for (HookMode mode : hookedPlugins.values()) {
+            if (mode == HookMode.WHITELIST) {
+                hasWhitelistPlugins = true;
+                return;
+            }
+        }
+        hasWhitelistPlugins = false;
     }
 
     @Override

@@ -104,4 +104,20 @@ public final class HookedPlayerImpl implements HookedPlayer {
     public boolean isInJoinGracePeriod() {
         return joinGraceUntilMillis > 0L && System.currentTimeMillis() < joinGraceUntilMillis;
     }
+
+    @Override
+    public boolean hasAnyDisabledPlugin() {
+        if (!explicitlyDisabled.isEmpty()) {
+            return true;
+        }
+        if (pluginRegistry instanceof PluginRegistryImpl impl && !impl.hasWhitelistPlugins()) {
+            return false;
+        }
+        for (Plugin plugin : pluginRegistry.getHookedPlugins()) {
+            if (!isPluginEnabled(plugin)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

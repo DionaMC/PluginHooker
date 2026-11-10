@@ -115,7 +115,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);

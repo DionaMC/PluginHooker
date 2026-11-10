@@ -197,7 +197,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader);
@@ -222,7 +222,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
-        if (hookedPlayer == null) {
+        if (hookedPlayer == null || (!hookedPlayer.hasAnyDisabledPlugin() && !config.bukkitApi().isCallKickEvent())) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectChannelCloseCaller(pluginRegistry, selfClassLoader);

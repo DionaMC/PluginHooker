@@ -76,4 +76,13 @@ public interface HookedPlayer {
      * @return true if in the join grace period
      */
     boolean isInJoinGracePeriod();
+
+    /**
+     * Fast-path check returning whether at least one hooked plugin is currently disabled for this player.
+     *
+     * @return true if one or more hooked plugins are disabled for this player
+     */
+    default boolean hasAnyDisabledPlugin() {
+        return true;
+    }
 }

@@ -4,6 +4,8 @@ import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import io.netty.channel.ChannelHandler;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Set;
+
 /**
  * Resolves the calling Bukkit {@link Plugin} from the current call stack using JDK {@link StackWalker}.
  */
@@ -11,6 +13,8 @@ public final class PluginCallerResolver {
 
     private static final StackWalker STACK_WALKER =
             StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+    private static final StackWalker DIRECT_STACK_WALKER =
+            StackWalker.getInstance(Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE), 6);
 
     private PluginCallerResolver() {
     }
@@ -59,7 +63,7 @@ public final class PluginCallerResolver {
      * preventing server-internal pipeline modifications from being misattributed to plugins lower on the stack.
      */
     public static Plugin resolveDirectNettyCaller(PluginRegistry registry, ClassLoader selfLoader) {
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -87,7 +91,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             boolean passedSendMethod = false;
             while (iterator.hasNext()) {
@@ -129,7 +133,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -169,7 +173,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -204,7 +208,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -250,7 +254,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 StackWalker.StackFrame frame = iterator.next();
@@ -306,7 +310,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return STACK_WALKER.walk(frames -> {
+        return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 StackWalker.StackFrame frame = iterator.next();

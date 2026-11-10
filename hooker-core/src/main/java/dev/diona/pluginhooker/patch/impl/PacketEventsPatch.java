@@ -368,6 +368,9 @@ public final class PacketEventsPatch extends ClassPatch {
                 return false;
             }
         }
+        if (!hookedPlayer.hasAnyDisabledPlugin()) {
+            return false;
+        }
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
