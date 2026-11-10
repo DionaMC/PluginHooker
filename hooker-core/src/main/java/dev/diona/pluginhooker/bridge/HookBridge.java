@@ -1,12 +1,25 @@
 package dev.diona.pluginhooker.bridge;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.StackWalker;
 
 /**
  * Pure-JDK static bridge injected into the Bootstrap ClassLoader.
  * Accessible from every ClassLoader in the JVM (Server, Netty, ProtocolLib, PacketEvents, isolated Paper plugins).
  */
 public final class HookBridge {
+
+    /**
+     * Intrinsic-backed caller-class resolver invoked directly from instrumented ultra-hot methods
+     * (such as NMS {@code sendPacket}/{@code send} and {@code disconnect}) without stream/frame allocation.
+     */
+    public static final StackWalker CALLER_WALKER =
+            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
+    /**
+     * Fast-path volatile flag indicating whether at least one plugin is currently registered in the sandbox.
+     */
+    public static volatile boolean HAS_HOOKED_PLUGINS;
 
     /**
      * Signature: (int hookId, Object arg0, Object arg1, Object arg2) -> boolean

@@ -43,4 +43,16 @@ public final class MockNettyPluginActor extends ChannelDuplexHandler {
     public static <T> T callViaAdventureWrapper(java.util.function.Supplier<T> apiCall) {
         return net.kyori.adventure.audience.SimulatedServerAudience.forwardFromAdventureDefault(apiCall);
     }
+
+    public static void directNmsSend(net.minecraft.server.test.PlayerConnection conn, Object packet) {
+        conn.sendPacket(packet);
+    }
+
+    public static void reflectiveNmsSend(net.minecraft.server.test.PlayerConnection conn, Object packet) throws Exception {
+        net.minecraft.server.test.PlayerConnection.class.getMethod("sendPacket", Object.class).invoke(conn, packet);
+    }
+
+    public static void directNmsDisconnect(net.minecraft.server.test.PlayerConnection conn, String reason) {
+        conn.disconnect(reason);
+    }
 }

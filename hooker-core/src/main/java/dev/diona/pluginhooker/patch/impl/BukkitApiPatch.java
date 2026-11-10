@@ -64,8 +64,61 @@ public final class BukkitApiPatch extends ClassPatch {
             "getNearbyEntities"
     );
 
-    private static volatile MethodHandle componentSerializerHandle;
-    private static volatile boolean componentSerializerResolved;
+    private static final ClassValue<Optional<MethodHandle>> REASON_STRING_EXTRACTOR = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> reasonClass) {
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            // 1. Adventure Component -> LegacyComponentSerializer.legacySection().serialize(component)
+            try {
+                ClassLoader loader = reasonClass.getClassLoader();
+                Class<?> componentClass = Class.forName("net.kyori.adventure.text.Component", false, loader);
+                if (componentClass.isAssignableFrom(reasonClass)) {
+                    Class<?> serializerClass = Class.forName(
+                            "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer",
+                            true,
+                            loader
+                    );
+                    Object legacySectionInstance = serializerClass.getMethod("legacySection").invoke(null);
+                    Method serializeMethod = serializerClass.getMethod("serialize", componentClass);
+                    return Optional.of(
+                            lookup.unreflect(serializeMethod)
+                                    .bindTo(legacySectionInstance)
+                                    .asType(MethodType.methodType(String.class, Object.class))
+                    );
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // 2. Mojang 1.21+ DisconnectionDetails -> details.reason().getString()
+            if (reasonClass.getSimpleName().equals("DisconnectionDetails")) {
+                try {
+                    Method reasonMethod = reasonClass.getMethod("reason");
+                    Method getStringMethod = reasonMethod.getReturnType().getMethod("getString");
+                    MethodHandle reasonMh = lookup.unreflect(reasonMethod);
+                    MethodHandle strMh = lookup.unreflect(getStringMethod);
+                    return Optional.of(
+                            MethodHandles.filterReturnValue(reasonMh, strMh)
+                                    .asType(MethodType.methodType(String.class, Object.class))
+                    );
+                } catch (Throwable ignored) {
+                }
+            }
+
+            // 3. Mojang Component#getString() or Legacy IChatBaseComponent#getText()
+            for (String methodName : List.of("getString", "getText")) {
+                try {
+                    Method m = reasonClass.getMethod(methodName);
+                    if (m.getReturnType() == String.class) {
+                        return Optional.of(
+                                lookup.unreflect(m).asType(MethodType.methodType(String.class, Object.class))
+                        );
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            return Optional.empty();
+        }
+    };
 
     private static final ClassValue<Optional<MethodHandle>> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
         @Override
@@ -369,12 +422,15 @@ public final class BukkitApiPatch extends ClassPatch {
     }
 
     private ClassTransform createNmsPlayerConnectionTransform(String internalClassName) {
-        boolean isModernCommon = internalClassName.endsWith("/ServerCommonPacketListenerImpl");
         boolean isGameConnection = internalClassName.endsWith("/PlayerConnection")
                 || internalClassName.endsWith("/ServerGamePacketListenerImpl");
 
         return ClassTransform.transformingMethods(
                 method -> {
+                    int flags = method.flags().flagsMask();
+                    if ((flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_BRIDGE | ClassFile.ACC_SYNTHETIC)) != 0) {
+                        return false;
+                    }
                     String name = method.methodName().stringValue();
                     var mtd = method.methodTypeSymbol();
                     if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
@@ -383,11 +439,16 @@ public final class BukkitApiPatch extends ClassPatch {
                     if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
                         return true;
                     }
-                    if (isModernCommon) {
-                        return name.equals("send") && mtd.parameterCount() == 2;
+                    if ((flags & ClassFile.ACC_PUBLIC) == 0
+                            || mtd.parameterCount() < 1
+                            || mtd.parameterType(0).isPrimitive()) {
+                        return false;
                     }
-                    return (name.equals("sendPacket") || name.equals("send"))
-                            && (mtd.parameterCount() == 1 || mtd.parameterCount() == 2);
+                    if ((name.equals("sendPacket") || name.equals("send"))
+                            && (mtd.parameterCount() == 1 || mtd.parameterCount() == 2)) {
+                        return true;
+                    }
+                    return name.equals("disconnect") || name.equals("disconnectAsync");
                 },
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
@@ -401,14 +462,22 @@ public final class BukkitApiPatch extends ClassPatch {
                                             ArgSpec.nullConst()
                                     )
                             );
+                        } else if (name.equals("disconnect") || name.equals("disconnectAsync")) {
+                            mb.transformCode(
+                                    codeModel,
+                                    CodeTransforms.guardVoidEntryWithCaller(
+                                            HookIds.GUARD_NMS_DISCONNECT,
+                                            ArgSpec.thisRef(),
+                                            ArgSpec.param(0)
+                                    )
+                            );
                         } else {
                             mb.transformCode(
                                     codeModel,
-                                    CodeTransforms.guardVoidEntry(
+                                    CodeTransforms.guardVoidEntryWithCaller(
                                             HookIds.GUARD_NMS_SEND_PACKET,
                                             ArgSpec.thisRef(),
-                                            ArgSpec.param(0),
-                                            ArgSpec.nullConst()
+                                            ArgSpec.param(0)
                                     )
                             );
                         }
@@ -604,41 +673,65 @@ public final class BukkitApiPatch extends ClassPatch {
         return caller != null && !hookedPlayer.isPluginEnabled(caller) ? caller : null;
     }
 
-    public boolean handleNmsSendPacket(Object connectionObj, Object packetObj) {
-        if (connectionObj == null || !pluginRegistry.hasHookedPlugins()) {
+    public boolean handleNmsSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
+        Plugin caller = resolveDirectHookedPluginFromCallerClass(callerClassObj);
+        if (caller == null || connectionObj == null) {
             return false;
         }
-        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
-        if (getterOpt.isEmpty()) {
+        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
+        if (bukkitPlayer == null) {
             return false;
         }
-        try {
-            Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
-            if (bukkitPlayer == null) {
-                return false;
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer.getUniqueId());
+        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+            if (config.isDebug()) {
+                String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
+                logger.info("[Debug] Blocked " + caller.getName()
+                        + " from sending NMS packet " + packetName
+                        + " to player " + bukkitPlayer.getName());
             }
-            HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer.getUniqueId());
-            if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
-                return false;
-            }
-            Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
-                    pluginRegistry,
-                    selfClassLoader,
-                    connectionObj.getClass()
+            return true;
+        }
+        return false;
+    }
+
+    public boolean handleNmsDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
+        Plugin caller = resolveDirectHookedPluginFromCallerClass(callerClassObj);
+        if (caller == null || connectionObj == null) {
+            return false;
+        }
+        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
+        if (bukkitPlayer == null) {
+            return false;
+        }
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (hookedPlayer == null) {
+            return false;
+        }
+
+        boolean enabled = hookedPlayer.isPluginEnabled(caller);
+        boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
+        String reason = serializeKickReason(reasonObj);
+
+        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
+            PlayerKickHookEvent hookEvent = new PlayerKickHookEvent(
+                    caller,
+                    hookedPlayer,
+                    reason,
+                    reasonObj,
+                    enabled,
+                    shouldBlock
             );
-            if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-                if (config.isDebug()) {
-                    String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
-                    logger.info("[Debug] Blocked " + caller.getName()
-                            + " from sending NMS packet " + packetName
-                            + " to player " + bukkitPlayer.getName());
-                }
-                return true;
-            }
-            return false;
-        } catch (Throwable t) {
-            return false;
+            Bukkit.getPluginManager().callEvent(hookEvent);
+            shouldBlock = hookEvent.isCancelled();
         }
+
+        if (shouldBlock && config.isDebug()) {
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from disconnecting player " + bukkitPlayer.getName()
+                    + " via NMS (reason: " + reason + ")");
+        }
+        return shouldBlock;
     }
 
     public void handleNmsConnectionInit(Object connectionObj) {
@@ -650,19 +743,39 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!simpleName.equals("PlayerConnection") && !simpleName.equals("ServerGamePacketListenerImpl")) {
             return;
         }
-        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connClass);
+        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
+        if (bukkitPlayer != null) {
+            HookedPlayer hookedPlayer = playerRegistry.registerPlayer(bukkitPlayer);
+            if (hookedPlayer != null && Bukkit.getServer() != null) {
+                Bukkit.getPluginManager().callEvent(new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
+            }
+        }
+    }
+
+    private Plugin resolveDirectHookedPluginFromCallerClass(Object callerClassObj) {
+        if (!(callerClassObj instanceof Class<?> callerClass)) {
+            return null;
+        }
+        ClassLoader callerLoader = callerClass.getClassLoader();
+        if (callerLoader == null || callerLoader == selfClassLoader) {
+            return null;
+        }
+        Plugin caller = pluginRegistry.getPluginByClassLoader(callerLoader);
+        if (caller == null || PluginCallerResolver.isSharedPacketFramework(caller)) {
+            return null;
+        }
+        return pluginRegistry.isHooked(caller) ? caller : null;
+    }
+
+    private static Player extractPlayerFromNmsConnection(Object connectionObj) {
+        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
         if (getterOpt.isEmpty()) {
-            return;
+            return null;
         }
         try {
-            Player bukkitPlayer = (Player) getterOpt.get().invokeExact(connectionObj);
-            if (bukkitPlayer != null) {
-                HookedPlayer hookedPlayer = playerRegistry.registerPlayer(bukkitPlayer);
-                if (hookedPlayer != null) {
-                    Bukkit.getPluginManager().callEvent(new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
-                }
-            }
+            return (Player) getterOpt.get().invokeExact(connectionObj);
         } catch (Throwable ignored) {
+            return null;
         }
     }
 
@@ -773,47 +886,14 @@ public final class BukkitApiPatch extends ClassPatch {
         if (reasonObj instanceof String str) {
             return str;
         }
-        MethodHandle mh = getComponentSerializerHandle(reasonObj.getClass().getClassLoader());
-        if (mh != null) {
+        Optional<MethodHandle> extractor = REASON_STRING_EXTRACTOR.get(reasonObj.getClass());
+        if (extractor.isPresent()) {
             try {
-                return (String) mh.invokeExact(reasonObj);
+                return (String) extractor.get().invokeExact(reasonObj);
             } catch (Throwable ignored) {
             }
         }
         return reasonObj.toString();
-    }
-
-    private static MethodHandle getComponentSerializerHandle(ClassLoader loader) {
-        if (componentSerializerResolved) {
-            return componentSerializerHandle;
-        }
-        synchronized (BukkitApiPatch.class) {
-            if (componentSerializerResolved) {
-                return componentSerializerHandle;
-            }
-            try {
-                Class<?> serializerClass = Class.forName(
-                        "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer",
-                        true,
-                        loader
-                );
-                Class<?> componentClass = Class.forName(
-                        "net.kyori.adventure.text.Component",
-                        true,
-                        loader
-                );
-                Object legacySectionInstance = serializerClass.getMethod("legacySection").invoke(null);
-                Method serializeMethod = serializerClass.getMethod("serialize", componentClass);
-                componentSerializerHandle = MethodHandles.lookup()
-                        .unreflect(serializeMethod)
-                        .bindTo(legacySectionInstance)
-                        .asType(MethodType.methodType(String.class, Object.class));
-            } catch (Throwable ignored) {
-                componentSerializerHandle = null;
-            }
-            componentSerializerResolved = true;
-            return componentSerializerHandle;
-        }
     }
 
     private HookedPlayer resolveTargetPlayerFromCommand(String commandLine) {

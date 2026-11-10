@@ -56,6 +56,7 @@ public final class BridgeInjector {
         // Bind dispatchers on the Bootstrap ClassLoader copy
         Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, true, null);
         bindHandles(bootstrapBridge, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
+        bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, HookBridge.HAS_HOOKED_PLUGINS);
 
         // Also bind on local class if loaded separately by a child-first PluginClassLoader
         if (bootstrapBridge != HookBridge.class) {
@@ -63,9 +64,24 @@ public final class BridgeInjector {
         }
     }
 
+    public static synchronized void setHasHookedPlugins(boolean hasHookedPlugins) {
+        HookBridge.HAS_HOOKED_PLUGINS = hasHookedPlugins;
+        if (injected) {
+            try {
+                Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, false, null);
+                if (bootstrapBridge != HookBridge.class) {
+                    bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, hasHookedPlugins);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     public static synchronized void unbind() {
+        HookBridge.HAS_HOOKED_PLUGINS = false;
         try {
             Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, false, null);
+            bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, false);
             bindHandles(bootstrapBridge, null, null, null, null);
             if (bootstrapBridge != HookBridge.class) {
                 bindHandles(HookBridge.class, null, null, null, null);

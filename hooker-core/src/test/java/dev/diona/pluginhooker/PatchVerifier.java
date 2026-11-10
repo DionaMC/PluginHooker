@@ -27,7 +27,10 @@ import java.io.File;
 import java.io.InputStream;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
+import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URL;
@@ -157,8 +160,8 @@ public final class PatchVerifier {
             }
             logger.info("Verified multi-ClassLoader live instrumentation!");
 
-            // 4b. Verify live Netty pipeline behavior before shutdown
-            verifyNettyPipelineBehavior(logger, pluginRegistry, cl);
+            // 4b. Verify live Netty pipeline, Adventure wrapper, and NMS send/disconnect behavior before shutdown
+            verifyNettyPipelineBehavior(logger, pluginRegistry, playerRegistry, cl);
 
             patchManager.shutdown();
 
@@ -229,6 +232,51 @@ public final class PatchVerifier {
         }
     }
 
+    private static volatile Class<?> stubPlayerClass;
+
+    private static org.bukkit.entity.Player createStubBukkitPlayer(java.util.UUID uuid, String name) throws Exception {
+        Class<?> clazz = stubPlayerClass;
+        if (clazz == null) {
+            ClassDesc stubDesc = ClassDesc.of("dev.diona.pluginhooker.StubBukkitPlayer");
+            ClassDesc uuidDesc = ClassDesc.of("java.util.UUID");
+            byte[] bytes = ClassFile.of().build(stubDesc, clb -> {
+                clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_FINAL);
+                clb.withInterfaceSymbols(ClassDesc.of("org.bukkit.entity.Player"));
+                clb.withField("uuid", uuidDesc, ClassFile.ACC_PRIVATE | ClassFile.ACC_FINAL);
+                clb.withField("name", ConstantDescs.CD_String, ClassFile.ACC_PRIVATE | ClassFile.ACC_FINAL);
+                clb.withMethodBody(
+                        ConstantDescs.INIT_NAME,
+                        MethodTypeDesc.of(ConstantDescs.CD_void, uuidDesc, ConstantDescs.CD_String),
+                        ClassFile.ACC_PUBLIC,
+                        cb -> {
+                            cb.aload(0);
+                            cb.invokespecial(ConstantDescs.CD_Object, ConstantDescs.INIT_NAME, ConstantDescs.MTD_void);
+                            cb.aload(0);
+                            cb.aload(1);
+                            cb.putfield(stubDesc, "uuid", uuidDesc);
+                            cb.aload(0);
+                            cb.aload(2);
+                            cb.putfield(stubDesc, "name", ConstantDescs.CD_String);
+                            cb.return_();
+                        }
+                );
+                clb.withMethodBody("getUniqueId", MethodTypeDesc.of(uuidDesc), ClassFile.ACC_PUBLIC, cb -> {
+                    cb.aload(0);
+                    cb.getfield(stubDesc, "uuid", uuidDesc);
+                    cb.areturn();
+                });
+                clb.withMethodBody("getName", MethodTypeDesc.of(ConstantDescs.CD_String), ClassFile.ACC_PUBLIC, cb -> {
+                    cb.aload(0);
+                    cb.getfield(stubDesc, "name", ConstantDescs.CD_String);
+                    cb.areturn();
+                });
+            });
+            clazz = MethodHandles.lookup().defineClass(bytes);
+            stubPlayerClass = clazz;
+        }
+        return (org.bukkit.entity.Player) clazz.getConstructor(java.util.UUID.class, String.class).newInstance(uuid, name);
+    }
+
     private static final class ChildFirstActorLoader extends URLClassLoader {
         ChildFirstActorLoader(URL testClassesUrl, ClassLoader parent) {
             super(new URL[]{testClassesUrl}, parent);
@@ -255,6 +303,7 @@ public final class PatchVerifier {
     private static void verifyNettyPipelineBehavior(
             Logger logger,
             PluginRegistryImpl pluginRegistry,
+            PlayerRegistryImpl playerRegistry,
             ClassLoader parentLoader
     ) throws Exception {
         URL testClassesUrl = PatchVerifier.class.getProtectionDomain().getCodeSource().getLocation();
@@ -349,6 +398,35 @@ public final class PatchVerifier {
                 if (resolvedViaAdventure != mockPlugin) {
                     throw new AssertionError("Expected resolveHookedCaller to walk past net.kyori.adventure.* wrapper, got: " + resolvedViaAdventure);
                 }
+
+                // 6. Live NMS PlayerConnection sendPacket (direct + reflection) & disconnect fast-path caller verification
+                java.util.UUID mockUuid = java.util.UUID.randomUUID();
+                org.bukkit.entity.Player mockBukkitPlayer = createStubBukkitPlayer(mockUuid, "NmsTestPlayer");
+                net.minecraft.server.test.PlayerConnection nmsConn = new net.minecraft.server.test.PlayerConnection(mockBukkitPlayer);
+                if (playerRegistry.getPlayer(mockUuid) == null) {
+                    throw new AssertionError("Expected PlayerConnection.<init> hook to auto-register player");
+                }
+                nmsConn.sendPacket("server_pkt");
+                if (nmsConn.sentPackets != 1) {
+                    throw new AssertionError("Expected server NMS sendPacket to pass");
+                }
+                actorClass.getMethod("directNmsSend", net.minecraft.server.test.PlayerConnection.class, Object.class)
+                        .invoke(null, nmsConn, "plugin_pkt");
+                actorClass.getMethod("reflectiveNmsSend", net.minecraft.server.test.PlayerConnection.class, Object.class)
+                        .invoke(null, nmsConn, "reflective_pkt");
+                if (nmsConn.sentPackets != 1) {
+                    throw new AssertionError("Expected direct and reflective NMS sendPacket from disabled plugin to be blocked, sentPackets=" + nmsConn.sentPackets);
+                }
+                actorClass.getMethod("directNmsDisconnect", net.minecraft.server.test.PlayerConnection.class, String.class)
+                        .invoke(null, nmsConn, "false kick");
+                if (nmsConn.disconnected) {
+                    throw new AssertionError("Expected NMS disconnect from disabled plugin to be blocked");
+                }
+                nmsConn.disconnect("server shutdown");
+                if (!nmsConn.disconnected) {
+                    throw new AssertionError("Expected server NMS disconnect to succeed");
+                }
+                playerRegistry.unregisterPlayer(mockBukkitPlayer);
             } finally {
                 pluginRegistry.handlePluginDisable(mockPlugin);
             }

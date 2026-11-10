@@ -1,6 +1,7 @@
 package dev.diona.pluginhooker.service;
 
 import com.google.common.collect.MapMaker;
+import dev.diona.pluginhooker.agent.BridgeInjector;
 import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
@@ -141,6 +142,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
     }
 
     private void updateWhitelistFlag() {
+        BridgeInjector.setHasHookedPlugins(!hookedPlugins.isEmpty());
         for (HookMode mode : hookedPlugins.values()) {
             if (mode == HookMode.WHITELIST) {
                 hasWhitelistPlugins = true;

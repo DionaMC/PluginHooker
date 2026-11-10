@@ -23,6 +23,7 @@ public final class HookIds {
     public static final int GUARD_PROTOCOLLIB_ASYNC = 15;
     public static final int GUARD_NETTY_CLOSE = 16;
     public static final int GUARD_NETTY_WRITE_BYTEBUF_TAIL = 17;
+    public static final int GUARD_NMS_DISCONNECT = 18;
 
     // Return-value filter hooks
     public static final int FILTER_ONLINE_PLAYERS = 101;
