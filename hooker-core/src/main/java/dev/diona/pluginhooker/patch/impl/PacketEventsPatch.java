@@ -559,14 +559,14 @@ public final class PacketEventsPatch extends ClassPatch {
 
     private HookedPlayer resolveHookedPlayer(Object event) {
         if (event instanceof ProtocolPacketEvent ppe) {
-            if (ppe.getPlayer() instanceof Player p) {
-                HookedPlayer hp = playerRegistry.getPlayer(p);
+            if (ppe.getChannel() instanceof Channel ch) {
+                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
                 if (hp != null) {
                     return hp;
                 }
             }
-            if (ppe.getChannel() instanceof Channel ch) {
-                HookedPlayer hp = PlayerChannelResolver.resolveHookedPlayer(ch, playerRegistry);
+            if (ppe.getPlayer() instanceof Player p) {
+                HookedPlayer hp = playerRegistry.getPlayer(p);
                 if (hp != null) {
                     return hp;
                 }
@@ -581,19 +581,19 @@ public final class PacketEventsPatch extends ClassPatch {
         // Shaded/relocated PacketEvents event instance
         ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
         try {
-            if (accessors.getPlayer() != null) {
-                Object playerObj = accessors.getPlayer().invokeExact(event);
-                if (playerObj instanceof Player p) {
-                    HookedPlayer hp = playerRegistry.getPlayer(p);
+            if (accessors.getChannel() != null) {
+                Object channelObj = accessors.getChannel().invokeExact(event);
+                if (channelObj instanceof Channel ch) {
+                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
                     if (hp != null) {
                         return hp;
                     }
                 }
             }
-            if (accessors.getChannel() != null) {
-                Object channelObj = accessors.getChannel().invokeExact(event);
-                if (channelObj instanceof Channel ch) {
-                    HookedPlayer hp = PlayerChannelResolver.resolveHookedPlayer(ch, playerRegistry);
+            if (accessors.getPlayer() != null) {
+                Object playerObj = accessors.getPlayer().invokeExact(event);
+                if (playerObj instanceof Player p) {
+                    HookedPlayer hp = playerRegistry.getPlayer(p);
                     if (hp != null) {
                         return hp;
                     }
