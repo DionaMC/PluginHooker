@@ -5,7 +5,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Lock-free {@link ClassValue}-backed serializer that extracts human-readable kick/disconnect reasons
@@ -14,9 +13,9 @@ import java.util.Optional;
  */
 public final class KickReasonSerializer {
 
-    private static final ClassValue<Optional<MethodHandle>> REASON_STRING_EXTRACTOR = new ClassValue<>() {
+    private static final ClassValue<MethodHandle> REASON_STRING_EXTRACTOR = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> reasonClass) {
+        protected MethodHandle computeValue(Class<?> reasonClass) {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
             // 1. Adventure Component -> LegacyComponentSerializer.legacySection().serialize(component)
             try {
@@ -30,11 +29,9 @@ public final class KickReasonSerializer {
                     );
                     Object legacySectionInstance = serializerClass.getMethod("legacySection").invoke(null);
                     Method serializeMethod = serializerClass.getMethod("serialize", componentClass);
-                    return Optional.of(
-                            lookup.unreflect(serializeMethod)
-                                    .bindTo(legacySectionInstance)
-                                    .asType(MethodType.methodType(String.class, Object.class))
-                    );
+                    return lookup.unreflect(serializeMethod)
+                            .bindTo(legacySectionInstance)
+                            .asType(MethodType.methodType(String.class, Object.class));
                 }
             } catch (Throwable ignored) {
             }
@@ -46,10 +43,8 @@ public final class KickReasonSerializer {
                     Method getStringMethod = reasonMethod.getReturnType().getMethod("getString");
                     MethodHandle reasonMh = lookup.unreflect(reasonMethod);
                     MethodHandle strMh = lookup.unreflect(getStringMethod);
-                    return Optional.of(
-                            MethodHandles.filterReturnValue(reasonMh, strMh)
-                                    .asType(MethodType.methodType(String.class, Object.class))
-                    );
+                    return MethodHandles.filterReturnValue(reasonMh, strMh)
+                            .asType(MethodType.methodType(String.class, Object.class));
                 } catch (Throwable ignored) {
                 }
             }
@@ -59,14 +54,12 @@ public final class KickReasonSerializer {
                 try {
                     Method m = reasonClass.getMethod(methodName);
                     if (m.getReturnType() == String.class) {
-                        return Optional.of(
-                                lookup.unreflect(m).asType(MethodType.methodType(String.class, Object.class))
-                        );
+                        return lookup.unreflect(m).asType(MethodType.methodType(String.class, Object.class));
                     }
                 } catch (Throwable ignored) {
                 }
             }
-            return Optional.empty();
+            return null;
         }
     };
 
@@ -80,10 +73,10 @@ public final class KickReasonSerializer {
         if (reasonObj instanceof String str) {
             return str;
         }
-        Optional<MethodHandle> extractor = REASON_STRING_EXTRACTOR.get(reasonObj.getClass());
-        if (extractor.isPresent()) {
+        MethodHandle extractor = REASON_STRING_EXTRACTOR.get(reasonObj.getClass());
+        if (extractor != null) {
             try {
-                return (String) extractor.get().invokeExact(reasonObj);
+                return (String) extractor.invokeExact(reasonObj);
             } catch (Throwable ignored) {
             }
         }

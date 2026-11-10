@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -48,22 +47,20 @@ public final class PlayerChannelResolver {
         }
     };
 
-    private static final ClassValue<Optional<MethodHandle>> CHANNEL_PROXY_UNWRAPPER = new ClassValue<>() {
+    private static final ClassValue<MethodHandle> CHANNEL_PROXY_UNWRAPPER = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> channelClass) {
+        protected MethodHandle computeValue(Class<?> channelClass) {
             if (!channelClass.getSimpleName().equals("NettyChannelProxy")) {
-                return Optional.empty();
+                return null;
             }
             try {
                 Field delegateField = channelClass.getDeclaredField("delegate");
                 delegateField.setAccessible(true);
-                return Optional.of(
-                        MethodHandles.lookup()
-                                .unreflectGetter(delegateField)
-                                .asType(MethodType.methodType(Channel.class, Object.class))
-                );
+                return MethodHandles.lookup()
+                        .unreflectGetter(delegateField)
+                        .asType(MethodType.methodType(Channel.class, Object.class));
             } catch (ReflectiveOperationException e) {
-                return Optional.empty();
+                return null;
             }
         }
     };
@@ -192,12 +189,12 @@ public final class PlayerChannelResolver {
         if (channel == null) {
             return null;
         }
-        Optional<MethodHandle> getterOpt = CHANNEL_PROXY_UNWRAPPER.get(channel.getClass());
-        if (getterOpt.isEmpty()) {
+        MethodHandle getter = CHANNEL_PROXY_UNWRAPPER.get(channel.getClass());
+        if (getter == null) {
             return channel;
         }
         try {
-            Channel unwrapped = (Channel) getterOpt.get().invokeExact((Object) channel);
+            Channel unwrapped = (Channel) getter.invokeExact((Object) channel);
             return unwrapped != null ? unwrapped : channel;
         } catch (Throwable ignored) {
             return channel;

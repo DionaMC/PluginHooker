@@ -28,7 +28,6 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Optional;
 import java.util.logging.Logger;
 
 /**
@@ -43,9 +42,9 @@ import java.util.logging.Logger;
 @RequiredArgsConstructor
 public final class NmsConnectionPatch extends ClassPatch {
 
-    private static final ClassValue<Optional<MethodHandle>> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
+    private static final ClassValue<MethodHandle> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> connectionClass) {
+        protected MethodHandle computeValue(Class<?> connectionClass) {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
             for (Method m : connectionClass.getMethods()) {
                 if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0) {
@@ -54,9 +53,7 @@ public final class NmsConnectionPatch extends ClassPatch {
                 if (Player.class.isAssignableFrom(m.getReturnType())) {
                     try {
                         m.setAccessible(true);
-                        return Optional.of(
-                                lookup.unreflect(m).asType(MethodType.methodType(Player.class, Object.class))
-                        );
+                        return lookup.unreflect(m).asType(MethodType.methodType(Player.class, Object.class));
                     } catch (ReflectiveOperationException ignored) {
                     }
                 }
@@ -75,17 +72,15 @@ public final class NmsConnectionPatch extends ClassPatch {
                                 m.setAccessible(true);
                                 MethodHandle fieldGetter = lookup.unreflectGetter(f);
                                 MethodHandle entityGetter = lookup.unreflect(m);
-                                return Optional.of(
-                                        MethodHandles.filterReturnValue(fieldGetter, entityGetter)
-                                                .asType(MethodType.methodType(Player.class, Object.class))
-                                );
+                                return MethodHandles.filterReturnValue(fieldGetter, entityGetter)
+                                        .asType(MethodType.methodType(Player.class, Object.class));
                             } catch (ReflectiveOperationException ignored) {
                             }
                         }
                     }
                 }
             }
-            return Optional.empty();
+            return null;
         }
     };
 
@@ -259,12 +254,12 @@ public final class NmsConnectionPatch extends ClassPatch {
     }
 
     private static Player extractPlayer(Object connectionObj) {
-        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
-        if (getterOpt.isEmpty()) {
+        MethodHandle getter = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
+        if (getter == null) {
             return null;
         }
         try {
-            return (Player) getterOpt.get().invokeExact(connectionObj);
+            return (Player) getter.invokeExact(connectionObj);
         } catch (Throwable ignored) {
             return null;
         }
