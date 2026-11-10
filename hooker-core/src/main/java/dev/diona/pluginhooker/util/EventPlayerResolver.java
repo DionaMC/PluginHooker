@@ -33,21 +33,52 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Optional;
+import java.util.function.Function;
 
 /**
- * High-performance extractor that resolves the associated {@link Player} from a Bukkit {@link Event}.
- * Uses fast instanceof checks for common Bukkit event hierarchies and a lock-free {@link ClassValue}
- * {@link MethodHandle} cache for unknown or custom events.
+ * High-performance O(1) extractor that resolves the associated {@link Player} from a Bukkit {@link Event}.
+ * Uses a direct {@link PlayerEvent} superclass fast-path and a lock-free {@link ClassValue} dispatch table
+ * so non-{@link PlayerEvent}s never fall through a chain of sequential {@code instanceof} checks.
  */
 public final class EventPlayerResolver {
 
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+    private static final ResolvedExtractor EMPTY_EXTRACTOR = new ResolvedExtractor(null, null);
 
-    private static final ClassValue<Optional<MethodHandle>> REFLECTIVE_ACCESSOR_CACHE = new ClassValue<>() {
+    private record ResolvedExtractor(
+            Function<Event, Player> knownExtractor,
+            Function<Event, Player> reflectiveExtractor
+    ) {
+        Player extract(Event event, boolean useReflectionFallback) {
+            if (knownExtractor != null) {
+                return knownExtractor.apply(event);
+            }
+            if (useReflectionFallback && reflectiveExtractor != null) {
+                return reflectiveExtractor.apply(event);
+            }
+            return null;
+        }
+    }
+
+    private static final ClassValue<ResolvedExtractor> EXTRACTOR_CACHE = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> eventClass) {
-            return Optional.ofNullable(findPlayerAccessor(eventClass));
+        protected ResolvedExtractor computeValue(Class<?> eventClass) {
+            Function<Event, Player> known = buildKnownExtractor(eventClass);
+            if (known != null) {
+                return new ResolvedExtractor(known, null);
+            }
+            MethodHandle mh = findPlayerAccessor(eventClass);
+            if (mh == null) {
+                return EMPTY_EXTRACTOR;
+            }
+            return new ResolvedExtractor(null, ev -> {
+                try {
+                    Object res = mh.invokeExact(ev);
+                    return res instanceof Player p ? p : null;
+                } catch (Throwable t) {
+                    return null;
+                }
+            });
         }
     };
 
@@ -55,86 +86,94 @@ public final class EventPlayerResolver {
     }
 
     public static Player resolvePlayer(Event event, boolean useReflectionFallback) {
+        if (event == null) {
+            return null;
+        }
         if (event instanceof PlayerEvent playerEvent) {
             return playerEvent.getPlayer();
         }
+        return EXTRACTOR_CACHE.get(event.getClass()).extract(event, useReflectionFallback);
+    }
 
-        if (event instanceof EntityDamageByEntityEvent damageEvent) {
-            Entity damager = damageEvent.getDamager();
-            if (damager instanceof Player player) {
-                return player;
-            }
-            if (damager instanceof Projectile projectile) {
-                ProjectileSource shooter = projectile.getShooter();
-                if (shooter instanceof Player shooterPlayer) {
+    private static Function<Event, Player> buildKnownExtractor(Class<?> eventClass) {
+        if (PlayerEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((PlayerEvent) ev).getPlayer();
+        }
+        if (EntityDamageByEntityEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> {
+                EntityDamageByEntityEvent dmg = (EntityDamageByEntityEvent) ev;
+                Entity damager = dmg.getDamager();
+                if (damager instanceof Player player) {
+                    return player;
+                }
+                if (damager instanceof Projectile projectile
+                        && projectile.getShooter() instanceof Player shooterPlayer) {
                     return shooterPlayer;
                 }
-            }
+                return dmg.getEntity() instanceof Player victim ? victim : null;
+            };
         }
-
-        if (event instanceof EntityEvent entityEvent) {
-            Entity entity = entityEvent.getEntity();
-            if (entity instanceof Player player) {
-                return player;
-            }
-            if (entityEvent instanceof ProjectileLaunchEvent launchEvent) {
-                ProjectileSource shooter = launchEvent.getEntity().getShooter();
-                return shooter instanceof Player shooterPlayer ? shooterPlayer : null;
-            }
+        if (ProjectileLaunchEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> {
+                Projectile entity = ((ProjectileLaunchEvent) ev).getEntity();
+                if (entity != null && entity.getShooter() instanceof Player shooter) {
+                    return shooter;
+                }
+                return null;
+            };
         }
-
-        if (event instanceof InventoryInteractEvent invInteract) {
-            HumanEntity clicker = invInteract.getWhoClicked();
-            return clicker instanceof Player player ? player : null;
+        if (EntityEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((EntityEvent) ev).getEntity() instanceof Player p ? p : null;
         }
-        if (event instanceof InventoryOpenEvent invOpen) {
-            HumanEntity viewer = invOpen.getPlayer();
-            return viewer instanceof Player player ? player : null;
+        if (InventoryInteractEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((InventoryInteractEvent) ev).getWhoClicked() instanceof Player p ? p : null;
         }
-        if (event instanceof InventoryCloseEvent invClose) {
-            HumanEntity viewer = invClose.getPlayer();
-            return viewer instanceof Player player ? player : null;
+        if (InventoryOpenEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((InventoryOpenEvent) ev).getPlayer() instanceof Player p ? p : null;
         }
-
-        if (event instanceof BlockBreakEvent e) return e.getPlayer();
-        if (event instanceof BlockPlaceEvent e) return e.getPlayer();
-        if (event instanceof BlockDamageEvent e) return e.getPlayer();
-        if (event instanceof BlockIgniteEvent e) return e.getPlayer();
-        if (event instanceof SignChangeEvent e) return e.getPlayer();
-        if (event instanceof FurnaceExtractEvent e) return e.getPlayer();
-        if (event instanceof EnchantItemEvent e) return e.getEnchanter();
-        if (event instanceof PrepareItemEnchantEvent e) return e.getEnchanter();
-
-        if (event instanceof VehicleDamageEvent e) {
-            return e.getAttacker() instanceof Player p ? p : null;
+        if (InventoryCloseEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((InventoryCloseEvent) ev).getPlayer() instanceof Player p ? p : null;
         }
-        if (event instanceof VehicleDestroyEvent e) {
-            return e.getAttacker() instanceof Player p ? p : null;
+        if (BlockBreakEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((BlockBreakEvent) ev).getPlayer();
         }
-        if (event instanceof VehicleEnterEvent e) {
-            return e.getEntered() instanceof Player p ? p : null;
+        if (BlockPlaceEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((BlockPlaceEvent) ev).getPlayer();
         }
-        if (event instanceof VehicleExitEvent e) {
-            return e.getExited() instanceof Player p ? p : null;
+        if (BlockDamageEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((BlockDamageEvent) ev).getPlayer();
         }
-        if (event instanceof VehicleEntityCollisionEvent e) {
-            return e.getEntity() instanceof Player p ? p : null;
+        if (BlockIgniteEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((BlockIgniteEvent) ev).getPlayer();
         }
-
-        if (!useReflectionFallback) {
-            return null;
+        if (SignChangeEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((SignChangeEvent) ev).getPlayer();
         }
-
-        Optional<MethodHandle> handleOpt = REFLECTIVE_ACCESSOR_CACHE.get(event.getClass());
-        if (handleOpt.isEmpty()) {
-            return null;
+        if (FurnaceExtractEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((FurnaceExtractEvent) ev).getPlayer();
         }
-        try {
-            Object result = handleOpt.get().invokeExact((Object) event);
-            return result instanceof Player player ? player : null;
-        } catch (Throwable t) {
-            return null;
+        if (EnchantItemEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((EnchantItemEvent) ev).getEnchanter();
         }
+        if (PrepareItemEnchantEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((PrepareItemEnchantEvent) ev).getEnchanter();
+        }
+        if (VehicleDamageEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((VehicleDamageEvent) ev).getAttacker() instanceof Player p ? p : null;
+        }
+        if (VehicleDestroyEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((VehicleDestroyEvent) ev).getAttacker() instanceof Player p ? p : null;
+        }
+        if (VehicleEnterEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((VehicleEnterEvent) ev).getEntered() instanceof Player p ? p : null;
+        }
+        if (VehicleExitEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((VehicleExitEvent) ev).getExited() instanceof Player p ? p : null;
+        }
+        if (VehicleEntityCollisionEvent.class.isAssignableFrom(eventClass)) {
+            return ev -> ((VehicleEntityCollisionEvent) ev).getEntity() instanceof Player p ? p : null;
+        }
+        return null;
     }
 
     private static MethodHandle findPlayerAccessor(Class<?> eventClass) {
@@ -148,7 +187,7 @@ public final class EventPlayerResolver {
                 try {
                     method.setAccessible(true);
                     return LOOKUP.unreflect(method)
-                            .asType(MethodType.methodType(Object.class, Object.class));
+                            .asType(MethodType.methodType(Object.class, Event.class));
                 } catch (IllegalAccessException ignored) {
                 }
             }
@@ -164,7 +203,7 @@ public final class EventPlayerResolver {
                     try {
                         field.setAccessible(true);
                         return LOOKUP.unreflectGetter(field)
-                                .asType(MethodType.methodType(Object.class, Object.class));
+                                .asType(MethodType.methodType(Object.class, Event.class));
                     } catch (IllegalAccessException ignored) {
                     }
                 }

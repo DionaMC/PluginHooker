@@ -10,8 +10,14 @@ import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.support.SandboxTestFixtures;
 import dev.diona.pluginhooker.support.SandboxTestFixtures.ChildFirstActorLoader;
+import dev.diona.pluginhooker.util.EventPlayerResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,6 +90,54 @@ class LookupAndCallerTest {
             pluginRegistry.handlePluginDisable(mockPlugin);
             assertNull(pluginRegistry.getPluginByClassLoader(libLoader));
         }
+    }
+
+    public static final class CustomPluginEvent extends Event {
+        private static final HandlerList HANDLERS = new HandlerList();
+        private final Player customTarget;
+
+        public CustomPluginEvent(Player customTarget) {
+            super(true);
+            this.customTarget = customTarget;
+        }
+
+        public Player getCustomTarget() {
+            return customTarget;
+        }
+
+        @Override
+        public HandlerList getHandlers() {
+            return HANDLERS;
+        }
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void eventPlayerResolverClassValueDispatch() throws Exception {
+        Player attacker = SandboxTestFixtures.createStubPlayer(UUID.randomUUID(), "Attacker");
+        Player victim = SandboxTestFixtures.createStubPlayer(UUID.randomUUID(), "Victim");
+        Entity dummyZombie = (Entity) java.lang.reflect.Proxy.newProxyInstance(
+                parentLoader,
+                new Class<?>[]{Entity.class},
+                (p, m, a) -> null
+        );
+
+        // PvP: resolves damager first
+        EntityDamageByEntityEvent pvp = new EntityDamageByEntityEvent(
+                attacker, victim, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 5.0
+        );
+        assertSame(attacker, EventPlayerResolver.resolvePlayer(pvp, true));
+
+        // PvE (Zombie hitting Player): falls back to victim Player
+        EntityDamageByEntityEvent pve = new EntityDamageByEntityEvent(
+                dummyZombie, victim, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 5.0
+        );
+        assertSame(victim, EventPlayerResolver.resolvePlayer(pve, true));
+
+        // Custom reflective event respects useReflectionFallback flag
+        CustomPluginEvent custom = new CustomPluginEvent(victim);
+        assertSame(victim, EventPlayerResolver.resolvePlayer(custom, true));
+        assertNull(EventPlayerResolver.resolvePlayer(custom, false));
     }
 
     @Test
