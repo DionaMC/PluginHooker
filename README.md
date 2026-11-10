@@ -10,7 +10,7 @@ PluginHooker is a per-player plugin sandbox for Bukkit/Spigot/Paper servers (1.8
 * **Hook Bukkit Player & Entity Lookup APIs**: Hide disabled players from hooked plugins in `Bukkit.getOnlinePlayers()`, `Bukkit.matchPlayer()`, `Bukkit.getPlayer(...)`, `World#getPlayers()`, `World#getPlayersSeeingChunk(...)`, `World#getEntities()`, `World#getLivingEntities()`, `World#getEntitiesByClass(...)`, and `getNearbyEntities(...)`.
 * **Hook Bukkit & NMS Player Side-Effects**: Block disabled plugins from interfering with players via `Player#kickPlayer` / `Player#kick(Component)`, `Bukkit.dispatchCommand`, `Player#teleport` / `Player#teleportAsync`, `Player#setVelocity`, `Player#sendMessage`, `Player.Spigot#sendMessage`, `Bukkit.broadcast`, and direct NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`.
 * **Hook NMS Connection Lifecycle**: Hooks `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>` directly to bind the player's Netty `Channel` and fire `PlayerHookRegisterEvent` before the very first `JOIN_GAME` packet is sent, with automatic `channel.closeFuture()` cleanup and zero-grace protection for NPC / fake players (`EmptyChannel`).
-* **Hook Netty Pipeline & Channel Close**: Direct context-level interception (`AbstractChannelHandlerContext`) supporting `addFirst`, `addLast`, `addBefore`, `addAfter`, and `replace`, blocking raw `ByteBuf` writes from disabled plugins, and intercepting `Channel#close` / `ChannelHandlerContext#close` via `PlayerKickHookEvent`.
+* **Hook Netty Pipeline & Channel Close**: Direct context-level interception (`AbstractChannelHandlerContext`) supporting `addFirst`, `addLast`, `addBefore`, `addAfter`, and `replace`, blocking raw `ByteBuf` writes from disabled plugins, and intercepting `Channel#close` / `ChannelHandlerContext#close` via `PlayerChannelCloseHookEvent`.
 * **Hook ProtocolLib**: Synchronous and `AsyncListenerHandler` inbound/outbound `PacketListener` interception, plus active `sendServerPacket` / `receiveClientPacket` / `sendWirePacket` blocking.
 * **Hook PacketEvents**: Supports both standalone and shaded/relocated PacketEvents instances (`EventManager`, `PacketReceiveEvent`, `PacketSendEvent`, and `ProtocolManagerImpl#sendPacket`).
 * **Whitelist & Blacklist Modes with Read-Only Join Grace**: Configure each hooked plugin as default-disabled (`WHITELIST`) or default-enabled (`BLACKLIST`), with configurable `join-grace-ticks` during which disabled plugins observe initial join packets in strict **read-only mode** (automatically reverting `setCancelled`, packet wrapper mutations, ProtocolLib `NetworkMarker` scheduled packets, and PacketEvents `postTasks` / `tasksAfterSend`).
@@ -95,6 +95,7 @@ public class SandboxExample {
 
 ```java
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
+import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
 import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
@@ -115,6 +116,11 @@ public class ExampleHookListener implements Listener {
         // Inspect which plugin kicked the player and the reason (String or Adventure Component)
         String pluginName = event.getPlugin().getName();
         String reason = event.getReason();
+    }
+
+    @EventHandler
+    public void onPlayerChannelClose(PlayerChannelCloseHookEvent event) {
+        // Inspect or cancel when a hooked plugin attempts to close a player's Netty channel directly
     }
 
     @EventHandler

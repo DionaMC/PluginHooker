@@ -10,7 +10,7 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 * **Hook Bukkit 玩家与实体查询 API**：支持在 `Bukkit.getOnlinePlayers()`、`Bukkit.matchPlayer()`、`Bukkit.getPlayer(...)`、`World#getPlayers()`、`World#getPlayersSeeingChunk(...)`、`World#getEntities()`、`World#getLivingEntities()`、`World#getEntitiesByClass(...)` 及 `getNearbyEntities(...)` 中对未启用的受控插件隐藏指定玩家。
 * **Hook Bukkit 与 NMS 玩家副作用 API**：阻断未启用的受控插件对玩家调用 `Player#kickPlayer` / `Player#kick(Component)`、`Bukkit.dispatchCommand`、`Player#teleport` / `Player#teleportAsync`、`Player#setVelocity`、`Player#sendMessage`、`Player.Spigot#sendMessage`、`Bukkit.broadcast` 以及直接调用 NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`。
 * **Hook NMS 连接生命周期**：直接插桩 `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>`，在服务端发出第一个 `JOIN_GAME` 包之前即完成玩家注册、Netty `Channel` 绑定并触发 `PlayerHookRegisterEvent`，通过 `channel.closeFuture()` 自动清理断线玩家，并对假人/Bot（如 `EmptyChannel`）实行 0 宽限期保护。
-* **Hook Netty Pipeline 与通道关闭**：直接在 `AbstractChannelHandlerContext` 调用点拦截读写，完整支持 `addFirst`、`addLast`、`addBefore`、`addAfter`、`replace`，拦截未启用插件的底层 `ByteBuf` 直写，并拦截 `Channel#close` / `ChannelHandlerContext#close` 触发 `PlayerKickHookEvent`（防止反作弊直接关闭 Netty 连接踢人）。
+* **Hook Netty Pipeline 与通道关闭**：直接在 `AbstractChannelHandlerContext` 调用点拦截读写，完整支持 `addFirst`、`addLast`、`addBefore`、`addAfter`、`replace`，拦截未启用插件的底层 `ByteBuf` 直写，并拦截 `Channel#close` / `ChannelHandlerContext#close` 触发 `PlayerChannelCloseHookEvent`（防止反作弊直接关闭 Netty 连接踢人）。
 * **Hook ProtocolLib**：接管同步与 `AsyncListenerHandler` 异步双向数据包监听器，并拦截未启用插件主动调用 `sendServerPacket` / `receiveClientPacket` / `sendWirePacket`。
 * **Hook PacketEvents**：同时支持独立插件版与被其他插件打包（Shaded/Relocated）的 PacketEvents（涵盖 `EventManager`、`PacketReceiveEvent`、`PacketSendEvent` 及 `ProtocolManagerImpl#sendPacket` 主动发包拦截）。
 * **双沙箱策略与只读进服宽限期**：支持按插件设置 `WHITELIST`（默认禁用，手动开启）或 `BLACKLIST`（默认启用，手动关闭），并提供可配置的 `join-grace-ticks` 进服初始化宽限期——在宽限期内未启用插件仅以**只读模式**观察初始化包（自动回滚 `setCancelled`、数据包修改、ProtocolLib `NetworkMarker` 计划包以及 PacketEvents `postTasks` / `tasksAfterSend` 回调任务），彻底杜绝未启用反作弊在进服阶段发送 `Transaction` 包或取消 `PacketPlayOutPosition`。
@@ -95,6 +95,7 @@ public class SandboxExample {
 
 ```java
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
+import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
 import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
@@ -115,6 +116,11 @@ public class ExampleHookListener implements Listener {
         // 获取是哪个受控插件踢出了玩家及踢出原因（兼容 String 与 Adventure Component）
         String pluginName = event.getPlugin().getName();
         String reason = event.getReason();
+    }
+
+    @EventHandler
+    public void onPlayerChannelClose(PlayerChannelCloseHookEvent event) {
+        // 监听或拦截受控插件直接关闭玩家 Netty Channel（如 user.closeConnection()）
     }
 
     @EventHandler

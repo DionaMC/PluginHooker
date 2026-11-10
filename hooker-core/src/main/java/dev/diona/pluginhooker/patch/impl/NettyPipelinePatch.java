@@ -1,6 +1,7 @@
 package dev.diona.pluginhooker.patch.impl;
 
 import dev.diona.pluginhooker.api.event.NettyHookEvent;
+import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
@@ -196,13 +197,10 @@ public final class NettyPipelinePatch extends ClassPatch {
 
     /**
      * Intercepts direct {@code channel.close()}/{@code disconnect()} and {@code ctx.close()}/{@code disconnect()}
-     * calls initiated by disabled plugins (e.g. GrimAC's {@code user.closeConnection()}).
+     * calls initiated by hooked plugins (e.g. GrimAC's or Vulcan's {@code user.closeConnection()}).
      */
     public boolean handleChannelClose(Object ctxObj, Object promiseObj) {
-        if (!config.bukkitApi().isBlockDisabledKick() || !pluginRegistry.hasHookedPlugins()) {
-            return false;
-        }
-        if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
+        if (!pluginRegistry.hasHookedPlugins() || !(ctxObj instanceof ChannelHandlerContext ctx)) {
             return false;
         }
         HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
@@ -210,7 +208,26 @@ public final class NettyPipelinePatch extends ClassPatch {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectChannelCloseCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        if (caller == null) {
+            return false;
+        }
+
+        boolean enabled = hookedPlayer.isPluginEnabled(caller);
+        boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
+
+        if (config.bukkitApi().isCallKickEvent()) {
+            PlayerChannelCloseHookEvent hookEvent = new PlayerChannelCloseHookEvent(
+                    caller,
+                    hookedPlayer,
+                    ctx.channel(),
+                    enabled,
+                    shouldBlock
+            );
+            Bukkit.getPluginManager().callEvent(hookEvent);
+            shouldBlock = hookEvent.isCancelled();
+        }
+
+        if (shouldBlock) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from closing Netty channel of player " + hookedPlayer.getName());
