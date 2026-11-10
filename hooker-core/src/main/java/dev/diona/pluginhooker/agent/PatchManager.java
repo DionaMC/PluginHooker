@@ -1,16 +1,19 @@
 package dev.diona.pluginhooker.agent;
 
 import com.google.common.collect.MapMaker;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.patch.impl.BukkitApiPatch;
 import dev.diona.pluginhooker.patch.impl.BukkitEventPatch;
+import dev.diona.pluginhooker.patch.impl.BukkitLookupPatch;
 import dev.diona.pluginhooker.patch.impl.NettyPipelinePatch;
+import dev.diona.pluginhooker.patch.impl.NmsConnectionPatch;
 import dev.diona.pluginhooker.patch.impl.PacketEventsPatch;
 import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import lombok.Getter;
 
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
@@ -35,10 +38,13 @@ public final class PatchManager {
 
     private final Logger logger;
     private final BukkitEventPatch bukkitEventPatch;
+    private final BukkitLookupPatch bukkitLookupPatch;
     private final BukkitApiPatch bukkitApiPatch;
+    private final NmsConnectionPatch nmsConnectionPatch;
     private final ProtocolLibPatch protocolLibPatch;
     private final PacketEventsPatch packetEventsPatch;
     private final NettyPipelinePatch nettyPipelinePatch;
+    @Getter
     private final List<ClassPatch> patches;
     private final ConcurrentMap<Object, Set<String>> transformedClassesByLoader =
             new MapMaker().weakKeys().makeMap();
@@ -49,20 +55,24 @@ public final class PatchManager {
     public PatchManager(
             Logger logger,
             HookConfig config,
-            PluginRegistry pluginRegistry,
-            PlayerRegistry playerRegistry,
+            PluginRegistryImpl pluginRegistry,
+            PlayerRegistryImpl playerRegistry,
             ClassLoader selfClassLoader
     ) {
         this.logger = logger;
         this.bukkitEventPatch = new BukkitEventPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.bukkitLookupPatch = new BukkitLookupPatch(config, pluginRegistry, playerRegistry, selfClassLoader);
         this.bukkitApiPatch = new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.nmsConnectionPatch = new NmsConnectionPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.protocolLibPatch = new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.packetEventsPatch = new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, selfClassLoader);
 
         this.patches = List.of(
                 bukkitEventPatch,
+                bukkitLookupPatch,
                 bukkitApiPatch,
+                nmsConnectionPatch,
                 protocolLibPatch,
                 packetEventsPatch,
                 nettyPipelinePatch
@@ -204,13 +214,12 @@ public final class PatchManager {
             case HookIds.GUARD_ENTITY_VELOCITY -> bukkitApiPatch.handleEntityVelocity(arg0, arg1);
             case HookIds.GUARD_PLAYER_SEND_MESSAGE -> bukkitApiPatch.handlePlayerSendMessage(arg0, arg1);
             case HookIds.GUARD_PLAYER_CLOSE_INVENTORY -> bukkitApiPatch.handlePlayerCloseInventory(arg0);
-            case HookIds.GUARD_NMS_SEND_PACKET -> bukkitApiPatch.handleNmsSendPacket(arg0, arg1, arg2);
-            case HookIds.GUARD_NMS_DISCONNECT -> bukkitApiPatch.handleNmsDisconnect(arg0, arg1, arg2);
+            case HookIds.GUARD_NMS_SEND_PACKET -> nmsConnectionPatch.handleSendPacket(arg0, arg1, arg2);
+            case HookIds.GUARD_NMS_DISCONNECT -> nmsConnectionPatch.handleDisconnect(arg0, arg1, arg2);
             case HookIds.GUARD_PROTOCOLLIB_SEND_PACKET -> protocolLibPatch.handleSendOrReceivePacket(arg0, arg1);
             case HookIds.GUARD_PACKETEVENTS_SEND_PACKET -> packetEventsPatch.handleSendPacket(arg0, arg1, arg2);
             case HookIds.GUARD_NETTY_WRITE_BYTEBUF -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, false);
             case HookIds.GUARD_NETTY_WRITE_BYTEBUF_TAIL -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, true);
-            case HookIds.GUARD_PROTOCOLLIB_ASYNC -> protocolLibPatch.handleAsyncPacket(arg0, arg1);
             case HookIds.GUARD_NETTY_CLOSE -> nettyPipelinePatch.handleChannelClose(arg0, arg1);
             default -> false;
         };
@@ -218,10 +227,10 @@ public final class PatchManager {
 
     public Object dispatchFilter(Object returnValue, int hookId, Object receiver) {
         return switch (hookId) {
-            case HookIds.FILTER_ONLINE_PLAYERS -> bukkitApiPatch.filterOnlinePlayers(returnValue);
-            case HookIds.FILTER_WORLD_PLAYERS -> bukkitApiPatch.filterWorldPlayers(returnValue);
-            case HookIds.FILTER_GET_PLAYER -> bukkitApiPatch.filterGetPlayer(returnValue);
-            case HookIds.FILTER_ENTITY_COLLECTION -> bukkitApiPatch.filterEntityCollection(returnValue);
+            case HookIds.FILTER_ONLINE_PLAYERS -> bukkitLookupPatch.filterOnlinePlayers(returnValue);
+            case HookIds.FILTER_WORLD_PLAYERS -> bukkitLookupPatch.filterWorldPlayers(returnValue);
+            case HookIds.FILTER_GET_PLAYER -> bukkitLookupPatch.filterGetPlayer(returnValue);
+            case HookIds.FILTER_ENTITY_COLLECTION -> bukkitLookupPatch.filterEntityCollection(returnValue);
             default -> returnValue;
         };
     }
@@ -232,7 +241,7 @@ public final class PatchManager {
             case HookIds.NOTIFY_PACKETEVENTS_REGISTER -> packetEventsPatch.handleListenerRegister(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER -> packetEventsPatch.handleListenerUnregister(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER_ALL -> packetEventsPatch.handleUnregisterAllListeners(arg0);
-            case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> bukkitApiPatch.handleNmsConnectionInit(arg0);
+            case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> nmsConnectionPatch.handleConnectionInit(arg0);
             default -> {
             }
         }
@@ -254,22 +263,29 @@ public final class PatchManager {
             if (className == null) {
                 return null;
             }
+            byte[] currentBytes = classfileBuffer;
+            boolean anyMatched = false;
             for (ClassPatch patch : patches) {
                 if (!patch.isEnabled() || !patch.matchesClass(className)) {
                     continue;
                 }
-                if (!markTransformed(loader, className) && classBeingRedefined == null) {
-                    return null;
+                if (!anyMatched) {
+                    if (!markTransformed(loader, className) && classBeingRedefined == null) {
+                        return null;
+                    }
+                    anyMatched = true;
                 }
                 try {
-                    byte[] transformed = patch.transform(loader, className, classfileBuffer);
-                    logger.info("Hooked class: " + className.replace('/', '.'));
-                    return transformed;
+                    currentBytes = patch.transform(loader, className, currentBytes);
                 } catch (Throwable t) {
                     unmarkTransformed(loader, className);
                     logger.log(Level.SEVERE, "Error transforming class " + className, t);
                     return null;
                 }
+            }
+            if (anyMatched) {
+                logger.info("Hooked class: " + className.replace('/', '.'));
+                return currentBytes;
             }
             return null;
         }

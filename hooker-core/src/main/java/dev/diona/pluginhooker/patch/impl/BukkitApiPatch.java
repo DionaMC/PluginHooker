@@ -1,17 +1,17 @@
 package dev.diona.pluginhooker.patch.impl;
 
-import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
 import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.CommandTargetResolver;
+import dev.diona.pluginhooker.util.KickReasonSerializer;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
@@ -25,48 +25,18 @@ import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
-import java.util.RandomAccess;
 import java.util.Set;
-import java.util.UUID;
-import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 /**
- * Hooks Bukkit Server, World, RegionAccessor, Player, and Entity APIs across Spigot 1.8.8 ~ Paper 26.3:
- * <ul>
- *   <li>Hides disabled players from {@code getOnlinePlayers}, {@code matchPlayer}, {@code getPlayers},
- *       {@code getPlayersSeeingChunk}, {@code getPlayer}, and entity lists</li>
- *   <li>Intercepts {@code kickPlayer}/{@code kick} and {@code dispatchCommand} with custom hook events</li>
- *   <li>Blocks disabled plugins from calling {@code teleport}/{@code teleport0}, {@code setVelocity}, and {@code sendMessage} on players</li>
- * </ul>
+ * Hooks Bukkit side-effect APIs across {@code CraftServer}, {@code CraftPlayer}, {@code CraftHumanEntity},
+ * and {@code CraftEntity} to block disabled plugins from kicking, teleporting, modifying velocity,
+ * sending messages/HUD elements, closing inventories, or dispatching targeted commands.
  */
 @RequiredArgsConstructor
 public final class BukkitApiPatch extends ClassPatch {
 
-    private static final ClassDesc COLLECTION_DESC = ClassDesc.of("java.util.Collection");
-    private static final ClassDesc LIST_DESC = ClassDesc.of("java.util.List");
-    private static final ClassDesc PLAYER_DESC = ClassDesc.of("org.bukkit.entity.Player");
-    private static final ClassDesc UUID_DESC = ClassDesc.of("java.util.UUID");
     private static final ClassDesc COMPLETABLE_FUTURE_DESC = ClassDesc.of("java.util.concurrent.CompletableFuture");
-
-    private static final Set<String> WORLD_ENTITY_LIST_METHODS = Set.of(
-            "getEntities",
-            "getLivingEntities",
-            "getEntitiesByClass",
-            "getEntitiesByClasses",
-            "getNearbyEntities"
-    );
 
     private static final Set<String> PLAYER_HUD_MESSAGE_METHODS = Set.of(
             "sendMessage",
@@ -81,120 +51,10 @@ public final class BukkitApiPatch extends ClassPatch {
             "hideTitle"
     );
 
-    private static final Set<String> COMMON_SUBCOMMAND_KEYWORDS = Set.of(
-            "kick", "ban", "tempban", "ipban", "warn", "mute", "tempmute", "unban", "unmute",
-            "punish", "kill", "tp", "teleport", "give", "take", "add", "remove", "set", "reset",
-            "clear", "alert", "alerts", "verbose", "notify", "flag", "send", "msg", "tell",
-            "title", "actionbar", "effect", "smite", "freeze", "player", "user"
-    );
-
-    private static final ClassValue<Optional<MethodHandle>> REASON_STRING_EXTRACTOR = new ClassValue<>() {
-        @Override
-        protected Optional<MethodHandle> computeValue(Class<?> reasonClass) {
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
-            // 1. Adventure Component -> LegacyComponentSerializer.legacySection().serialize(component)
-            try {
-                ClassLoader loader = reasonClass.getClassLoader();
-                Class<?> componentClass = Class.forName("net.kyori.adventure.text.Component", false, loader);
-                if (componentClass.isAssignableFrom(reasonClass)) {
-                    Class<?> serializerClass = Class.forName(
-                            "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer",
-                            true,
-                            loader
-                    );
-                    Object legacySectionInstance = serializerClass.getMethod("legacySection").invoke(null);
-                    Method serializeMethod = serializerClass.getMethod("serialize", componentClass);
-                    return Optional.of(
-                            lookup.unreflect(serializeMethod)
-                                    .bindTo(legacySectionInstance)
-                                    .asType(MethodType.methodType(String.class, Object.class))
-                    );
-                }
-            } catch (Throwable ignored) {
-            }
-
-            // 2. Mojang 1.21+ DisconnectionDetails -> details.reason().getString()
-            if (reasonClass.getSimpleName().equals("DisconnectionDetails")) {
-                try {
-                    Method reasonMethod = reasonClass.getMethod("reason");
-                    Method getStringMethod = reasonMethod.getReturnType().getMethod("getString");
-                    MethodHandle reasonMh = lookup.unreflect(reasonMethod);
-                    MethodHandle strMh = lookup.unreflect(getStringMethod);
-                    return Optional.of(
-                            MethodHandles.filterReturnValue(reasonMh, strMh)
-                                    .asType(MethodType.methodType(String.class, Object.class))
-                    );
-                } catch (Throwable ignored) {
-                }
-            }
-
-            // 3. Mojang Component#getString() or Legacy IChatBaseComponent#getText()
-            for (String methodName : List.of("getString", "getText")) {
-                try {
-                    Method m = reasonClass.getMethod(methodName);
-                    if (m.getReturnType() == String.class) {
-                        return Optional.of(
-                                lookup.unreflect(m).asType(MethodType.methodType(String.class, Object.class))
-                        );
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-            return Optional.empty();
-        }
-    };
-
-    private static final ClassValue<Optional<MethodHandle>> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
-        @Override
-        protected Optional<MethodHandle> computeValue(Class<?> connectionClass) {
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
-            for (Method m : connectionClass.getMethods()) {
-                if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0) {
-                    continue;
-                }
-                if (Player.class.isAssignableFrom(m.getReturnType())) {
-                    try {
-                        m.setAccessible(true);
-                        return Optional.of(
-                                lookup.unreflect(m)
-                                        .asType(MethodType.methodType(Player.class, Object.class))
-                        );
-                    } catch (ReflectiveOperationException ignored) {
-                    }
-                }
-            }
-            for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
-                for (Field f : c.getDeclaredFields()) {
-                    if (Modifier.isStatic(f.getModifiers())) {
-                        continue;
-                    }
-                    for (Method m : f.getType().getMethods()) {
-                        if (m.getName().equals("getBukkitEntity")
-                                && m.getParameterCount() == 0
-                                && Player.class.isAssignableFrom(m.getReturnType())) {
-                            try {
-                                f.setAccessible(true);
-                                m.setAccessible(true);
-                                MethodHandle fieldGetter = lookup.unreflectGetter(f);
-                                MethodHandle entityGetter = lookup.unreflect(m);
-                                return Optional.of(
-                                        MethodHandles.filterReturnValue(fieldGetter, entityGetter)
-                                                .asType(MethodType.methodType(Player.class, Object.class))
-                                );
-                            } catch (ReflectiveOperationException ignored) {
-                            }
-                        }
-                    }
-                }
-            }
-            return Optional.empty();
-        }
-    };
-
     private final Logger logger;
     private final HookConfig config;
-    private final PluginRegistry pluginRegistry;
-    private final PlayerRegistry playerRegistry;
+    private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
 
     @Override
@@ -204,17 +64,10 @@ public final class BukkitApiPatch extends ClassPatch {
 
     @Override
     public boolean matchesClass(String internalClassName) {
-        if (internalClassName.startsWith("net/minecraft/server/")) {
-            return internalClassName.endsWith("/PlayerConnection")
-                    || internalClassName.equals("net/minecraft/server/network/ServerCommonPacketListenerImpl")
-                    || internalClassName.equals("net/minecraft/server/network/ServerGamePacketListenerImpl");
-        }
         if (!internalClassName.startsWith("org/bukkit/craftbukkit/")) {
             return false;
         }
         return internalClassName.endsWith("/CraftServer")
-                || internalClassName.endsWith("/CraftWorld")
-                || internalClassName.endsWith("/CraftRegionAccessor")
                 || internalClassName.endsWith("/entity/CraftPlayer")
                 || isAnonymousInnerClass(internalClassName, "/entity/CraftPlayer$")
                 || internalClassName.endsWith("/entity/CraftHumanEntity")
@@ -232,14 +85,8 @@ public final class BukkitApiPatch extends ClassPatch {
 
     @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
-        if (internalClassName.startsWith("net/minecraft/server/")) {
-            return createNmsPlayerConnectionTransform(internalClassName);
-        }
         if (internalClassName.endsWith("/CraftServer")) {
-            return createCraftServerTransform();
-        }
-        if (internalClassName.endsWith("/CraftWorld") || internalClassName.endsWith("/CraftRegionAccessor")) {
-            return createCraftWorldTransform();
+            return createCraftServerActionTransform();
         }
         if (internalClassName.endsWith("/entity/CraftPlayer")) {
             return createCraftPlayerTransform();
@@ -250,115 +97,25 @@ public final class BukkitApiPatch extends ClassPatch {
         if (internalClassName.endsWith("/entity/CraftHumanEntity")) {
             return createCraftHumanEntityTransform();
         }
-        return createCraftEntityTransform();
+        return createCraftEntityActionTransform();
     }
 
-    private ClassTransform createCraftServerTransform() {
-        return ClassTransform.transformingMethods(
-                method -> {
-                    if ((method.flags().flagsMask() & ClassFile.ACC_BRIDGE) != 0) {
-                        return false;
-                    }
-                    String name = method.methodName().stringValue();
-                    var mtd = method.methodTypeSymbol();
-                    ClassDesc returnType = mtd.returnType();
-
-                    if (name.equals("getOnlinePlayers") && mtd.parameterCount() == 0) {
-                        return returnType.equals(LIST_DESC) || returnType.equals(COLLECTION_DESC);
-                    }
-                    if (name.equals("matchPlayer") && mtd.parameterCount() == 1) {
-                        return returnType.equals(LIST_DESC);
-                    }
-                    if ((name.equals("getPlayer") || name.equals("getPlayerExact")) && mtd.parameterCount() == 1) {
-                        ClassDesc param0 = mtd.parameterType(0);
-                        return returnType.equals(PLAYER_DESC)
-                                && (param0.equals(ConstantDescs.CD_String) || param0.equals(UUID_DESC));
-                    }
-                    if (name.equals("dispatchCommand") && mtd.parameterCount() == 2) {
-                        return returnType.equals(ConstantDescs.CD_boolean);
-                    }
-                    return false;
-                },
-                (mb, element) -> {
-                    if (element instanceof CodeModel codeModel) {
-                        var methodOpt = codeModel.parent();
-                        String name = methodOpt.map(m -> m.methodName().stringValue()).orElse("");
-                        ClassDesc returnType = methodOpt.map(m -> m.methodTypeSymbol().returnType()).orElse(COLLECTION_DESC);
-
-                        switch (name) {
-                            case "getOnlinePlayers", "matchPlayer" -> mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.filterObjectReturn(
-                                            HookIds.FILTER_ONLINE_PLAYERS,
-                                            returnType,
-                                            ArgSpec.thisRef()
-                                    )
-                            );
-                            case "getPlayer", "getPlayerExact" -> mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.filterObjectReturn(
-                                            HookIds.FILTER_GET_PLAYER,
-                                            PLAYER_DESC,
-                                            ArgSpec.thisRef()
-                                    )
-                            );
-                            case "dispatchCommand" -> mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.guardBooleanEntry(
-                                            HookIds.GUARD_DISPATCH_COMMAND,
-                                            ArgSpec.param(0),
-                                            ArgSpec.param(1),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
-                            default -> mb.with(element);
-                        }
-                    } else {
-                        mb.with(element);
-                    }
-                }
+    private static ClassTransform createCraftServerActionTransform() {
+        return ClassTransform.transformingMethodBodies(
+                method -> (method.flags().flagsMask() & ClassFile.ACC_BRIDGE) == 0
+                        && method.methodName().equalsString("dispatchCommand")
+                        && method.methodTypeSymbol().parameterCount() == 2
+                        && method.methodTypeSymbol().returnType().equals(ConstantDescs.CD_boolean),
+                CodeTransforms.guardBooleanEntry(
+                        HookIds.GUARD_DISPATCH_COMMAND,
+                        ArgSpec.param(0),
+                        ArgSpec.param(1),
+                        ArgSpec.nullConst()
+                )
         );
     }
 
-    private ClassTransform createCraftWorldTransform() {
-        return ClassTransform.transformingMethods(
-                method -> {
-                    if ((method.flags().flagsMask() & ClassFile.ACC_BRIDGE) != 0) {
-                        return false;
-                    }
-                    String name = method.methodName().stringValue();
-                    ClassDesc returnType = method.methodTypeSymbol().returnType();
-                    if (name.equals("getPlayers") && method.methodTypeSymbol().parameterCount() == 0) {
-                        return returnType.equals(LIST_DESC);
-                    }
-                    if (name.equals("getPlayersSeeingChunk")) {
-                        return returnType.equals(COLLECTION_DESC) || returnType.equals(LIST_DESC);
-                    }
-                    if (WORLD_ENTITY_LIST_METHODS.contains(name)) {
-                        return returnType.equals(LIST_DESC) || returnType.equals(COLLECTION_DESC);
-                    }
-                    return false;
-                },
-                (mb, element) -> {
-                    if (element instanceof CodeModel codeModel) {
-                        var methodOpt = codeModel.parent();
-                        String name = methodOpt.map(m -> m.methodName().stringValue()).orElse("");
-                        ClassDesc returnType = methodOpt.map(m -> m.methodTypeSymbol().returnType()).orElse(LIST_DESC);
-                        int hookId = (name.equals("getPlayers") || name.equals("getPlayersSeeingChunk"))
-                                ? HookIds.FILTER_WORLD_PLAYERS
-                                : HookIds.FILTER_ENTITY_COLLECTION;
-                        mb.transformCode(
-                                codeModel,
-                                CodeTransforms.filterObjectReturn(hookId, returnType, ArgSpec.thisRef())
-                        );
-                    } else {
-                        mb.with(element);
-                    }
-                }
-        );
-    }
-
-    private ClassTransform createCraftPlayerTransform() {
+    private static ClassTransform createCraftPlayerTransform() {
         return ClassTransform.transformingMethods(
                 method -> {
                     int flags = method.flags().flagsMask();
@@ -367,17 +124,14 @@ public final class BukkitApiPatch extends ClassPatch {
                     }
                     String name = method.methodName().stringValue();
                     var mtd = method.methodTypeSymbol();
-                    // Spigot/Paper kickPlayer(String) & Paper kick(Component, Cause)
                     if ((name.equals("kickPlayer") && mtd.parameterCount() == 1)
                             || (name.equals("kick") && mtd.parameterCount() >= 1)) {
                         return mtd.returnType().equals(ConstantDescs.CD_void);
                     }
-                    // Spigot teleport(Location, TeleportCause) & Paper teleport0(Location, TeleportCause, TeleportFlag...)
                     if ((name.equals("teleport") && mtd.parameterCount() == 2)
                             || (name.equals("teleport0") && mtd.parameterCount() == 3)) {
                         return mtd.returnType().equals(ConstantDescs.CD_boolean);
                     }
-                    // Spigot & Paper sendMessage, sendActionBar, and title overloads
                     return (flags & ClassFile.ACC_PUBLIC) != 0
                             && mtd.returnType().equals(ConstantDescs.CD_void)
                             && PLAYER_HUD_MESSAGE_METHODS.contains(name);
@@ -421,22 +175,7 @@ public final class BukkitApiPatch extends ClassPatch {
         );
     }
 
-    private ClassTransform createCraftHumanEntityTransform() {
-        return ClassTransform.transformingMethodBodies(
-                method -> (method.flags().flagsMask() & (ClassFile.ACC_PUBLIC | ClassFile.ACC_BRIDGE | ClassFile.ACC_ABSTRACT)) == ClassFile.ACC_PUBLIC
-                        && method.methodName().equalsString("closeInventory")
-                        && method.methodTypeSymbol().parameterCount() <= 1
-                        && method.methodTypeSymbol().returnType().equals(ConstantDescs.CD_void),
-                CodeTransforms.guardVoidEntry(
-                        HookIds.GUARD_PLAYER_CLOSE_INVENTORY,
-                        ArgSpec.thisRef(),
-                        ArgSpec.nullConst(),
-                        ArgSpec.nullConst()
-                )
-        );
-    }
-
-    private ClassTransform createCraftPlayerSpigotTransform(String internalClassName, ClassModel classModel) {
+    private static ClassTransform createCraftPlayerSpigotTransform(String internalClassName, ClassModel classModel) {
         boolean isPlayerSpigot = classModel.superclass()
                 .map(sc -> sc.asInternalName().equals("org/bukkit/entity/Player$Spigot"))
                 .orElse(false);
@@ -464,74 +203,22 @@ public final class BukkitApiPatch extends ClassPatch {
         );
     }
 
-    private ClassTransform createNmsPlayerConnectionTransform(String internalClassName) {
-        boolean isGameConnection = internalClassName.endsWith("/PlayerConnection")
-                || internalClassName.endsWith("/ServerGamePacketListenerImpl");
-
-        return ClassTransform.transformingMethods(
-                method -> {
-                    int flags = method.flags().flagsMask();
-                    if ((flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_BRIDGE | ClassFile.ACC_SYNTHETIC)) != 0) {
-                        return false;
-                    }
-                    String name = method.methodName().stringValue();
-                    var mtd = method.methodTypeSymbol();
-                    if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
-                        return false;
-                    }
-                    if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
-                        return true;
-                    }
-                    if ((flags & ClassFile.ACC_PUBLIC) == 0
-                            || mtd.parameterCount() < 1
-                            || mtd.parameterType(0).isPrimitive()) {
-                        return false;
-                    }
-                    if ((name.equals("sendPacket") || name.equals("send"))
-                            && (mtd.parameterCount() == 1 || mtd.parameterCount() == 2)) {
-                        return true;
-                    }
-                    return name.equals("disconnect") || name.equals("disconnectAsync");
-                },
-                (mb, element) -> {
-                    if (element instanceof CodeModel codeModel) {
-                        String name = codeModel.parent().map(m -> m.methodName().stringValue()).orElse("");
-                        if (name.equals(ConstantDescs.INIT_NAME)) {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.notifyBeforeReturn(
-                                            HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
-                        } else if (name.equals("disconnect") || name.equals("disconnectAsync")) {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.guardVoidEntryWithCaller(
-                                            HookIds.GUARD_NMS_DISCONNECT,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.param(0)
-                                    )
-                            );
-                        } else {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.guardVoidEntryWithCaller(
-                                            HookIds.GUARD_NMS_SEND_PACKET,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.param(0)
-                                    )
-                            );
-                        }
-                    } else {
-                        mb.with(element);
-                    }
-                }
+    private static ClassTransform createCraftHumanEntityTransform() {
+        return ClassTransform.transformingMethodBodies(
+                method -> (method.flags().flagsMask() & (ClassFile.ACC_PUBLIC | ClassFile.ACC_BRIDGE | ClassFile.ACC_ABSTRACT)) == ClassFile.ACC_PUBLIC
+                        && method.methodName().equalsString("closeInventory")
+                        && method.methodTypeSymbol().parameterCount() <= 1
+                        && method.methodTypeSymbol().returnType().equals(ConstantDescs.CD_void),
+                CodeTransforms.guardVoidEntry(
+                        HookIds.GUARD_PLAYER_CLOSE_INVENTORY,
+                        ArgSpec.thisRef(),
+                        ArgSpec.nullConst(),
+                        ArgSpec.nullConst()
+                )
         );
     }
 
-    private ClassTransform createCraftEntityTransform() {
+    private static ClassTransform createCraftEntityActionTransform() {
         return ClassTransform.transformingMethods(
                 method -> {
                     if ((method.flags().flagsMask() & ClassFile.ACC_BRIDGE) != 0) {
@@ -539,23 +226,18 @@ public final class BukkitApiPatch extends ClassPatch {
                     }
                     String name = method.methodName().stringValue();
                     var mtd = method.methodTypeSymbol();
-                    if (name.equals("setVelocity") && mtd.parameterCount() == 1 && mtd.returnType().equals(ConstantDescs.CD_void)) {
-                        return true;
+                    if (name.equals("setVelocity") && mtd.parameterCount() == 1) {
+                        return mtd.returnType().equals(ConstantDescs.CD_void);
                     }
-                    if (name.equals("teleportAsync")
+                    return name.equals("teleportAsync")
                             && mtd.parameterCount() >= 2
-                            && mtd.returnType().equals(COMPLETABLE_FUTURE_DESC)) {
-                        return true;
-                    }
-                    return name.equals("getNearbyEntities")
-                            && mtd.parameterCount() == 3
-                            && mtd.returnType().equals(LIST_DESC);
+                            && mtd.returnType().equals(COMPLETABLE_FUTURE_DESC);
                 },
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
                         String name = codeModel.parent().map(m -> m.methodName().stringValue()).orElse("");
-                        switch (name) {
-                            case "setVelocity" -> mb.transformCode(
+                        if (name.equals("setVelocity")) {
+                            mb.transformCode(
                                     codeModel,
                                     CodeTransforms.guardVoidEntry(
                                             HookIds.GUARD_ENTITY_VELOCITY,
@@ -564,21 +246,14 @@ public final class BukkitApiPatch extends ClassPatch {
                                             ArgSpec.nullConst()
                                     )
                             );
-                            case "teleportAsync" -> mb.transformCode(
+                        } else {
+                            mb.transformCode(
                                     codeModel,
                                     CodeTransforms.guardCompletableFutureBooleanEntry(
                                             HookIds.GUARD_PLAYER_TELEPORT,
                                             ArgSpec.thisRef(),
                                             ArgSpec.param(0),
                                             ArgSpec.param(1)
-                                    )
-                            );
-                            default -> mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.filterObjectReturn(
-                                            HookIds.FILTER_ENTITY_COLLECTION,
-                                            LIST_DESC,
-                                            ArgSpec.thisRef()
                                     )
                             );
                         }
@@ -589,15 +264,11 @@ public final class BukkitApiPatch extends ClassPatch {
         );
     }
 
-    // =========================================================================
-    // Guard Handlers (Kick, DispatchCommand, Teleport, Velocity, SendMessage)
-    // =========================================================================
-
     public boolean handlePlayerKick(Object playerObj, Object reasonObj) {
         if (!(playerObj instanceof Player bukkitPlayer)) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
         if (hookedPlayer == null) {
             return false;
         }
@@ -608,7 +279,7 @@ public final class BukkitApiPatch extends ClassPatch {
 
         boolean enabled = hookedPlayer.isPluginEnabled(caller);
         boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
-        String reason = serializeKickReason(reasonObj);
+        String reason = KickReasonSerializer.serialize(reasonObj);
 
         if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
             PlayerKickHookEvent hookEvent = new PlayerKickHookEvent(
@@ -640,7 +311,7 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         }
 
-        HookedPlayer targetPlayer = resolveTargetPlayerFromCommand(commandLine);
+        HookedPlayer targetPlayer = CommandTargetResolver.resolveTargetPlayer(commandLine, playerRegistry);
         boolean enabledForTarget = targetPlayer == null || targetPlayer.isPluginEnabled(caller);
         boolean shouldBlock = !enabledForTarget && config.bukkitApi().isBlockDisabledDispatchCommand();
 
@@ -720,390 +391,11 @@ public final class BukkitApiPatch extends ClassPatch {
         if (!blockEnabled || !(playerObj instanceof Player bukkitPlayer)) {
             return null;
         }
-        HookedPlayer hookedPlayer = resolveHookedPlayerFast(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return null;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
         return caller != null && !hookedPlayer.isPluginEnabled(caller) ? caller : null;
-    }
-
-    public boolean handleNmsSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
-        Plugin caller = resolveDirectHookedPluginFromCallerClass(callerClassObj);
-        if (caller == null || connectionObj == null) {
-            return false;
-        }
-        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
-        if (bukkitPlayer == null) {
-            return false;
-        }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer.getUniqueId());
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
-            if (config.isDebug()) {
-                String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from sending NMS packet " + packetName
-                        + " to player " + bukkitPlayer.getName());
-            }
-            return true;
-        }
-        return false;
-    }
-
-    public boolean handleNmsDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
-        Plugin caller = resolveDirectHookedPluginFromCallerClass(callerClassObj);
-        if (caller == null || connectionObj == null) {
-            return false;
-        }
-        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
-        if (bukkitPlayer == null) {
-            return false;
-        }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
-        if (hookedPlayer == null) {
-            return false;
-        }
-
-        boolean enabled = hookedPlayer.isPluginEnabled(caller);
-        boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
-        String reason = serializeKickReason(reasonObj);
-
-        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
-            PlayerKickHookEvent hookEvent = new PlayerKickHookEvent(
-                    caller,
-                    hookedPlayer,
-                    reason,
-                    reasonObj,
-                    enabled,
-                    shouldBlock
-            );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            shouldBlock = hookEvent.isCancelled();
-        }
-
-        if (shouldBlock && config.isDebug()) {
-            logger.info("[Debug] Blocked " + caller.getName()
-                    + " from disconnecting player " + bukkitPlayer.getName()
-                    + " via NMS (reason: " + reason + ")");
-        }
-        return shouldBlock;
-    }
-
-    public void handleNmsConnectionInit(Object connectionObj) {
-        if (connectionObj == null) {
-            return;
-        }
-        Class<?> connClass = connectionObj.getClass();
-        String simpleName = connClass.getSimpleName();
-        if (!simpleName.equals("PlayerConnection") && !simpleName.equals("ServerGamePacketListenerImpl")) {
-            return;
-        }
-        Player bukkitPlayer = extractPlayerFromNmsConnection(connectionObj);
-        if (bukkitPlayer != null) {
-            HookedPlayer hookedPlayer = playerRegistry.registerPlayer(bukkitPlayer);
-            if (hookedPlayer != null && Bukkit.getServer() != null) {
-                Bukkit.getPluginManager().callEvent(new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
-            }
-        }
-    }
-
-    private Plugin resolveDirectHookedPluginFromCallerClass(Object callerClassObj) {
-        if (!(callerClassObj instanceof Class<?> callerClass)) {
-            return null;
-        }
-        ClassLoader callerLoader = callerClass.getClassLoader();
-        if (callerLoader == null || callerLoader == selfClassLoader) {
-            return null;
-        }
-        Plugin caller = pluginRegistry.getPluginByClassLoader(callerLoader);
-        if (caller == null || PluginCallerResolver.isSharedPacketFramework(caller)) {
-            return null;
-        }
-        return pluginRegistry.isHooked(caller) ? caller : null;
-    }
-
-    private static Player extractPlayerFromNmsConnection(Object connectionObj) {
-        Optional<MethodHandle> getterOpt = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
-        if (getterOpt.isEmpty()) {
-            return null;
-        }
-        try {
-            return (Player) getterOpt.get().invokeExact(connectionObj);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    // =========================================================================
-    // Return-Value Filter Handlers (Player & Entity Lookups)
-    // =========================================================================
-
-    public Object filterOnlinePlayers(Object returnValue) {
-        return filterPlayerCollection(returnValue, config.bukkitApi().isHideFromOnlinePlayers());
-    }
-
-    public Object filterWorldPlayers(Object returnValue) {
-        return filterPlayerCollection(returnValue, config.bukkitApi().isHideFromWorldPlayers());
-    }
-
-    @SuppressWarnings("unchecked")
-    private Object filterPlayerCollection(Object returnValue, boolean hideEnabled) {
-        if (!hideEnabled
-                || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()
-                || !hasRestrictablePlayer(rawCollection)) {
-            return returnValue;
-        }
-
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
-            return returnValue;
-        }
-
-        return lazyFilterCollection(
-                (Collection<? extends Player>) rawCollection,
-                player -> isPlayerHiddenFrom(player, caller)
-        );
-    }
-
-    public Object filterGetPlayer(Object returnValue) {
-        if (!config.bukkitApi().isHideFromGetPlayer()
-                || !pluginRegistry.hasHookedPlugins()
-                || !(returnValue instanceof Player player)) {
-            return returnValue;
-        }
-
-        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
-        if (hookedPlayer == null
-                || !hookedPlayer.hasAnyDisabledPlugin()
-                || hookedPlayer.isInJoinGracePeriod()) {
-            return returnValue;
-        }
-
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-            return null;
-        }
-        return returnValue;
-    }
-
-    public Object filterEntityCollection(Object returnValue) {
-        if (!config.bukkitApi().isHideFromEntityLists()
-                || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()
-                || !hasRestrictablePlayer(rawCollection)) {
-            return returnValue;
-        }
-
-        Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
-            return returnValue;
-        }
-
-        return lazyFilterCollection(
-                rawCollection,
-                element -> element instanceof Player player && isPlayerHiddenFrom(player, caller)
-        );
-    }
-
-    private boolean hasRestrictablePlayer(Collection<?> collection) {
-        if (!pluginRegistry.hasHookedPlugins()) {
-            return false;
-        }
-        if (playerRegistry instanceof PlayerRegistryImpl impl && !impl.hasAnyPlayerWithDisabledPlugin()) {
-            return false;
-        }
-        if (collection instanceof List<?> list && list instanceof RandomAccess) {
-            for (int i = 0, size = list.size(); i < size; i++) {
-                if (list.get(i) instanceof Player player && isPlayerRestrictable(player)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        for (Object element : collection) {
-            if (element instanceof Player player && isPlayerRestrictable(player)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isPlayerRestrictable(Player player) {
-        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
-        return hookedPlayer != null
-                && hookedPlayer.hasAnyDisabledPlugin()
-                && !hookedPlayer.isInJoinGracePeriod();
-    }
-
-    private boolean isPlayerHiddenFrom(Player player, Plugin caller) {
-        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
-        return hookedPlayer != null
-                && !hookedPlayer.isPluginEnabled(caller)
-                && !hookedPlayer.isInJoinGracePeriod();
-    }
-
-    private HookedPlayer resolveHookedPlayerFast(Player player) {
-        HookedPlayer byUuid = playerRegistry.getPlayer(player.getUniqueId());
-        return byUuid != null ? byUuid : playerRegistry.getPlayer(player);
-    }
-
-    private static <T> Object lazyFilterCollection(Collection<T> original, Predicate<T> shouldHide) {
-        if (original instanceof List<T> list && list instanceof RandomAccess) {
-            int size = list.size();
-            List<T> filtered = null;
-            for (int i = 0; i < size; i++) {
-                T element = list.get(i);
-                if (shouldHide.test(element)) {
-                    if (filtered == null) {
-                        filtered = new ArrayList<>(Math.max(0, size - 1));
-                        for (int j = 0; j < i; j++) {
-                            filtered.add(list.get(j));
-                        }
-                    }
-                } else if (filtered != null) {
-                    filtered.add(element);
-                }
-            }
-            return filtered != null ? filtered : original;
-        }
-
-        List<T> filtered = null;
-        int keptCount = 0;
-        for (T element : original) {
-            if (shouldHide.test(element)) {
-                if (filtered == null) {
-                    filtered = new ArrayList<>(Math.max(0, original.size() - 1));
-                    if (keptCount > 0) {
-                        int k = 0;
-                        for (T prev : original) {
-                            if (k++ >= keptCount) {
-                                break;
-                            }
-                            filtered.add(prev);
-                        }
-                    }
-                }
-            } else if (filtered != null) {
-                filtered.add(element);
-            } else {
-                keptCount++;
-            }
-        }
-        return filtered != null ? filtered : original;
-    }
-
-    private static String serializeKickReason(Object reasonObj) {
-        if (reasonObj == null) {
-            return "";
-        }
-        if (reasonObj instanceof String str) {
-            return str;
-        }
-        Optional<MethodHandle> extractor = REASON_STRING_EXTRACTOR.get(reasonObj.getClass());
-        if (extractor.isPresent()) {
-            try {
-                return (String) extractor.get().invokeExact(reasonObj);
-            } catch (Throwable ignored) {
-            }
-        }
-        return reasonObj.toString();
-    }
-
-    HookedPlayer resolveTargetPlayerFromCommand(String commandLine) {
-        if (commandLine == null || commandLine.isEmpty()) {
-            return null;
-        }
-        Collection<HookedPlayer> trackedPlayers = playerRegistry.getPlayers();
-        if (trackedPlayers.isEmpty()) {
-            return null;
-        }
-
-        int len = commandLine.length();
-        int idx = 0;
-        // Skip leading whitespace and root command token
-        while (idx < len && Character.isWhitespace(commandLine.charAt(idx))) {
-            idx++;
-        }
-        while (idx < len && !Character.isWhitespace(commandLine.charAt(idx))) {
-            idx++;
-        }
-
-        HookedPlayer deferredSubcommandMatch = null;
-        int nonFlagArgIndex = 0;
-
-        while (idx < len) {
-            while (idx < len && Character.isWhitespace(commandLine.charAt(idx))) {
-                idx++;
-            }
-            if (idx >= len) {
-                break;
-            }
-            int start = idx;
-            while (idx < len && !Character.isWhitespace(commandLine.charAt(idx))) {
-                idx++;
-            }
-            String token = commandLine.substring(start, idx);
-            if (token.charAt(0) == '-') {
-                continue;
-            }
-
-            // 1. Check UUID match at any argument position
-            UUID parsedUuid = tryParseUuid(token);
-            if (parsedUuid != null) {
-                HookedPlayer byUuid = playerRegistry.getPlayer(parsedUuid);
-                if (byUuid != null) {
-                    return byUuid;
-                }
-            }
-
-            // 2. Check player name within the first 4 non-flag arguments (avoids matching words inside reason text)
-            if (nonFlagArgIndex < 4) {
-                HookedPlayer byName = lookupPlayerByNameFast(token, trackedPlayers);
-                if (byName != null) {
-                    if (nonFlagArgIndex == 0
-                            && COMMON_SUBCOMMAND_KEYWORDS.contains(token.toLowerCase(Locale.ROOT))) {
-                        // Hold subcommand keyword match (e.g. "ac kick Steve") in case the real target follows
-                        deferredSubcommandMatch = byName;
-                    } else {
-                        return byName;
-                    }
-                }
-            }
-            nonFlagArgIndex++;
-        }
-        return deferredSubcommandMatch;
-    }
-
-    private HookedPlayer lookupPlayerByNameFast(String name, Collection<HookedPlayer> fallbackPlayers) {
-        if (playerRegistry instanceof PlayerRegistryImpl impl) {
-            return impl.getPlayerByName(name);
-        }
-        for (HookedPlayer hp : fallbackPlayers) {
-            if (hp.getName().equalsIgnoreCase(name)) {
-                return hp;
-            }
-        }
-        return null;
-    }
-
-    private static UUID tryParseUuid(String token) {
-        int len = token.length();
-        if (len == 36 && token.charAt(8) == '-' && token.charAt(13) == '-' && token.charAt(18) == '-' && token.charAt(23) == '-') {
-            for (int i = 0; i < 36; i++) {
-                if (i == 8 || i == 13 || i == 18 || i == 23) {
-                    continue;
-                }
-                if (Character.digit(token.charAt(i), 16) < 0) {
-                    return null;
-                }
-            }
-            try {
-                return UUID.fromString(token);
-            } catch (IllegalArgumentException ignored) {
-                return null;
-            }
-        }
-        return null;
     }
 }

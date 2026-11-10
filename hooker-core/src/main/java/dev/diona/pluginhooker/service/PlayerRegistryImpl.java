@@ -136,6 +136,17 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         return uuid != null ? players.get(uuid) : null;
     }
 
+    /**
+     * Fast-path lookup that checks the UUID map first before falling back to channel validation/registration.
+     */
+    public HookedPlayer getPlayerFast(Player player) {
+        if (player == null) {
+            return null;
+        }
+        HookedPlayerImpl cached = players.get(player.getUniqueId());
+        return cached != null ? cached : getPlayer(player);
+    }
+
     @Override
     public Collection<HookedPlayer> getPlayers() {
         return Collections.unmodifiableCollection(players.values());

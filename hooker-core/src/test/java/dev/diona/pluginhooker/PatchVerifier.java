@@ -114,13 +114,7 @@ public final class PatchVerifier {
         }
         logger.info("Verified HookBridge in Bootstrap ClassLoader!");
 
-        List<ClassPatch> patches = List.of(
-                new BukkitEventPatch(config, pluginRegistry, playerRegistry, cl),
-                new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, cl),
-                new NettyPipelinePatch(logger, config, pluginRegistry, cl)
-        );
+        List<ClassPatch> patches = patchManager.getPatches();
 
         // 2. Verify Spigot 1.8.8 + ProtocolLib 5.4.0 + PacketEvents 2.14.0
         verifyTargets(logger, "Spigot 1.8.8", cl, patches, SPIGOT_1_8_TARGETS);
@@ -798,25 +792,28 @@ public final class PatchVerifier {
                 originalBytes = in.readAllBytes();
             }
 
+            byte[] currentBytes = originalBytes;
             boolean matched = false;
             for (ClassPatch patch : patches) {
                 if (patch.matchesClass(internalName)) {
                     matched = true;
-                    byte[] transformed = patch.transform(loader, internalName, originalBytes);
-                    List<VerifyError> errors = verifierCf.verify(transformed);
-                    if (!errors.isEmpty()) {
-                        throw new AssertionError("[" + envName + "] Bytecode verification failed for " + internalName + ": " + errors);
+                    byte[] nextBytes = patch.transform(loader, internalName, currentBytes);
+                    if (nextBytes.length == currentBytes.length) {
+                        throw new AssertionError("[" + envName + "] Class " + internalName
+                                + " was not modified by " + patch.getClass().getSimpleName() + "!");
                     }
-                    if (transformed.length == originalBytes.length) {
-                        throw new AssertionError("[" + envName + "] Class " + internalName + " was not modified by patch!");
-                    }
-                    logger.info("[" + envName + "] Verified bytecode: " + internalName
-                            + " (" + originalBytes.length + " -> " + transformed.length + " bytes)");
+                    currentBytes = nextBytes;
                 }
             }
             if (!matched) {
                 throw new AssertionError("[" + envName + "] No patch matched target class: " + internalName);
             }
+            List<VerifyError> errors = verifierCf.verify(currentBytes);
+            if (!errors.isEmpty()) {
+                throw new AssertionError("[" + envName + "] Bytecode verification failed for " + internalName + ": " + errors);
+            }
+            logger.info("[" + envName + "] Verified bytecode: " + internalName
+                    + " (" + originalBytes.length + " -> " + currentBytes.length + " bytes)");
         }
     }
 }
