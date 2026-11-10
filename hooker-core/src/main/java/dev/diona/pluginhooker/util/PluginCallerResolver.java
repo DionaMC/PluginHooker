@@ -7,14 +7,106 @@ import org.bukkit.plugin.Plugin;
 import java.util.Set;
 
 /**
- * Resolves the calling Bukkit {@link Plugin} from the current call stack using JDK {@link StackWalker}.
+ * Resolves the calling Bukkit {@link Plugin} from the current call stack using JDK 25 {@link StackWalker}
+ * with {@link StackWalker.Option#DROP_METHOD_INFO} and precomputed {@link ClassValue} bitmasks so hot-path
+ * stack walks perform zero string prefix/simple-name matching.
  */
 public final class PluginCallerResolver {
 
-    private static final StackWalker STACK_WALKER =
-            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
-    private static final StackWalker DIRECT_STACK_WALKER =
-            StackWalker.getInstance(Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE), 6);
+    private static final StackWalker CLASS_STACK_WALKER = StackWalker.getInstance(
+            Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.DROP_METHOD_INFO),
+            6
+    );
+    private static final StackWalker METHOD_STACK_WALKER = StackWalker.getInstance(
+            Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE),
+            8
+    );
+
+    private static final int FLAG_SELF_PACKAGE = 1;
+    private static final int FLAG_NETTY = 1 << 1;
+    private static final int FLAG_ABSTRACT_HANDLER_CTX = 1 << 2;
+    private static final int FLAG_CHANNEL_HANDLER = 1 << 3;
+    private static final int FLAG_EVENT_BOUNDARY = 1 << 4;
+    private static final int FLAG_API_WRAPPER = 1 << 5;
+    private static final int FLAG_PROTOCOLLIB_DELEGATE = 1 << 6;
+    private static final int FLAG_PROTOCOLLIB_INTERNAL = 1 << 7;
+    private static final int FLAG_PE_SEND_DELEGATE = 1 << 8;
+    private static final int FLAG_PE_CLOSE_DELEGATE = 1 << 9;
+
+    private static final Set<String> PE_SEND_DELEGATE_SIMPLE_NAMES = Set.of(
+            "ProtocolManagerImpl",
+            "ProtocolManager",
+            "PlayerManagerImpl",
+            "PlayerManager",
+            "User"
+    );
+
+    private static final Set<String> PE_CLOSE_DELEGATE_SIMPLE_NAMES = Set.of(
+            "ChannelOperatorImpl",
+            "NettyChannelOperator",
+            "ChannelOperator",
+            "ChannelHelper",
+            "User"
+    );
+
+    private static final Set<String> CODEC_FORWARDING_METHODS = Set.of(
+            "encode",
+            "decode",
+            "channelRead",
+            "handleClientBoundPacket",
+            "handleServerBoundPacket",
+            "handleCompression",
+            "compress",
+            "decompress"
+    );
+
+    private static final ClassValue<Integer> CLASS_FLAGS = new ClassValue<>() {
+        @Override
+        protected Integer computeValue(Class<?> clazz) {
+            String name = clazz.getName();
+            String simpleName = clazz.getSimpleName();
+            int flags = 0;
+
+            if (name.startsWith("dev.diona.pluginhooker.")) {
+                flags |= FLAG_SELF_PACKAGE | FLAG_API_WRAPPER;
+            }
+            if (name.startsWith("io.netty.")) {
+                flags |= FLAG_NETTY;
+                if (name.equals("io.netty.channel.AbstractChannelHandlerContext")) {
+                    flags |= FLAG_ABSTRACT_HANDLER_CTX;
+                }
+            }
+            if (ChannelHandler.class.isAssignableFrom(clazz)) {
+                flags |= FLAG_CHANNEL_HANDLER;
+            }
+            if (name.equals("org.bukkit.plugin.RegisteredListener")
+                    || name.equals("org.bukkit.plugin.SimplePluginManager")
+                    || name.equals("io.papermc.paper.plugin.manager.PaperEventManager")) {
+                flags |= FLAG_EVENT_BOUNDARY;
+            }
+            if (name.startsWith("org.bukkit.")
+                    || name.startsWith("io.papermc.")
+                    || name.startsWith("com.destroystokyo.")
+                    || name.startsWith("net.kyori.adventure.")
+                    || name.startsWith("net.md_5.bungee.api.chat.")) {
+                flags |= FLAG_API_WRAPPER;
+            }
+            if (name.startsWith("com.comphenix.protocol.")) {
+                flags |= FLAG_PROTOCOLLIB_INTERNAL;
+                if (name.equals("com.comphenix.protocol.injector.PacketFilterManager")
+                        || name.equals("com.comphenix.protocol.events.ScheduledPacket")) {
+                    flags |= FLAG_PROTOCOLLIB_DELEGATE;
+                }
+            }
+            if (PE_SEND_DELEGATE_SIMPLE_NAMES.contains(simpleName)) {
+                flags |= FLAG_PE_SEND_DELEGATE;
+            }
+            if (PE_CLOSE_DELEGATE_SIMPLE_NAMES.contains(simpleName)) {
+                flags |= FLAG_PE_CLOSE_DELEGATE;
+            }
+            return flags;
+        }
+    };
 
     private PluginCallerResolver() {
     }
@@ -28,19 +120,19 @@ public final class PluginCallerResolver {
             return false;
         }
         String name = plugin.getName();
-        return name.equalsIgnoreCase("packetevents") || name.equalsIgnoreCase("ProtocolLib");
+        int len = name.length();
+        if (len == 11) {
+            return name.equalsIgnoreCase("ProtocolLib");
+        }
+        return len == 12 && name.equalsIgnoreCase("packetevents");
     }
 
     /**
      * Walks the call stack to find the nearest calling {@link Plugin} (excluding PluginHooker itself,
      * standalone PacketEvents, and ProtocolLib).
-     *
-     * @param registry   the plugin registry providing O(1) ClassLoader -> Plugin lookup
-     * @param selfLoader PluginHooker's own ClassLoader to ignore
-     * @return the calling plugin, or null if called by the server or an unknown source
      */
     public static Plugin resolveCallerPlugin(PluginRegistry registry, ClassLoader selfLoader) {
-        return STACK_WALKER.walk(frames -> {
+        return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -59,11 +151,10 @@ public final class PluginCallerResolver {
 
     /**
      * Resolves the direct plugin caller that invoked a Netty pipeline operation.
-     * Stops immediately if the first non-Netty frame belongs to the Minecraft server rather than a plugin,
-     * preventing server-internal pipeline modifications from being misattributed to plugins lower on the stack.
+     * Stops immediately if the first non-Netty frame belongs to the Minecraft server rather than a plugin.
      */
     public static Plugin resolveDirectNettyCaller(PluginRegistry registry, ClassLoader selfLoader) {
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -71,11 +162,9 @@ public final class PluginCallerResolver {
                 if (loader == null || loader == selfLoader) {
                     continue;
                 }
-                String className = callerClass.getName();
-                if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
+                if ((CLASS_FLAGS.get(callerClass) & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
                     continue;
                 }
-                // The first frame outside io.netty is the direct caller of pipeline.add*
                 return registry.getPluginByClassLoader(loader);
             }
             return null;
@@ -85,19 +174,12 @@ public final class PluginCallerResolver {
     /**
      * Fast-path resolver that walks the call stack and returns the direct calling {@link Plugin}
      * if it is currently hooked in {@link PluginRegistry}.
-     * Stops immediately if the caller is the Minecraft server, a Netty pipeline frame, a shared packet
-     * framework, or an unhooked plugin so normal server/framework calls are never misattributed to a
-     * hooked plugin frame deeper on the call stack.
-     *
-     * @param registry   the plugin registry
-     * @param selfLoader PluginHooker's own ClassLoader
-     * @return the hooked calling plugin, or null if the direct caller is not a hooked plugin
      */
     public static Plugin resolveHookedCaller(PluginRegistry registry, ClassLoader selfLoader) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -112,18 +194,11 @@ public final class PluginCallerResolver {
                     }
                     return registry.isHooked(owner) ? owner : null;
                 }
-                String className = callerClass.getName();
-                if (className.equals("org.bukkit.plugin.RegisteredListener")
-                        || className.equals("org.bukkit.plugin.SimplePluginManager")
-                        || className.equals("io.papermc.paper.plugin.manager.PaperEventManager")) {
+                int flags = CLASS_FLAGS.get(callerClass);
+                if ((flags & FLAG_EVENT_BOUNDARY) != 0) {
                     return null;
                 }
-                if (className.startsWith("org.bukkit.")
-                        || className.startsWith("io.papermc.")
-                        || className.startsWith("com.destroystokyo.")
-                        || className.startsWith("net.kyori.adventure.")
-                        || className.startsWith("net.md_5.bungee.api.chat.")
-                        || className.startsWith("dev.diona.pluginhooker.")) {
+                if ((flags & FLAG_API_WRAPPER) != 0) {
                     continue;
                 }
                 return null;
@@ -135,16 +210,12 @@ public final class PluginCallerResolver {
     /**
      * Resolves the direct plugin caller of ProtocolLib's {@code PacketFilterManager#sendServerPacket},
      * {@code receiveClientPacket}, or {@code sendWirePacket}.
-     * <p>
-     * Only walks past {@code PacketFilterManager} overload delegations and {@code ScheduledPacket},
-     * returning {@code null} immediately if the call originated from ProtocolLib's own internal machinery
-     * (such as {@code AsyncMarker} or {@code PacketSendingQueue}).
      */
     public static Plugin resolveDirectProtocolLibCaller(PluginRegistry registry, ClassLoader selfLoader) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -152,13 +223,11 @@ public final class PluginCallerResolver {
                 if (loader == null || loader == selfLoader) {
                     continue;
                 }
-                String className = callerClass.getName();
-                if (className.startsWith("dev.diona.pluginhooker.")
-                        || className.equals("com.comphenix.protocol.injector.PacketFilterManager")
-                        || className.equals("com.comphenix.protocol.events.ScheduledPacket")) {
+                int flags = CLASS_FLAGS.get(callerClass);
+                if ((flags & (FLAG_SELF_PACKAGE | FLAG_PROTOCOLLIB_DELEGATE)) != 0) {
                     continue;
                 }
-                if (className.startsWith("com.comphenix.protocol.") || className.startsWith("io.netty.")) {
+                if ((flags & (FLAG_PROTOCOLLIB_INTERNAL | FLAG_NETTY)) != 0) {
                     return null;
                 }
                 return resolveHookedPluginFromLoader(registry, loader);
@@ -175,7 +244,7 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 Class<?> callerClass = iterator.next().getDeclaringClass();
@@ -183,19 +252,11 @@ public final class PluginCallerResolver {
                 if (loader == null || loader == selfLoader) {
                     continue;
                 }
-                String className = callerClass.getName();
-                if (className.startsWith("dev.diona.pluginhooker.")) {
+                int flags = CLASS_FLAGS.get(callerClass);
+                if ((flags & (FLAG_SELF_PACKAGE | FLAG_PE_SEND_DELEGATE)) != 0) {
                     continue;
                 }
-                String simpleName = callerClass.getSimpleName();
-                if (simpleName.equals("ProtocolManagerImpl")
-                        || simpleName.equals("ProtocolManager")
-                        || simpleName.equals("PlayerManagerImpl")
-                        || simpleName.equals("PlayerManager")
-                        || simpleName.equals("User")) {
-                    continue;
-                }
-                if (className.startsWith("io.netty.") || ChannelHandler.class.isAssignableFrom(callerClass)) {
+                if ((flags & (FLAG_NETTY | FLAG_CHANNEL_HANDLER)) != 0) {
                     return null;
                 }
                 return resolveHookedPluginFromLoader(registry, loader);
@@ -207,11 +268,6 @@ public final class PluginCallerResolver {
     /**
      * Resolves the calling plugin for a direct {@code channel.write/writeAndFlush(ByteBuf)} or
      * {@code ctx.write/writeAndFlush(ByteBuf)} call.
-     * <p>
-     * If the 1-arg {@code write(Object)} or {@code writeAndFlush(Object)} was invoked from inside a
-     * {@link ChannelHandler}'s own {@code channelRead} / {@code write} / {@code encode} / {@code decode}
-     * pipeline processing (e.g. ViaVersion or PacketEvents compression/relocation), returns {@code null}
-     * immediately so pipeline-internal forwarding is never blocked as an active packet send.
      */
     public static Plugin resolveDirectByteBufWriteCaller(
             PluginRegistry registry,
@@ -221,7 +277,25 @@ public final class PluginCallerResolver {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        if (fromTailContext) {
+            return CLASS_STACK_WALKER.walk(frames -> {
+                var iterator = frames.iterator();
+                while (iterator.hasNext()) {
+                    Class<?> callerClass = iterator.next().getDeclaringClass();
+                    ClassLoader loader = callerClass.getClassLoader();
+                    if (loader == null || loader == selfLoader) {
+                        continue;
+                    }
+                    if ((CLASS_FLAGS.get(callerClass) & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
+                        continue;
+                    }
+                    return resolveHookedPluginFromLoader(registry, loader);
+                }
+                return null;
+            });
+        }
+
+        return METHOD_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
             while (iterator.hasNext()) {
                 StackWalker.StackFrame frame = iterator.next();
@@ -230,27 +304,12 @@ public final class PluginCallerResolver {
                 if (loader == null || loader == selfLoader) {
                     continue;
                 }
-                String className = callerClass.getName();
-                if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
+                int flags = CLASS_FLAGS.get(callerClass);
+                if ((flags & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
                     continue;
                 }
-                if (!fromTailContext) {
-                    // When invoked on a mid-pipeline ChannelHandlerContext (ctx.write/writeAndFlush) from inside a
-                    // ChannelHandler or codec method, this is pipeline forwarding rather than an active send.
-                    if (ChannelHandler.class.isAssignableFrom(callerClass)) {
-                        return null;
-                    }
-                    String methodName = frame.getMethodName();
-                    if (methodName.equals("encode")
-                            || methodName.equals("decode")
-                            || methodName.equals("channelRead")
-                            || methodName.equals("handleClientBoundPacket")
-                            || methodName.equals("handleServerBoundPacket")
-                            || methodName.equals("handleCompression")
-                            || methodName.equals("compress")
-                            || methodName.equals("decompress")) {
-                        return null;
-                    }
+                if ((flags & FLAG_CHANNEL_HANDLER) != 0 || CODEC_FORWARDING_METHODS.contains(frame.getMethodName())) {
+                    return null;
                 }
                 return resolveHookedPluginFromLoader(registry, loader);
             }
@@ -260,80 +319,70 @@ public final class PluginCallerResolver {
 
     /**
      * Resolves the calling plugin for a direct {@code channel.close()}/{@code disconnect()} or
-     * {@code ctx.close()}/{@code disconnect()} call (including via PacketEvents' {@code User#closeConnection()}
-     * or {@code ChannelHelper#close(Object)}).
-     * <p>
-     * Returns {@code null} if {@code close}/{@code disconnect} is merely being forwarded along the pipeline
-     * by a {@link ChannelHandler}'s own {@code close}/{@code disconnect} callback or initiated by the server.
+     * {@code ctx.close()}/{@code disconnect()} call while ignoring pipeline close propagation.
      */
     public static Plugin resolveDirectChannelCloseCaller(PluginRegistry registry, ClassLoader selfLoader) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
-        return DIRECT_STACK_WALKER.walk(frames -> {
+        return METHOD_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
-            boolean seenHookedEntry = false;
+            String entryCloseMethod = null;
+            boolean adjacentToEntry = false;
             Plugin candidate = null;
             int postCandidateDepth = 0;
 
             while (iterator.hasNext()) {
                 StackWalker.StackFrame frame = iterator.next();
                 Class<?> callerClass = frame.getDeclaringClass();
-                String className = callerClass.getName();
-                String methodName = frame.getMethodName();
+                int flags = CLASS_FLAGS.get(callerClass);
 
-                if (className.startsWith("dev.diona.pluginhooker.")) {
+                if ((flags & FLAG_SELF_PACKAGE) != 0) {
                     continue;
                 }
 
                 if (candidate == null) {
-                    if (className.equals("io.netty.channel.AbstractChannelHandlerContext")
-                            && (methodName.equals("close") || methodName.equals("disconnect"))) {
-                        if (frame.getDescriptor().startsWith("()")) {
-                            // Unhooked 0-arg close()/disconnect() delegating into 1-arg close(ChannelPromise)
-                            continue;
-                        }
-                        if (!seenHookedEntry) {
-                            seenHookedEntry = true;
-                            continue;
-                        }
-                        // Already checked by an outer 1-arg disconnect(ChannelPromise) / close(ChannelPromise)
-                        return null;
-                    }
-                    if (className.startsWith("io.netty.")) {
-                        if (methodName.equals("invokeClose") || methodName.equals("invokeDisconnect")) {
+                    if ((flags & FLAG_ABSTRACT_HANDLER_CTX) != 0) {
+                        String methodName = frame.getMethodName();
+                        if (isCloseOrDisconnectMethod(methodName)) {
+                            if (entryCloseMethod == null) {
+                                entryCloseMethod = methodName;
+                                adjacentToEntry = true;
+                                continue;
+                            }
+                            if (adjacentToEntry && methodName.equals(entryCloseMethod)) {
+                                // Unhooked 0-arg close()/disconnect() delegating directly into 1-arg overload
+                                adjacentToEntry = false;
+                                continue;
+                            }
                             return null;
                         }
+                    }
+                    adjacentToEntry = false;
+                    if ((flags & FLAG_NETTY) != 0) {
                         continue;
                     }
+
                     ClassLoader loader = callerClass.getClassLoader();
                     if (loader == null || loader == selfLoader) {
                         return null;
                     }
-                    String simpleName = callerClass.getSimpleName();
-                    if (simpleName.equals("ChannelOperatorImpl")
-                            || simpleName.equals("NettyChannelOperator")
-                            || simpleName.equals("ChannelOperator")
-                            || simpleName.equals("ChannelHelper")
-                            || simpleName.equals("User")) {
+                    if ((flags & FLAG_PE_CLOSE_DELEGATE) != 0) {
                         continue;
                     }
-                    if (ChannelHandler.class.isAssignableFrom(callerClass)
-                            && (methodName.equals("close") || methodName.equals("disconnect"))) {
-                        return null;
+                    if ((flags & FLAG_CHANNEL_HANDLER) != 0) {
+                        String methodName = frame.getMethodName();
+                        if (methodName.equals("close") || methodName.equals("disconnect")) {
+                            return null;
+                        }
                     }
                     candidate = resolveHookedPluginFromLoader(registry, loader);
                     if (candidate == null) {
                         return null;
                     }
                 } else {
-                    // Ensure the hooked plugin frame was not merely forwarding an already-active pipeline
-                    // close/disconnect (e.g. via a helper method inside ChannelOutboundHandler#close)
-                    if (className.equals("io.netty.channel.AbstractChannelHandlerContext")
-                            && (methodName.equals("close")
-                                || methodName.equals("invokeClose")
-                                || methodName.equals("disconnect")
-                                || methodName.equals("invokeDisconnect"))) {
+                    if ((flags & FLAG_ABSTRACT_HANDLER_CTX) != 0
+                            && isCloseOrDisconnectMethod(frame.getMethodName())) {
                         return null;
                     }
                     if (++postCandidateDepth >= 8) {
@@ -343,6 +392,13 @@ public final class PluginCallerResolver {
             }
             return candidate;
         });
+    }
+
+    private static boolean isCloseOrDisconnectMethod(String methodName) {
+        return methodName.equals("close")
+                || methodName.equals("invokeClose")
+                || methodName.equals("disconnect")
+                || methodName.equals("invokeDisconnect");
     }
 
     private static Plugin resolveHookedPluginFromLoader(PluginRegistry registry, ClassLoader loader) {

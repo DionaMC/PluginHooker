@@ -4,6 +4,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.StackWalker;
+import java.util.Set;
 
 /**
  * Pure-JDK static bridge injected into the Bootstrap ClassLoader.
@@ -13,10 +14,11 @@ public final class HookBridge {
 
     /**
      * Intrinsic-backed caller-class resolver invoked directly from instrumented ultra-hot methods
-     * (such as NMS {@code sendPacket}/{@code send} and {@code disconnect}) without stream/frame allocation.
+     * (such as NMS {@code sendPacket}/{@code send} and {@code disconnect}) without stream/frame/method-info overhead.
      */
-    public static final StackWalker CALLER_WALKER =
-            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+    public static final StackWalker CALLER_WALKER = StackWalker.getInstance(
+            Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.DROP_METHOD_INFO)
+    );
 
     /**
      * Fast-path volatile flag indicating whether at least one plugin is currently registered in the sandbox.
