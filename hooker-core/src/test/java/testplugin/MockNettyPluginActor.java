@@ -39,4 +39,8 @@ public final class MockNettyPluginActor extends ChannelDuplexHandler {
     public static ChannelFuture directClose(Channel ch) {
         return ch.close();
     }
+
+    public static <T> T callViaAdventureWrapper(java.util.function.Supplier<T> apiCall) {
+        return net.kyori.adventure.audience.SimulatedServerAudience.forwardFromAdventureDefault(apiCall);
+    }
 }

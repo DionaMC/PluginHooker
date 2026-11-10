@@ -13,6 +13,7 @@ import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
+import dev.diona.pluginhooker.util.PluginCallerResolver;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -337,6 +338,16 @@ public final class PatchVerifier {
                 ch.runPendingTasks();
                 if (ch.isOpen()) {
                     throw new AssertionError("Server-initiated channel.close() was falsely blocked by disabled handler helper!");
+                }
+
+                // 5. Hooked plugin calling through server-loaded net.kyori.adventure.* wrapper frames must still resolve!
+                java.util.function.Supplier<org.bukkit.plugin.Plugin> callerProbe =
+                        () -> PluginCallerResolver.resolveHookedCaller(pluginRegistry, parentLoader);
+                Object resolvedViaAdventure = actorClass
+                        .getMethod("callViaAdventureWrapper", java.util.function.Supplier.class)
+                        .invoke(null, callerProbe);
+                if (resolvedViaAdventure != mockPlugin) {
+                    throw new AssertionError("Expected resolveHookedCaller to walk past net.kyori.adventure.* wrapper, got: " + resolvedViaAdventure);
                 }
             } finally {
                 pluginRegistry.handlePluginDisable(mockPlugin);

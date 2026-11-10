@@ -141,17 +141,28 @@ public final class PluginCallerResolver {
                 if (loader == null || loader == selfLoader) {
                     continue;
                 }
+                Plugin owner = registry.getPluginByClassLoader(loader);
+                if (owner != null) {
+                    if (isSharedPacketFramework(owner)) {
+                        return null;
+                    }
+                    return registry.isHooked(owner) ? owner : null;
+                }
                 String className = callerClass.getName();
+                if (className.equals("org.bukkit.plugin.RegisteredListener")
+                        || className.equals("org.bukkit.plugin.SimplePluginManager")
+                        || className.equals("io.papermc.paper.plugin.manager.PaperEventManager")) {
+                    return null;
+                }
                 if (className.startsWith("org.bukkit.")
                         || className.startsWith("io.papermc.")
                         || className.startsWith("com.destroystokyo.")
+                        || className.startsWith("net.kyori.adventure.")
+                        || className.startsWith("net.md_5.bungee.api.chat.")
                         || className.startsWith("dev.diona.pluginhooker.")) {
                     continue;
                 }
-                if (className.startsWith("io.netty.")) {
-                    return null;
-                }
-                return resolveHookedPluginFromLoader(registry, loader);
+                return null;
             }
             return null;
         });
