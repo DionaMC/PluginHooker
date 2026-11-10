@@ -1,9 +1,5 @@
 package dev.diona.pluginhooker.util;
 
-import com.github.retrooper.packetevents.event.PacketListenerCommon;
-import com.github.retrooper.packetevents.event.PacketSendEvent;
-import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
-import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.util.ReferenceCountUtil;
@@ -130,64 +126,12 @@ public final class PacketEventsReflector {
     }
 
     /**
-     * Executes a disabled plugin's PacketEvents listener in read-only mode during the join grace period
-     * so it can observe join initialization packets without cancelling, re-encoding, or queuing post-send tasks.
+     * Executes a disabled plugin's PacketEvents listener (standalone or shaded) in read-only mode during
+     * the join grace period so it can observe join initialization packets without cancelling, mutating
+     * the buffer, polluting wrappers, re-encoding, or queuing post-send tasks.
      */
     @SuppressWarnings("rawtypes")
     public static void invokeReadOnlyListener(Object listener, Object event, boolean outbound) {
-        if (event instanceof ProtocolPacketEvent ppe && listener instanceof PacketListenerCommon) {
-            MethodHandle invoker = SHADED_EVENT_ACCESSORS.get(event.getClass()).invokeListener();
-            if (invoker == null) {
-                return;
-            }
-            boolean wasCancelled = ppe.isCancelled();
-            boolean wasNeedsReEncode = ppe.needsReEncode();
-            PacketWrapper<?> prevWrapper = ppe.getLastUsedWrapper();
-            Object prevBufObj = ppe.getByteBuf();
-            ByteBuf prevBuf = prevBufObj instanceof ByteBuf b ? b : null;
-            int prevReaderIndex = prevBuf != null ? prevBuf.readerIndex() : 0;
-            int prevWriterIndex = prevBuf != null ? prevBuf.writerIndex() : 0;
-            ByteBuf readOnlyView = prevBuf != null ? Unpooled.unmodifiableBuffer(prevBuf.duplicate()) : null;
-
-            int prevPostTasksSize = ppe.hasPostTasks() ? ppe.getPostTasks().size() : 0;
-            PacketSendEvent pse = outbound && event instanceof PacketSendEvent s ? s : null;
-            int prevAfterSendSize = pse != null && pse.hasTasksAfterSend() ? pse.getTasksAfterSend().size() : 0;
-
-            if (readOnlyView != null) {
-                ppe.setByteBuf(readOnlyView);
-            }
-            if (prevWrapper != null) {
-                ppe.setLastUsedWrapper(null);
-            }
-            try {
-                invoker.invokeExact(listener, event);
-            } catch (Throwable ignored) {
-            } finally {
-                Object currentBufObj = ppe.getByteBuf();
-                if (currentBufObj != prevBufObj) {
-                    if (currentBufObj != readOnlyView) {
-                        ReferenceCountUtil.safeRelease(currentBufObj);
-                    }
-                    ppe.setByteBuf(prevBufObj);
-                }
-                if (prevBuf != null && prevBuf.refCnt() > 0) {
-                    prevBuf.setIndex(prevReaderIndex, prevWriterIndex);
-                }
-                if (ppe.isCancelled() != wasCancelled) {
-                    ppe.setCancelled(wasCancelled);
-                }
-                ppe.setLastUsedWrapper(prevWrapper);
-                ppe.markForReEncode(wasNeedsReEncode);
-                if (ppe.hasPostTasks()) {
-                    trimList(ppe.getPostTasks(), prevPostTasksSize);
-                }
-                if (pse != null && pse.hasTasksAfterSend()) {
-                    trimList(pse.getTasksAfterSend(), prevAfterSendSize);
-                }
-            }
-            return;
-        }
-
         ShadedEventAccessors acc = SHADED_EVENT_ACCESSORS.get(event.getClass());
         if (acc.invokeListener() == null) {
             return;

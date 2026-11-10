@@ -3,12 +3,13 @@ package dev.diona.pluginhooker.patch.impl;
 import dev.diona.pluginhooker.api.event.NettyHookEvent;
 import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import io.netty.buffer.ByteBuf;
@@ -19,7 +20,6 @@ import io.netty.channel.ChannelOutboundHandler;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
 import com.google.common.collect.MapMaker;
@@ -86,7 +86,7 @@ public final class NettyPipelinePatch extends ClassPatch {
 
     private final Logger logger;
     private final HookConfig config;
-    private final PluginRegistry pluginRegistry;
+    private final PluginRegistryImpl pluginRegistry;
     private final ClassLoader selfClassLoader;
 
     private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
@@ -259,19 +259,12 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
 
         boolean enabled = hookedPlayer.isPluginEnabled(caller);
-        boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
-
-        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
-            PlayerChannelCloseHookEvent hookEvent = new PlayerChannelCloseHookEvent(
-                    caller,
-                    hookedPlayer,
-                    ctx.channel(),
-                    enabled,
-                    shouldBlock
-            );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            shouldBlock = hookEvent.isCancelled();
-        }
+        boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
+        boolean shouldBlock = BukkitEvents.fireCancellable(
+                config.bukkitApi().isCallKickEvent(),
+                defaultBlock,
+                () -> new PlayerChannelCloseHookEvent(caller, hookedPlayer, ctx.channel(), enabled, defaultBlock)
+        );
 
         if (shouldBlock) {
             if (config.isDebug()) {
@@ -322,13 +315,13 @@ public final class NettyPipelinePatch extends ClassPatch {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
                     }
-                    if (config.netty().isCallEvent() && Bukkit.getServer() != null) {
-                        NettyHookEvent hookEvent = new NettyHookEvent(plugin, hookedPlayer, msg, outbound);
-                        Bukkit.getPluginManager().callEvent(hookEvent);
-                        if (hookEvent.isCancelled()) {
-                            bypassHandler(ctx, msg, promiseObj, outbound);
-                            return;
-                        }
+                    if (BukkitEvents.fireCancellable(
+                            config.netty().isCallEvent(),
+                            false,
+                            () -> new NettyHookEvent(plugin, hookedPlayer, msg, outbound)
+                    )) {
+                        bypassHandler(ctx, msg, promiseObj, outbound);
+                        return;
                     }
                 }
             }

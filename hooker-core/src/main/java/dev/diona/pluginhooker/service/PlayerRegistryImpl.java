@@ -25,7 +25,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
     private final Map<String, HookedPlayerImpl> playersByLowerName = new ConcurrentHashMap<>();
-    private final PluginRegistry pluginRegistry;
+    private final PluginRegistryImpl pluginRegistry;
     private final HookConfig config;
 
     @Override
@@ -104,7 +104,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (players.isEmpty() || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
-        if (pluginRegistry instanceof PluginRegistryImpl impl && impl.hasWhitelistPlugins()) {
+        if (pluginRegistry.hasWhitelistPlugins()) {
             return true;
         }
         for (HookedPlayerImpl player : players.values()) {

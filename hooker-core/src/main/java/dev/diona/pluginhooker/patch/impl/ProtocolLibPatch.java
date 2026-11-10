@@ -8,22 +8,21 @@ import com.comphenix.protocol.events.PacketPostListener;
 import com.comphenix.protocol.events.ScheduledPacket;
 import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
-import java.lang.constant.ClassDesc;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Set;
@@ -43,8 +42,8 @@ public final class ProtocolLibPatch extends ClassPatch {
 
     private final Logger logger;
     private final HookConfig config;
-    private final PluginRegistry pluginRegistry;
-    private final PlayerRegistry playerRegistry;
+    private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
 
     @Override
@@ -108,7 +107,7 @@ public final class ProtocolLibPatch extends ClassPatch {
         if (!(playerObj instanceof Player bukkitPlayer) || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
@@ -125,13 +124,6 @@ public final class ProtocolLibPatch extends ClassPatch {
         return false;
     }
 
-    public boolean handleAsyncPacket(Object eventObj, Object listenerObj) {
-        if (!(eventObj instanceof PacketEvent event)) {
-            return false;
-        }
-        return handlePacket(event, listenerObj, event.isServerPacket());
-    }
-
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {
         if (!(eventObj instanceof PacketEvent event) || !(listenerObj instanceof PacketListener listener)) {
             return false;
@@ -145,7 +137,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
 
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(event.getPlayer());
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(event.getPlayer());
         if (hookedPlayer == null) {
             return false;
         }
@@ -157,18 +149,11 @@ public final class ProtocolLibPatch extends ClassPatch {
             return true;
         }
 
-        if (config.protocolLib().isCallEvent() && Bukkit.getServer() != null) {
-            ProtocolLibHookEvent hookEvent = new ProtocolLibHookEvent(
-                    plugin,
-                    hookedPlayer,
-                    listener,
-                    event,
-                    outbound
-            );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            return hookEvent.isCancelled();
-        }
-        return false;
+        return BukkitEvents.fireCancellable(
+                config.protocolLib().isCallEvent(),
+                false,
+                () -> new ProtocolLibHookEvent(plugin, hookedPlayer, listener, event, outbound)
+        );
     }
 
     /**

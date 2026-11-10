@@ -8,13 +8,14 @@ import com.github.retrooper.packetevents.protocol.player.User;
 import com.google.common.collect.MapMaker;
 import dev.diona.pluginhooker.api.event.PacketEventsHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PacketEventsReflector;
 import dev.diona.pluginhooker.util.PacketEventsReflector.ShadedEventAccessors;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
@@ -23,7 +24,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -114,8 +114,8 @@ public final class PacketEventsPatch extends ClassPatch {
 
     private final Logger logger;
     private final HookConfig config;
-    private final PluginRegistry pluginRegistry;
-    private final PlayerRegistry playerRegistry;
+    private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
 
     private final ConcurrentMap<Object, Plugin> listenerToPlugin =
@@ -291,10 +291,8 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
 
-        Plugin plugin = resolveListenerOwner(listener);
-        if (plugin == null && hasFallbackListeners) {
-            plugin = listenerToPlugin.get(listener);
-        }
+        Plugin owner = resolveListenerOwner(listener);
+        Plugin plugin = (owner == null && hasFallbackListeners) ? listenerToPlugin.get(listener) : owner;
         if (plugin == null || !pluginRegistry.isHooked(plugin)) {
             return false;
         }
@@ -311,19 +309,12 @@ public final class PacketEventsPatch extends ClassPatch {
             return true;
         }
 
-        if (config.packetEvents().isCallEvent()
-                && Bukkit.getServer() != null
-                && listener instanceof PacketListenerCommon commonListener
-                && event instanceof PacketEvent packetEvent) {
-            PacketEventsHookEvent hookEvent = new PacketEventsHookEvent(
-                    plugin,
-                    hookedPlayer,
-                    commonListener,
-                    packetEvent,
-                    outbound
+        if (listener instanceof PacketListenerCommon commonListener && event instanceof PacketEvent packetEvent) {
+            return BukkitEvents.fireCancellable(
+                    config.packetEvents().isCallEvent(),
+                    false,
+                    () -> new PacketEventsHookEvent(plugin, hookedPlayer, commonListener, packetEvent, outbound)
             );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            return hookEvent.isCancelled();
         }
         return false;
     }

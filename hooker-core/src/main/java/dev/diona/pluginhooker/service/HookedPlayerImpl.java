@@ -2,7 +2,6 @@ package dev.diona.pluginhooker.service;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.plugin.HookMode;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import lombok.Getter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -21,13 +20,13 @@ public final class HookedPlayerImpl implements HookedPlayer {
     private volatile Player bukkitPlayer;
     @Getter
     private final UUID uniqueId;
-    private final PluginRegistry pluginRegistry;
+    private final PluginRegistryImpl pluginRegistry;
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
     private volatile long joinGraceUntilMillis;
 
-    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistry pluginRegistry, long joinGraceDurationMillis) {
+    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistryImpl pluginRegistry, long joinGraceDurationMillis) {
         this.bukkitPlayer = bukkitPlayer;
         this.uniqueId = bukkitPlayer.getUniqueId();
         this.pluginRegistry = pluginRegistry;
@@ -114,7 +113,7 @@ public final class HookedPlayerImpl implements HookedPlayer {
         if (!explicitlyDisabled.isEmpty()) {
             return true;
         }
-        if (pluginRegistry instanceof PluginRegistryImpl impl && !impl.hasWhitelistPlugins()) {
+        if (!pluginRegistry.hasWhitelistPlugins()) {
             return false;
         }
         for (Plugin plugin : pluginRegistry.getHookedPlugins()) {

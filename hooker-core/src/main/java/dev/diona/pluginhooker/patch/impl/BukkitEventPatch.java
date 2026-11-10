@@ -2,16 +2,16 @@ package dev.diona.pluginhooker.patch.impl;
 
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.EventPlayerResolver;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
@@ -63,8 +63,8 @@ public final class BukkitEventPatch extends ClassPatch {
     };
 
     private final HookConfig config;
-    private final PluginRegistry pluginRegistry;
-    private final PlayerRegistry playerRegistry;
+    private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
 
     @Override
@@ -112,26 +112,15 @@ public final class BukkitEventPatch extends ClassPatch {
                 event,
                 config.bukkit().isUseReflectionToGetPlayer()
         );
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
 
-        if (hookedPlayer == null) {
-            if (!config.bukkit().isCallEvent() || Bukkit.getServer() == null) {
-                return false;
-            }
-            BukkitHookEvent hookEvent = new BukkitHookEvent(plugin, event, null);
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            return hookEvent.isCancelled();
-        }
-
-        if (!hookedPlayer.isPluginEnabled(plugin)) {
+        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(plugin)) {
             return true;
         }
-
-        if (config.bukkit().isCallEvent() && Bukkit.getServer() != null) {
-            BukkitHookEvent hookEvent = new BukkitHookEvent(plugin, event, hookedPlayer);
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            return hookEvent.isCancelled();
-        }
-        return false;
+        return BukkitEvents.fireCancellable(
+                config.bukkit().isCallEvent(),
+                false,
+                () -> new BukkitHookEvent(plugin, event, hookedPlayer)
+        );
     }
 }

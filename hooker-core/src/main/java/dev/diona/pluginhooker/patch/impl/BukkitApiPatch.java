@@ -10,11 +10,11 @@ import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.CommandTargetResolver;
 import dev.diona.pluginhooker.util.KickReasonSerializer;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -278,21 +278,13 @@ public final class BukkitApiPatch extends ClassPatch {
         }
 
         boolean enabled = hookedPlayer.isPluginEnabled(caller);
-        boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
+        boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
         String reason = KickReasonSerializer.serialize(reasonObj);
-
-        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
-            PlayerKickHookEvent hookEvent = new PlayerKickHookEvent(
-                    caller,
-                    hookedPlayer,
-                    reason,
-                    reasonObj,
-                    enabled,
-                    shouldBlock
-            );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            shouldBlock = hookEvent.isCancelled();
-        }
+        boolean shouldBlock = BukkitEvents.fireCancellable(
+                config.bukkitApi().isCallKickEvent(),
+                defaultBlock,
+                () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
+        );
 
         if (shouldBlock && config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
@@ -313,20 +305,14 @@ public final class BukkitApiPatch extends ClassPatch {
 
         HookedPlayer targetPlayer = CommandTargetResolver.resolveTargetPlayer(commandLine, playerRegistry);
         boolean enabledForTarget = targetPlayer == null || targetPlayer.isPluginEnabled(caller);
-        boolean shouldBlock = !enabledForTarget && config.bukkitApi().isBlockDisabledDispatchCommand();
-
-        if (config.bukkitApi().isCallDispatchCommandEvent() && Bukkit.getServer() != null) {
-            PluginDispatchCommandEvent hookEvent = new PluginDispatchCommandEvent(
-                    caller,
-                    sender,
-                    commandLine,
-                    targetPlayer,
-                    enabledForTarget,
-                    shouldBlock
-            );
-            Bukkit.getPluginManager().callEvent(hookEvent);
-            shouldBlock = hookEvent.isCancelled();
-        }
+        boolean defaultBlock = !enabledForTarget && config.bukkitApi().isBlockDisabledDispatchCommand();
+        boolean shouldBlock = BukkitEvents.fireCancellable(
+                config.bukkitApi().isCallDispatchCommandEvent(),
+                defaultBlock,
+                () -> new PluginDispatchCommandEvent(
+                        caller, sender, commandLine, targetPlayer, enabledForTarget, defaultBlock
+                )
+        );
 
         if (shouldBlock && config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
