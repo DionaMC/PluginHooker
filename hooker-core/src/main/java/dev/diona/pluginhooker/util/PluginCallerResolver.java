@@ -151,11 +151,7 @@ public final class PluginCallerResolver {
                 if (className.startsWith("io.netty.")) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null || isSharedPacketFramework(plugin)) {
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
@@ -190,11 +186,7 @@ public final class PluginCallerResolver {
                 if (className.startsWith("com.comphenix.protocol.") || className.startsWith("io.netty.")) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null || isSharedPacketFramework(plugin)) {
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
@@ -231,11 +223,7 @@ public final class PluginCallerResolver {
                 if (className.startsWith("io.netty.") || ChannelHandler.class.isAssignableFrom(callerClass)) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null || isSharedPacketFramework(plugin)) {
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
@@ -283,16 +271,7 @@ public final class PluginCallerResolver {
                         || methodName.equals("decompress")) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null) {
-                    return null;
-                }
-                if (isSharedPacketFramework(plugin)) {
-                    // Standalone PacketEvents is already guarded at ProtocolManagerImpl; do not walk past it
-                    // into Netty pipeline frames!
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
@@ -336,13 +315,17 @@ public final class PluginCallerResolver {
                         && (methodName.equals("close") || methodName.equals("disconnect"))) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null || isSharedPacketFramework(plugin)) {
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
+    }
+
+    private static Plugin resolveHookedPluginFromLoader(PluginRegistry registry, ClassLoader loader) {
+        Plugin plugin = registry.getPluginByClassLoader(loader);
+        if (plugin == null || isSharedPacketFramework(plugin)) {
+            return null;
+        }
+        return registry.isHooked(plugin) ? plugin : null;
     }
 }
