@@ -69,6 +69,14 @@ public final class PluginClassLoaders {
                 || loader == PLATFORM_CLASS_LOADER;
     }
 
+    public static boolean hasPluginAccessor(ClassLoader loader) {
+        if (loader == null) {
+            return false;
+        }
+        LoaderAccessors accessors = LOADER_ACCESSORS.get(loader.getClass());
+        return accessors.primaryPluginGetter() != null || accessors.fallbackPluginGetter() != null;
+    }
+
     public static ClassLoader extractLibraryLoader(ClassLoader pluginClassLoader) {
         MethodHandle getter = LOADER_ACCESSORS.get(pluginClassLoader.getClass()).libraryLoaderGetter();
         if (getter == null) {

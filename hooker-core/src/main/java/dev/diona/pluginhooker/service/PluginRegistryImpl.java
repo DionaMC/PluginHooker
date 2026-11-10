@@ -29,6 +29,8 @@ public final class PluginRegistryImpl implements PluginRegistry {
     private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
     private final ConcurrentMap<ClassLoader, Plugin> classLoaderToPlugin =
             new MapMaker().weakKeys().makeMap();
+    private final Set<ClassLoader> knownNonPluginLoaders =
+            Collections.newSetFromMap(new MapMaker().weakKeys().makeMap());
     private final AtomicInteger version = new AtomicInteger(1);
     private volatile boolean hasWhitelistPlugins = false;
     @Setter
@@ -127,10 +129,21 @@ public final class PluginRegistryImpl implements PluginRegistry {
             return null;
         }
         Plugin cached = classLoaderToPlugin.get(classLoader);
-        return cached != null ? cached : resolveUncachedClassLoader(classLoader);
+        if (cached != null) {
+            return cached;
+        }
+        if (knownNonPluginLoaders.contains(classLoader)) {
+            return null;
+        }
+        return resolveUncachedClassLoader(classLoader);
     }
 
     public void refreshClassLoaderCache() {
+        knownNonPluginLoaders.clear();
+        scanAndRegisterActivePlugins();
+    }
+
+    private void scanAndRegisterActivePlugins() {
         PluginClassLoaders.scanActivePlugins(this::registerPluginLoaders);
     }
 
@@ -143,9 +156,11 @@ public final class PluginRegistryImpl implements PluginRegistry {
             return;
         }
         classLoaderToPlugin.put(mainLoader, plugin);
+        knownNonPluginLoaders.remove(mainLoader);
         ClassLoader libLoader = PluginClassLoaders.extractLibraryLoader(mainLoader);
         if (!PluginClassLoaders.isNonPluginLoader(libLoader) && libLoader != mainLoader) {
             classLoaderToPlugin.put(libLoader, plugin);
+            knownNonPluginLoaders.remove(libLoader);
         }
     }
 
@@ -156,15 +171,19 @@ public final class PluginRegistryImpl implements PluginRegistry {
             return direct;
         }
 
-        refreshClassLoaderCache();
+        scanAndRegisterActivePlugins();
         Plugin afterRefresh = classLoaderToPlugin.get(classLoader);
         if (afterRefresh != null) {
             return afterRefresh;
         }
 
+        boolean hasPotentialPluginAccessor = PluginClassLoaders.hasPluginAccessor(classLoader);
         for (ClassLoader parent = classLoader.getParent();
              !PluginClassLoaders.isNonPluginLoader(parent);
              parent = parent.getParent()) {
+            if (PluginClassLoaders.hasPluginAccessor(parent)) {
+                hasPotentialPluginAccessor = true;
+            }
             Plugin parentOwner = classLoaderToPlugin.get(parent);
             if (parentOwner == null) {
                 parentOwner = PluginClassLoaders.extractPluginFromLoader(parent);
@@ -174,8 +193,12 @@ public final class PluginRegistryImpl implements PluginRegistry {
             }
             if (parentOwner != null) {
                 classLoaderToPlugin.putIfAbsent(classLoader, parentOwner);
+                knownNonPluginLoaders.remove(classLoader);
                 return parentOwner;
             }
+        }
+        if (!hasPotentialPluginAccessor) {
+            knownNonPluginLoaders.add(classLoader);
         }
         return null;
     }

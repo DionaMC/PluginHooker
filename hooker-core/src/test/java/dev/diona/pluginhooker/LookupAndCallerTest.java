@@ -77,7 +77,11 @@ class LookupAndCallerTest {
     void resolvesMainLoaderLibraryLoaderAndChildLoaders() throws Exception {
         try (URLClassLoader libLoader = new URLClassLoader(new URL[0], parentLoader);
              SimulatedPluginClassLoader mainLoader = new SimulatedPluginClassLoader(parentLoader, libLoader);
-             URLClassLoader childLoader = new URLClassLoader(new URL[0], libLoader)) {
+             URLClassLoader childLoader = new URLClassLoader(new URL[0], libLoader);
+             URLClassLoader isolatedNonPluginLoader = new URLClassLoader(new URL[0], ClassLoader.getPlatformClassLoader())) {
+            // Early query while mainLoader.plugin is still null must NOT permanently poison mainLoader
+            assertNull(pluginRegistry.getPluginByClassLoader(mainLoader));
+
             Plugin mockPlugin = SandboxTestFixtures.createMockPlugin(mainLoader, "MockAnticheat");
             mainLoader.plugin = mockPlugin;
 
@@ -85,6 +89,10 @@ class LookupAndCallerTest {
             assertSame(mockPlugin, pluginRegistry.getPluginByClassLoader(libLoader));
             assertSame(mockPlugin, pluginRegistry.getPluginByClassLoader(childLoader));
             assertNull(pluginRegistry.getPluginByClassLoader(parentLoader));
+
+            // Non-plugin isolated ClassLoader negative-caches cleanly on repeated lookups
+            assertNull(pluginRegistry.getPluginByClassLoader(isolatedNonPluginLoader));
+            assertNull(pluginRegistry.getPluginByClassLoader(isolatedNonPluginLoader));
 
             mainLoader.plugin = null;
             pluginRegistry.handlePluginDisable(mockPlugin);
