@@ -13,6 +13,12 @@ dependencies {
     implementation("org.bstats:bstats-bukkit:3.2.1")
 }
 
+sourceSets {
+    test {
+        compileClasspath += main.get().compileClasspath
+    }
+}
+
 tasks {
     processResources {
         inputs.property("version", project.version)

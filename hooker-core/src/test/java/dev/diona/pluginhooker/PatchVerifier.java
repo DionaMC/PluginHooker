@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.constant.ConstantDescs;
+import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -150,7 +151,67 @@ public final class PatchVerifier {
                 throw new AssertionError("Expected all ClassLoader copies of transformed classes to be reverted on shutdown");
             }
         }
+
+        // 5. Verify Spigot/Paper libraryLoader, early plugin field, and child ClassLoader resolution
+        verifyPluginClassLoaderResolution(logger, pluginRegistry, cl);
+
         logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
+    }
+
+    private static final class SimulatedPluginClassLoader extends URLClassLoader {
+        @SuppressWarnings("unused")
+        private final URLClassLoader libraryLoader;
+        @SuppressWarnings("unused")
+        private org.bukkit.plugin.Plugin plugin;
+
+        SimulatedPluginClassLoader(ClassLoader parent, URLClassLoader libraryLoader) {
+            super(new URL[0], parent);
+            this.libraryLoader = libraryLoader;
+        }
+    }
+
+    private static void verifyPluginClassLoaderResolution(
+            Logger logger,
+            PluginRegistryImpl pluginRegistry,
+            ClassLoader parentLoader
+    ) throws Exception {
+        try (URLClassLoader libLoader = new URLClassLoader(new URL[0], parentLoader);
+             SimulatedPluginClassLoader mainLoader = new SimulatedPluginClassLoader(parentLoader, libLoader);
+             URLClassLoader childLoader = new URLClassLoader(new URL[0], libLoader)) {
+            org.bukkit.plugin.Plugin mockPlugin = (org.bukkit.plugin.Plugin) Proxy.newProxyInstance(
+                    mainLoader,
+                    new Class<?>[]{org.bukkit.plugin.Plugin.class},
+                    (proxy, method, mArgs) -> switch (method.getName()) {
+                        case "getName" -> "MockAnticheat";
+                        case "equals" -> proxy == mArgs[0];
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "toString" -> "MockAnticheat";
+                        default -> null;
+                    }
+            );
+            mainLoader.plugin = mockPlugin;
+
+            // Early resolution (before registerPlugin / PluginEnableEvent)
+            if (pluginRegistry.getPluginByClassLoader(mainLoader) != mockPlugin) {
+                throw new AssertionError("Failed to resolve plugin from main PluginClassLoader");
+            }
+            if (pluginRegistry.getPluginByClassLoader(libLoader) != mockPlugin) {
+                throw new AssertionError("Failed to resolve plugin from Spigot/Paper libraryLoader");
+            }
+            if (pluginRegistry.getPluginByClassLoader(childLoader) != mockPlugin) {
+                throw new AssertionError("Failed to resolve plugin from child ClassLoader");
+            }
+            if (pluginRegistry.getPluginByClassLoader(parentLoader) != null) {
+                throw new AssertionError("Server/system ClassLoader must never resolve to a plugin");
+            }
+
+            mainLoader.plugin = null;
+            pluginRegistry.handlePluginDisable(mockPlugin);
+            if (pluginRegistry.getPluginByClassLoader(libLoader) != null) {
+                throw new AssertionError("Expected disabled plugin libraryLoader mapping to be cleared");
+            }
+            logger.info("Verified PluginRegistryImpl libraryLoader & child ClassLoader resolution!");
+        }
     }
 
     private static Path ensurePaperUnpacked(Logger logger, Path cacheDir) throws Exception {
