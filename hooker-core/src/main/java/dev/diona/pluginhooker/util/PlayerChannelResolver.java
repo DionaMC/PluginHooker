@@ -17,6 +17,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -32,11 +33,51 @@ public final class PlayerChannelResolver {
     private static final AttributeKey<Boolean> CLOSE_LISTENER_BOUND_KEY =
             AttributeKey.valueOf("pluginhooker_close_listener_bound");
 
-    private static volatile List<MethodHandle> channelAccessorChain;
-    private static volatile MethodHandle proxyDelegateGetter;
-    private static volatile Class<?> cachedProxyClass;
+    private static final ClassValue<Boolean> REAL_CHANNEL_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> channelClass) {
+            String className = channelClass.getName();
+            return className.startsWith("io.netty.") && !className.startsWith("io.netty.channel.embedded.");
+        }
+    };
+
+    private static final ClassValue<Boolean> TEMPORARY_PLAYER_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> playerClass) {
+            return playerClass.getName().startsWith("com.comphenix.protocol.injector.");
+        }
+    };
+
+    private static final ClassValue<Optional<MethodHandle>> CHANNEL_PROXY_UNWRAPPER = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> channelClass) {
+            if (!channelClass.getSimpleName().equals("NettyChannelProxy")) {
+                return Optional.empty();
+            }
+            try {
+                Field delegateField = channelClass.getDeclaredField("delegate");
+                delegateField.setAccessible(true);
+                return Optional.of(
+                        MethodHandles.lookup()
+                                .unreflectGetter(delegateField)
+                                .asType(MethodType.methodType(Channel.class, Object.class))
+                );
+            } catch (ReflectiveOperationException e) {
+                return Optional.empty();
+            }
+        }
+    };
+
+    private static volatile MethodHandle[] channelAccessorChain;
 
     private PlayerChannelResolver() {
+    }
+
+    /**
+     * Returns true if the given player is null or a ProtocolLib temporary player proxy.
+     */
+    public static boolean isInvalidOrTemporaryPlayer(Player player) {
+        return player == null || TEMPORARY_PLAYER_CACHE.get(player.getClass());
     }
 
     /**
@@ -44,11 +85,7 @@ public final class PlayerChannelResolver {
      * (not null and not a plugin dummy/embedded channel such as {@code EmptyChannel}).
      */
     public static boolean isRealNetworkChannel(Channel channel) {
-        if (channel == null) {
-            return false;
-        }
-        String className = channel.getClass().getName();
-        return className.startsWith("io.netty.") && !className.startsWith("io.netty.channel.embedded.");
+        return channel != null && REAL_CHANNEL_CACHE.get(channel.getClass());
     }
 
     /**
@@ -101,33 +138,24 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Resolves the {@link HookedPlayer} for a Netty {@link Channel}, checking the channel attribute first
-     * and falling back to online player channel matching (lazily binding the attribute if found).
+     * Resolves the {@link HookedPlayer} for a Netty {@link Channel} in O(1) time via the channel attribute.
      */
     public static HookedPlayer resolveHookedPlayer(Channel channel, PlayerRegistry playerRegistry) {
         if (channel == null) {
             return null;
         }
-        HookedPlayer hookedPlayer = channel.attr(HOOKED_PLAYER_KEY).get();
-        if (hookedPlayer != null) {
-            return hookedPlayer;
-        }
-        Player onlinePlayer = findOnlinePlayerByChannel(channel);
-        if (onlinePlayer != null) {
-            return playerRegistry.registerPlayer(onlinePlayer);
-        }
-        return null;
+        return channel.attr(HOOKED_PLAYER_KEY).get();
     }
 
     /**
      * Extracts the Netty {@link Channel} for the given Bukkit {@link Player}.
      */
     public static Channel getChannel(Player player) {
-        if (player == null || player.getClass().getName().startsWith("com.comphenix.protocol.injector.")) {
+        if (isInvalidOrTemporaryPlayer(player)) {
             return null;
         }
         try {
-            List<MethodHandle> chain = channelAccessorChain;
+            MethodHandle[] chain = channelAccessorChain;
             if (chain == null) {
                 synchronized (PlayerChannelResolver.class) {
                     chain = channelAccessorChain;
@@ -142,7 +170,7 @@ public final class PlayerChannelResolver {
                 if (current == null) {
                     return null;
                 }
-                current = handle.invoke(current);
+                current = handle.invokeExact(current);
             }
             return unwrapChannelProxy((Channel) current);
         } catch (Throwable t) {
@@ -155,35 +183,29 @@ public final class PlayerChannelResolver {
      * Netty {@link Channel} instance.
      */
     public static Channel unwrapChannelProxy(Channel channel) {
-        if (channel == null || !channel.getClass().getSimpleName().equals("NettyChannelProxy")) {
+        if (channel == null) {
+            return null;
+        }
+        Optional<MethodHandle> getterOpt = CHANNEL_PROXY_UNWRAPPER.get(channel.getClass());
+        if (getterOpt.isEmpty()) {
             return channel;
         }
         try {
-            Class<?> proxyClass = channel.getClass();
-            MethodHandle getter = proxyDelegateGetter;
-            if (getter == null || cachedProxyClass != proxyClass) {
-                Field delegateField = proxyClass.getDeclaredField("delegate");
-                delegateField.setAccessible(true);
-                getter = MethodHandles.lookup()
-                        .unreflectGetter(delegateField)
-                        .asType(MethodType.methodType(Channel.class, Object.class));
-                proxyDelegateGetter = getter;
-                cachedProxyClass = proxyClass;
-            }
-            Channel unwrapped = (Channel) getter.invokeExact((Object) channel);
+            Channel unwrapped = (Channel) getterOpt.get().invokeExact((Object) channel);
             return unwrapped != null ? unwrapped : channel;
         } catch (Throwable ignored) {
             return channel;
         }
     }
 
-    private static List<MethodHandle> buildAccessorChain(Class<?> craftPlayerClass) throws Exception {
+    private static MethodHandle[] buildAccessorChain(Class<?> craftPlayerClass) throws Exception {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
+        MethodType genericGetterType = MethodType.methodType(Object.class, Object.class);
         Method getHandle = craftPlayerClass.getMethod("getHandle");
         getHandle.setAccessible(true);
 
         List<MethodHandle> initial = new ArrayList<>();
-        initial.add(lookup.unreflect(getHandle));
+        initial.add(lookup.unreflect(getHandle).asType(genericGetterType));
 
         Class<?> entityPlayerClass = getHandle.getReturnType();
         List<Field> fieldPath = findChannelFieldPath(entityPlayerClass, 4);
@@ -193,9 +215,9 @@ public final class PlayerChannelResolver {
 
         for (Field field : fieldPath) {
             field.setAccessible(true);
-            initial.add(lookup.unreflectGetter(field));
+            initial.add(lookup.unreflectGetter(field).asType(genericGetterType));
         }
-        return List.copyOf(initial);
+        return initial.toArray(MethodHandle[]::new);
     }
 
     private static List<Field> findChannelFieldPath(Class<?> rootClass, int maxDepth) {

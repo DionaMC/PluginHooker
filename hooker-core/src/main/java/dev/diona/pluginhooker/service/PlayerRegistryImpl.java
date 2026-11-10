@@ -97,6 +97,6 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     }
 
     private static boolean isInvalidOrTemporaryPlayer(Player player) {
-        return player == null || player.getClass().getName().startsWith("com.comphenix.protocol.injector.");
+        return PlayerChannelResolver.isInvalidOrTemporaryPlayer(player);
     }
 }
