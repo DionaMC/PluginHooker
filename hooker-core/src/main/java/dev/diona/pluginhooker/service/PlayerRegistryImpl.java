@@ -2,7 +2,6 @@ package dev.diona.pluginhooker.service;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
-import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import io.netty.channel.Channel;
@@ -16,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Thread-safe implementation of {@link PlayerRegistry}.
@@ -25,6 +25,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
     private final Map<String, HookedPlayerImpl> playersByLowerName = new ConcurrentHashMap<>();
+    private final AtomicInteger disabledOverridePlayerCount = new AtomicInteger();
     private final PluginRegistryImpl pluginRegistry;
     private final HookConfig config;
 
@@ -41,11 +42,14 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         long graceMillis = realChannel ? config.getJoinGraceMillis() : 0L;
         UUID uuid = bukkitPlayer.getUniqueId();
         HookedPlayerImpl hookedPlayer = players.compute(uuid, (id, existing) -> {
-            if (existing != null && existing.getBukkitPlayer() == bukkitPlayer) {
-                existing.updateState(bukkitPlayer, graceMillis);
-                return existing;
+            if (existing != null) {
+                if (existing.getBukkitPlayer() == bukkitPlayer) {
+                    existing.updateState(bukkitPlayer, graceMillis);
+                    return existing;
+                }
+                existing.markUnregistered();
             }
-            return new HookedPlayerImpl(bukkitPlayer, pluginRegistry, graceMillis);
+            return new HookedPlayerImpl(bukkitPlayer, pluginRegistry, this, graceMillis);
         });
         String name = bukkitPlayer.getName();
         if (name != null && !name.isEmpty()) {
@@ -56,7 +60,9 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
                     channel,
                     hookedPlayer,
                     closedPlayer -> {
-                        players.remove(uuid, closedPlayer);
+                        if (players.remove(uuid, closedPlayer) && closedPlayer instanceof HookedPlayerImpl impl) {
+                            impl.markUnregistered();
+                        }
                         String closedName = closedPlayer.getName();
                         if (closedName != null) {
                             playersByLowerName.remove(closedName.toLowerCase(Locale.ROOT), closedPlayer);
@@ -73,6 +79,9 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return;
         }
         HookedPlayerImpl removed = players.remove(bukkitPlayer.getUniqueId());
+        if (removed != null) {
+            removed.markUnregistered();
+        }
         String name = bukkitPlayer.getName();
         if (name != null) {
             if (removed != null) {
@@ -97,22 +106,22 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         }
     }
 
+    void adjustDisabledOverridePlayers(int delta) {
+        disabledOverridePlayerCount.addAndGet(delta);
+    }
+
+    public boolean hasPlayersWithDisabledOverrides() {
+        return disabledOverridePlayerCount.get() > 0;
+    }
+
     /**
-     * Fast check returning whether at least one tracked online player currently has a disabled plugin.
+     * O(1) fast check returning whether at least one tracked online player currently has a disabled plugin.
      */
     public boolean hasAnyPlayerWithDisabledPlugin() {
-        if (players.isEmpty() || !pluginRegistry.hasHookedPlugins()) {
-            return false;
+        if (disabledOverridePlayerCount.get() > 0) {
+            return pluginRegistry.hasHookedPlugins();
         }
-        if (pluginRegistry.hasWhitelistPlugins()) {
-            return true;
-        }
-        for (HookedPlayerImpl player : players.values()) {
-            if (player.hasExplicitlyDisabledPlugins()) {
-                return true;
-            }
-        }
-        return false;
+        return !players.isEmpty() && pluginRegistry.hasWhitelistPlugins();
     }
 
     @Override

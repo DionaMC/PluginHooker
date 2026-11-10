@@ -33,6 +33,8 @@ import java.util.function.Predicate;
 @RequiredArgsConstructor
 public final class BukkitLookupPatch extends ClassPatch {
 
+    private static final int SMALL_COLLECTION_THRESHOLD = 8;
+
     private static final ClassDesc COLLECTION_DESC = ClassDesc.of("java.util.Collection");
     private static final ClassDesc LIST_DESC = ClassDesc.of("java.util.List");
     private static final ClassDesc PLAYER_DESC = ClassDesc.of("org.bukkit.entity.Player");
@@ -177,9 +179,12 @@ public final class BukkitLookupPatch extends ClassPatch {
     @SuppressWarnings("unchecked")
     private Object filterPlayerCollection(Object returnValue, boolean hideEnabled) {
         if (!hideEnabled
+                || !playerRegistry.hasAnyPlayerWithDisabledPlugin()
                 || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()
-                || !hasRestrictablePlayer(rawCollection)) {
+                || rawCollection.isEmpty()) {
+            return returnValue;
+        }
+        if (rawCollection.size() <= SMALL_COLLECTION_THRESHOLD && !hasRestrictablePlayer(rawCollection)) {
             return returnValue;
         }
 
@@ -196,7 +201,7 @@ public final class BukkitLookupPatch extends ClassPatch {
 
     public Object filterGetPlayer(Object returnValue) {
         if (!config.bukkitApi().isHideFromGetPlayer()
-                || !pluginRegistry.hasHookedPlugins()
+                || !playerRegistry.hasAnyPlayerWithDisabledPlugin()
                 || !(returnValue instanceof Player player)) {
             return returnValue;
         }
@@ -217,9 +222,12 @@ public final class BukkitLookupPatch extends ClassPatch {
 
     public Object filterEntityCollection(Object returnValue) {
         if (!config.bukkitApi().isHideFromEntityLists()
+                || !playerRegistry.hasAnyPlayerWithDisabledPlugin()
                 || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()
-                || !hasRestrictablePlayer(rawCollection)) {
+                || rawCollection.isEmpty()) {
+            return returnValue;
+        }
+        if (rawCollection.size() <= SMALL_COLLECTION_THRESHOLD && !hasRestrictablePlayer(rawCollection)) {
             return returnValue;
         }
 
@@ -235,9 +243,6 @@ public final class BukkitLookupPatch extends ClassPatch {
     }
 
     private boolean hasRestrictablePlayer(Collection<?> collection) {
-        if (!playerRegistry.hasAnyPlayerWithDisabledPlugin()) {
-            return false;
-        }
         if (collection instanceof List<?> list && list instanceof RandomAccess) {
             for (int i = 0, size = list.size(); i < size; i++) {
                 if (list.get(i) instanceof Player player && isPlayerRestrictable(player)) {

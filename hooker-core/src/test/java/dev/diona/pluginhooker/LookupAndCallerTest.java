@@ -100,6 +100,42 @@ class LookupAndCallerTest {
         }
     }
 
+    @Test
+    void disabledOverrideCounterAndBlacklistZeroOverrideFastPath() throws Exception {
+        try (ChildFirstActorLoader pluginLoader = new ChildFirstActorLoader(parentLoader)) {
+            Plugin blacklistPlugin = SandboxTestFixtures.createMockPlugin(pluginLoader, "BlacklistAnticheat");
+            pluginRegistry.registerPlugin(blacklistPlugin, HookMode.BLACKLIST);
+
+            Player p1 = SandboxTestFixtures.createStubPlayer(UUID.randomUUID(), "NormalPlayer1");
+            Player p2 = SandboxTestFixtures.createStubPlayer(UUID.randomUUID(), "NormalPlayer2");
+            HookedPlayer hp1 = playerRegistry.registerPlayer(p1);
+            HookedPlayer hp2 = playerRegistry.registerPlayer(p2);
+
+            try {
+                assertFalse(playerRegistry.hasPlayersWithDisabledOverrides());
+                assertFalse(playerRegistry.hasAnyPlayerWithDisabledPlugin());
+
+                // Idempotent disable increments once; enable/reset/unregister decrements back to 0
+                hp1.disablePlugin(blacklistPlugin);
+                hp1.disablePlugin(blacklistPlugin);
+                assertTrue(playerRegistry.hasPlayersWithDisabledOverrides());
+                assertTrue(playerRegistry.hasAnyPlayerWithDisabledPlugin());
+
+                hp2.disablePlugin(blacklistPlugin);
+                hp1.enablePlugin(blacklistPlugin);
+                assertTrue(playerRegistry.hasPlayersWithDisabledOverrides());
+
+                playerRegistry.unregisterPlayer(p2);
+                assertFalse(playerRegistry.hasPlayersWithDisabledOverrides());
+                assertFalse(playerRegistry.hasAnyPlayerWithDisabledPlugin());
+            } finally {
+                playerRegistry.unregisterPlayer(p1);
+                playerRegistry.unregisterPlayer(p2);
+                pluginRegistry.handlePluginDisable(blacklistPlugin);
+            }
+        }
+    }
+
     public static final class CustomPluginEvent extends Event {
         private static final HandlerList HANDLERS = new HandlerList();
         private final Player customTarget;
@@ -187,6 +223,18 @@ class LookupAndCallerTest {
                 Supplier<Object> noCopyCall = () -> HookBridge.filterReturn(noHidden, HookIds.FILTER_ENTITY_COLLECTION, null);
                 Object sameRef = actorClass.getMethod("callViaAdventureWrapper", Supplier.class).invoke(null, noCopyCall);
                 assertSame(noHidden, sameRef);
+
+                // Large (>8) entity collection: unhooked caller skips scan; hooked caller filters in single pass
+                List<Object> largeEntities = new ArrayList<>(List.of(
+                        "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", enabledPlayer, disabledPlayer
+                ));
+                assertSame(largeEntities, HookBridge.filterReturn(largeEntities, HookIds.FILTER_ENTITY_COLLECTION, null));
+                Supplier<Object> largeHookedCall = () -> HookBridge.filterReturn(largeEntities, HookIds.FILTER_ENTITY_COLLECTION, null);
+                @SuppressWarnings("unchecked")
+                List<Object> largeFiltered = (List<Object>) actorClass.getMethod("callViaAdventureWrapper", Supplier.class)
+                        .invoke(null, largeHookedCall);
+                assertEquals(10, largeFiltered.size());
+                assertFalse(largeFiltered.contains(disabledPlayer));
 
                 // 3. Command target disambiguation & UUID matching
                 Supplier<Boolean> cmdTargetingEnabled = () -> HookBridge.checkGuard(

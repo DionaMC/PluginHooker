@@ -21,17 +21,26 @@ public final class HookedPlayerImpl implements HookedPlayer {
     @Getter
     private final UUID uniqueId;
     private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
     private volatile boolean hasEnabledOverrides;
     private volatile boolean hasDisabledOverrides;
     private volatile long joinGraceUntilMillis;
+    private boolean countedInRegistry;
+    private boolean unregistered;
 
-    public HookedPlayerImpl(Player bukkitPlayer, PluginRegistryImpl pluginRegistry, long joinGraceDurationMillis) {
+    public HookedPlayerImpl(
+            Player bukkitPlayer,
+            PluginRegistryImpl pluginRegistry,
+            PlayerRegistryImpl playerRegistry,
+            long joinGraceDurationMillis
+    ) {
         this.bukkitPlayer = bukkitPlayer;
         this.uniqueId = bukkitPlayer.getUniqueId();
         this.pluginRegistry = pluginRegistry;
+        this.playerRegistry = playerRegistry;
         refreshJoinGrace(joinGraceDurationMillis);
     }
 
@@ -54,19 +63,20 @@ public final class HookedPlayerImpl implements HookedPlayer {
     }
 
     @Override
-    public void enablePlugin(Plugin plugin) {
+    public synchronized void enablePlugin(Plugin plugin) {
         if (plugin == null || !pluginRegistry.isHooked(plugin)) {
             return;
         }
         if (explicitlyDisabled.remove(plugin)) {
             hasDisabledOverrides = !explicitlyDisabled.isEmpty();
+            syncDisabledOverrideCount();
         }
         explicitlyEnabled.add(plugin);
         hasEnabledOverrides = true;
     }
 
     @Override
-    public void disablePlugin(Plugin plugin) {
+    public synchronized void disablePlugin(Plugin plugin) {
         if (plugin == null) {
             return;
         }
@@ -76,11 +86,12 @@ public final class HookedPlayerImpl implements HookedPlayer {
         if (pluginRegistry.isHooked(plugin)) {
             explicitlyDisabled.add(plugin);
             hasDisabledOverrides = true;
+            syncDisabledOverrideCount();
         }
     }
 
     @Override
-    public void resetPlugin(Plugin plugin) {
+    public synchronized void resetPlugin(Plugin plugin) {
         if (plugin == null) {
             return;
         }
@@ -89,6 +100,22 @@ public final class HookedPlayerImpl implements HookedPlayer {
         }
         if (explicitlyDisabled.remove(plugin)) {
             hasDisabledOverrides = !explicitlyDisabled.isEmpty();
+            syncDisabledOverrideCount();
+        }
+    }
+
+    synchronized void markUnregistered() {
+        unregistered = true;
+        syncDisabledOverrideCount();
+    }
+
+    private void syncDisabledOverrideCount() {
+        boolean shouldCount = !unregistered && hasDisabledOverrides;
+        if (shouldCount != countedInRegistry) {
+            countedInRegistry = shouldCount;
+            if (playerRegistry != null) {
+                playerRegistry.adjustDisabledOverridePlayers(shouldCount ? 1 : -1);
+            }
         }
     }
 
