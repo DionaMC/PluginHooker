@@ -15,7 +15,7 @@ public final class PluginCallerResolver {
 
     private static final StackWalker CLASS_STACK_WALKER = StackWalker.getInstance(
             Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.DROP_METHOD_INFO),
-            6
+            8
     );
     private static final StackWalker METHOD_STACK_WALKER = StackWalker.getInstance(
             Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE),
@@ -202,6 +202,44 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 return null;
+            }
+            return null;
+        });
+    }
+
+    /**
+     * Resolves the direct plugin caller (including reflective {@code Method.invoke} / {@code MethodHandle} calls)
+     * of an instrumented NMS connection method such as {@code sendPacket}, {@code send}, or {@code disconnect}.
+     * Only invoked after verifying that the target player actually has disabled plugins or kick event hooks.
+     */
+    public static Plugin resolveDirectNmsCaller(
+            PluginRegistry registry,
+            ClassLoader selfLoader,
+            Class<?> connectionClass
+    ) {
+        if (!registry.hasHookedPlugins()) {
+            return null;
+        }
+        return CLASS_STACK_WALKER.walk(frames -> {
+            var iterator = frames.iterator();
+            boolean skippedConnectionEntry = false;
+            while (iterator.hasNext()) {
+                Class<?> callerClass = iterator.next().getDeclaringClass();
+                if ((CLASS_FLAGS.get(callerClass) & FLAG_SELF_PACKAGE) != 0) {
+                    continue;
+                }
+                ClassLoader loader = callerClass.getClassLoader();
+                if (loader == null) {
+                    continue;
+                }
+                if (!skippedConnectionEntry && callerClass.isAssignableFrom(connectionClass)) {
+                    skippedConnectionEntry = true;
+                    continue;
+                }
+                if (loader == selfLoader) {
+                    return null;
+                }
+                return resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });

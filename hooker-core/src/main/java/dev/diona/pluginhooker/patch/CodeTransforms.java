@@ -93,43 +93,6 @@ public final class CodeTransforms {
     }
 
     /**
-     * Injects a fast-path caller-aware guard check at the start of ultra-hot void-returning NMS methods:
-     * <pre>{@code
-     * if (HookBridge.HAS_HOOKED_PLUGINS) {
-     *     if (HookBridge.checkGuard(hookId, arg0, arg1, HookBridge.CALLER_WALKER.getCallerClass())) {
-     *         return;
-     *     }
-     * }
-     * }</pre>
-     */
-    public static CodeTransform guardVoidEntryWithCaller(int hookId, ArgSpec arg0, ArgSpec arg1) {
-        ClassDesc stackWalkerDesc = ClassDesc.of("java.lang.StackWalker");
-        MethodTypeDesc getCallerClassMtd = MethodTypeDesc.of(ConstantDescs.CD_Class);
-        return new CodeTransform() {
-            @Override
-            public void atStart(CodeBuilder cb) {
-                Label continueLabel = cb.newLabel();
-                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
-                cb.ifeq(continueLabel);
-                cb.ldc(hookId);
-                arg0.emit(cb);
-                arg1.emit(cb);
-                cb.getstatic(BRIDGE_DESC, "CALLER_WALKER", stackWalkerDesc);
-                cb.invokevirtual(stackWalkerDesc, "getCallerClass", getCallerClassMtd);
-                cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
-                cb.ifeq(continueLabel);
-                cb.return_();
-                cb.labelBinding(continueLabel);
-            }
-
-            @Override
-            public void accept(CodeBuilder cb, CodeElement element) {
-                cb.with(element);
-            }
-        };
-    }
-
-    /**
      * Injects a guard check at the start of a boolean-returning method:
      * {@code if (HookBridge.HAS_HOOKED_PLUGINS && HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return false;}
      */

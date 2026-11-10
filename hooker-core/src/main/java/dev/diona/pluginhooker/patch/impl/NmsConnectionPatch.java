@@ -155,19 +155,21 @@ public final class NmsConnectionPatch extends ClassPatch {
                         } else if (name.equals("disconnect") || name.equals("disconnectAsync")) {
                             mb.transformCode(
                                     codeModel,
-                                    CodeTransforms.guardVoidEntryWithCaller(
+                                    CodeTransforms.guardVoidEntry(
                                             HookIds.GUARD_NMS_DISCONNECT,
                                             ArgSpec.thisRef(),
-                                            ArgSpec.param(0)
+                                            ArgSpec.param(0),
+                                            ArgSpec.nullConst()
                                     )
                             );
                         } else {
                             mb.transformCode(
                                     codeModel,
-                                    CodeTransforms.guardVoidEntryWithCaller(
+                                    CodeTransforms.guardVoidEntry(
                                             HookIds.GUARD_NMS_SEND_PACKET,
                                             ArgSpec.thisRef(),
-                                            ArgSpec.param(0)
+                                            ArgSpec.param(0),
+                                            ArgSpec.nullConst()
                                     )
                             );
                         }
@@ -178,17 +180,21 @@ public final class NmsConnectionPatch extends ClassPatch {
         );
     }
 
-    public boolean handleSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
-        Plugin caller = resolveDirectHookedCaller(callerClassObj);
-        if (caller == null || connectionObj == null) {
+    public boolean handleSendPacket(Object connectionObj, Object packetObj) {
+        if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || connectionObj == null) {
             return false;
         }
         Player bukkitPlayer = extractPlayer(connectionObj);
-        if (bukkitPlayer == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer.getUniqueId());
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller)) {
+        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
+                pluginRegistry,
+                selfClassLoader,
+                connectionObj.getClass()
+        );
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -200,17 +206,21 @@ public final class NmsConnectionPatch extends ClassPatch {
         return false;
     }
 
-    public boolean handleDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
-        Plugin caller = resolveDirectHookedCaller(callerClassObj);
-        if (caller == null || connectionObj == null) {
+    public boolean handleDisconnect(Object connectionObj, Object reasonObj) {
+        if (!pluginRegistry.hasHookedPlugins() || connectionObj == null) {
             return false;
         }
         Player bukkitPlayer = extractPlayer(connectionObj);
-        if (bukkitPlayer == null) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        if (hookedPlayer == null || (!hookedPlayer.hasAnyDisabledPlugin() && !config.bukkitApi().isCallKickEvent())) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (hookedPlayer == null) {
+        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
+                pluginRegistry,
+                selfClassLoader,
+                connectionObj.getClass()
+        );
+        if (caller == null) {
             return false;
         }
 
@@ -246,21 +256,6 @@ public final class NmsConnectionPatch extends ClassPatch {
                 BukkitEvents.fireIfReady(() -> new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
             }
         }
-    }
-
-    private Plugin resolveDirectHookedCaller(Object callerClassObj) {
-        if (!(callerClassObj instanceof Class<?> callerClass)) {
-            return null;
-        }
-        ClassLoader callerLoader = callerClass.getClassLoader();
-        if (callerLoader == null || callerLoader == selfClassLoader) {
-            return null;
-        }
-        Plugin caller = pluginRegistry.getPluginByClassLoader(callerLoader);
-        if (caller == null || PluginCallerResolver.isSharedPacketFramework(caller)) {
-            return null;
-        }
-        return pluginRegistry.isHooked(caller) ? caller : null;
     }
 
     private static Player extractPlayer(Object connectionObj) {
