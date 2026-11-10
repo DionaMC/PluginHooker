@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.invoke.MutableCallSite;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -15,6 +16,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -66,7 +68,23 @@ public final class PlayerChannelResolver {
         }
     };
 
-    private static volatile MethodHandle[] channelAccessorChain;
+    private static final MethodHandle BOOTSTRAP_EXTRACTOR;
+    private static final MutableCallSite CHANNEL_EXTRACTOR_SITE;
+    private static final MethodHandle CHANNEL_EXTRACTOR;
+
+    static {
+        try {
+            BOOTSTRAP_EXTRACTOR = MethodHandles.lookup().findStatic(
+                    PlayerChannelResolver.class,
+                    "resolveAndBindExtractor",
+                    MethodType.methodType(Channel.class, Player.class)
+            );
+            CHANNEL_EXTRACTOR_SITE = new MutableCallSite(BOOTSTRAP_EXTRACTOR);
+            CHANNEL_EXTRACTOR = CHANNEL_EXTRACTOR_SITE.dynamicInvoker();
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     private PlayerChannelResolver() {
     }
@@ -136,32 +154,32 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Extracts the Netty {@link Channel} for the given Bukkit {@link Player}.
+     * Extracts the Netty {@link Channel} for the given Bukkit {@link Player} via a C2-inlineable
+     * composite {@link MethodHandle}.
      */
     public static Channel getChannel(Player player) {
         if (isInvalidOrTemporaryPlayer(player)) {
             return null;
         }
         try {
-            MethodHandle[] chain = channelAccessorChain;
-            if (chain == null) {
-                synchronized (PlayerChannelResolver.class) {
-                    chain = channelAccessorChain;
-                    if (chain == null) {
-                        chain = buildAccessorChain(player.getClass());
-                        channelAccessorChain = chain;
-                    }
-                }
-            }
-            Object current = player;
-            for (MethodHandle handle : chain) {
-                if (current == null) {
-                    return null;
-                }
-                current = handle.invokeExact(current);
-            }
-            return unwrapChannelProxy((Channel) current);
+            return (Channel) CHANNEL_EXTRACTOR.invokeExact(player);
         } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static synchronized Channel resolveAndBindExtractor(Player player) throws Throwable {
+        MethodHandle current = CHANNEL_EXTRACTOR_SITE.getTarget();
+        if (current != BOOTSTRAP_EXTRACTOR) {
+            return (Channel) current.invokeExact(player);
+        }
+        try {
+            MethodHandle compiled = buildCompositeExtractor(player.getClass());
+            CHANNEL_EXTRACTOR_SITE.setTarget(compiled);
+            MutableCallSite.syncAll(new MutableCallSite[]{CHANNEL_EXTRACTOR_SITE});
+            return (Channel) compiled.invokeExact(player);
+        } catch (Exception ignored) {
             return null;
         }
     }
@@ -186,14 +204,10 @@ public final class PlayerChannelResolver {
         }
     }
 
-    private static MethodHandle[] buildAccessorChain(Class<?> craftPlayerClass) throws Exception {
+    static MethodHandle buildCompositeExtractor(Class<?> craftPlayerClass) throws Exception {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
-        MethodType genericGetterType = MethodType.methodType(Object.class, Object.class);
         Method getHandle = craftPlayerClass.getMethod("getHandle");
         getHandle.setAccessible(true);
-
-        List<MethodHandle> initial = new ArrayList<>();
-        initial.add(lookup.unreflect(getHandle).asType(genericGetterType));
 
         Class<?> entityPlayerClass = getHandle.getReturnType();
         List<Field> fieldPath = findChannelFieldPath(entityPlayerClass, 4);
@@ -201,11 +215,39 @@ public final class PlayerChannelResolver {
             throw new IllegalStateException("Unable to locate io.netty.channel.Channel path from " + entityPlayerClass.getName());
         }
 
+        List<MethodHandle> steps = new ArrayList<>(1 + fieldPath.size());
+        steps.add(lookup.unreflect(getHandle));
         for (Field field : fieldPath) {
             field.setAccessible(true);
-            initial.add(lookup.unreflectGetter(field).asType(genericGetterType));
+            steps.add(lookup.unreflectGetter(field));
         }
-        return initial.toArray(MethodHandle[]::new);
+
+        MethodHandle nonNullTest = lookup.findStatic(
+                Objects.class,
+                "nonNull",
+                MethodType.methodType(boolean.class, Object.class)
+        );
+        MethodHandle tail = lookup.findStatic(
+                PlayerChannelResolver.class,
+                "unwrapChannelProxy",
+                MethodType.methodType(Channel.class, Channel.class)
+        ).asType(MethodType.methodType(Channel.class, steps.getLast().type().returnType()));
+
+        // Fold right-to-left into a single null-safe MethodHandle chain
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            MethodHandle step = steps.get(i);
+            Class<?> stepOut = step.type().returnType();
+            MethodHandle test = nonNullTest.asType(MethodType.methodType(boolean.class, stepOut));
+            MethodHandle nullBranch = MethodHandles.dropArguments(
+                    MethodHandles.constant(Channel.class, null),
+                    0,
+                    stepOut
+            );
+            MethodHandle safeTail = MethodHandles.guardWithTest(test, tail, nullBranch);
+            tail = MethodHandles.filterReturnValue(step, safeTail);
+        }
+
+        return tail.asType(MethodType.methodType(Channel.class, Player.class));
     }
 
     private static List<Field> findChannelFieldPath(Class<?> rootClass, int maxDepth) {

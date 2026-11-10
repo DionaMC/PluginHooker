@@ -66,18 +66,20 @@ public final class CodeTransforms {
 
     /**
      * Injects a guard check at the start of a void-returning method:
-     * {@code if (HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return;}
+     * {@code if (HookBridge.HAS_HOOKED_PLUGINS && HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return;}
      */
     public static CodeTransform guardVoidEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
         return new CodeTransform() {
             @Override
             public void atStart(CodeBuilder cb) {
+                Label continueLabel = cb.newLabel();
+                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                cb.ifeq(continueLabel);
                 cb.ldc(hookId);
                 arg0.emit(cb);
                 arg1.emit(cb);
                 arg2.emit(cb);
                 cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
-                Label continueLabel = cb.newLabel();
                 cb.ifeq(continueLabel);
                 cb.return_();
                 cb.labelBinding(continueLabel);
@@ -129,18 +131,20 @@ public final class CodeTransforms {
 
     /**
      * Injects a guard check at the start of a boolean-returning method:
-     * {@code if (HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return false;}
+     * {@code if (HookBridge.HAS_HOOKED_PLUGINS && HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return false;}
      */
     public static CodeTransform guardBooleanEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
         return new CodeTransform() {
             @Override
             public void atStart(CodeBuilder cb) {
+                Label continueLabel = cb.newLabel();
+                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                cb.ifeq(continueLabel);
                 cb.ldc(hookId);
                 arg0.emit(cb);
                 arg1.emit(cb);
                 arg2.emit(cb);
                 cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
-                Label continueLabel = cb.newLabel();
                 cb.ifeq(continueLabel);
                 cb.iconst_0();
                 cb.ireturn();
@@ -156,7 +160,7 @@ public final class CodeTransforms {
 
     /**
      * Injects a guard check at the start of a {@code CompletableFuture<Boolean>}-returning method (e.g. Paper's {@code teleportAsync}):
-     * {@code if (HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return CompletableFuture.completedFuture(Boolean.FALSE);}
+     * {@code if (HookBridge.HAS_HOOKED_PLUGINS && HookBridge.checkGuard(hookId, arg0, arg1, arg2)) return CompletableFuture.completedFuture(Boolean.FALSE);}
      */
     public static CodeTransform guardCompletableFutureBooleanEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
         ClassDesc cfDesc = ClassDesc.of("java.util.concurrent.CompletableFuture");
@@ -166,12 +170,14 @@ public final class CodeTransforms {
         return new CodeTransform() {
             @Override
             public void atStart(CodeBuilder cb) {
+                Label continueLabel = cb.newLabel();
+                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                cb.ifeq(continueLabel);
                 cb.ldc(hookId);
                 arg0.emit(cb);
                 arg1.emit(cb);
                 arg2.emit(cb);
                 cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
-                Label continueLabel = cb.newLabel();
                 cb.ifeq(continueLabel);
                 cb.getstatic(ConstantDescs.CD_Boolean, "FALSE", ConstantDescs.CD_Boolean);
                 cb.invokestatic(cfDesc, "completedFuture", completedFutureMtd);
@@ -212,12 +218,14 @@ public final class CodeTransforms {
         return new CodeTransform() {
             @Override
             public void atStart(CodeBuilder cb) {
+                Label continueLabel = cb.newLabel();
+                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                cb.ifeq(continueLabel);
                 cb.ldc(hookId);
                 arg0.emit(cb);
                 arg1.emit(cb);
                 arg2.emit(cb);
                 cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
-                Label continueLabel = cb.newLabel();
                 cb.ifeq(continueLabel);
                 if (promiseParamIndex >= 0) {
                     int promiseSlot = cb.parameterSlot(promiseParamIndex);
@@ -243,17 +251,21 @@ public final class CodeTransforms {
 
     /**
      * Intercepts all reference returns ({@code areturn}) and passes the return value through
-     * {@code HookBridge.filterReturn(returnValue, hookId, receiver)}.
+     * {@code HookBridge.filterReturn(returnValue, hookId, receiver)} when hooked plugins are active.
      */
     public static CodeTransform filterObjectReturn(int hookId, ClassDesc expectedReturnType, ArgSpec receiver) {
         return (cb, element) -> {
             if (element instanceof ReturnInstruction ret && ret.opcode() == Opcode.ARETURN) {
+                Label returnDirectlyLabel = cb.newLabel();
+                cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                cb.ifeq(returnDirectlyLabel);
                 cb.ldc(hookId);
                 receiver.emit(cb);
                 cb.invokestatic(BRIDGE_DESC, "filterReturn", FILTER_MTD);
                 if (!ConstantDescs.CD_Object.equals(expectedReturnType)) {
                     cb.checkcast(expectedReturnType);
                 }
+                cb.labelBinding(returnDirectlyLabel);
                 cb.areturn();
             } else {
                 cb.with(element);
@@ -315,6 +327,8 @@ public final class CodeTransforms {
                     // Stack before call: [..., listener, event]
                     Label invokeLabel = cb.newLabel();
                     Label doneLabel = cb.newLabel();
+                    cb.getstatic(BRIDGE_DESC, "HAS_HOOKED_PLUGINS", ConstantDescs.CD_boolean);
+                    cb.ifeq(invokeLabel);
                     cb.dup2();        // [..., listener, event, listener, event]
                     cb.swap();        // [..., listener, event, event, listener]
                     cb.ldc(hookId);   // [..., listener, event, event, listener, hookId]
