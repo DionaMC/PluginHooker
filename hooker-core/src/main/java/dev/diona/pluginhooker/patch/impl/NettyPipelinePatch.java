@@ -23,15 +23,14 @@ import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
+import com.google.common.collect.MapMaker;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.CodeTransform;
 import java.lang.constant.MethodTypeDesc;
-import java.util.Collections;
-import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 
 /**
@@ -72,6 +71,7 @@ public final class NettyPipelinePatch extends ClassPatch {
                     || name.startsWith("ca.spottedleaf.")
                     || name.startsWith("com.mojang.")
                     || name.startsWith("com.comphenix.protocol.")
+                    || name.startsWith("io.netty.channel.DefaultChannelPipeline$")
                     || name.contains(".packetevents.")
                     || simpleName.startsWith("PacketEvents")
                     || simpleName.equals("InboundPacketInterceptor");
@@ -84,8 +84,9 @@ public final class NettyPipelinePatch extends ClassPatch {
     private final PlayerRegistry playerRegistry;
     private final ClassLoader selfClassLoader;
 
-    private final Map<ChannelHandlerContext, Plugin> contextToPlugin =
-            Collections.synchronizedMap(new WeakHashMap<>());
+    private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
+            new MapMaker().weakKeys().makeMap();
+    private volatile boolean hasFallbackContexts;
 
     @Override
     public boolean isEnabled() {
@@ -266,15 +267,17 @@ public final class NettyPipelinePatch extends ClassPatch {
             return;
         }
 
-        // 1. Check the handler's own ClassLoader first
+        // 1. Check the handler's own ClassLoader first (resolved directly on hot path without contextToPlugin)
         Plugin owner = pluginRegistry.getPluginByClassLoader(handler.getClass().getClassLoader());
-        if (owner == null) {
-            // 2. If the handler is a standard Netty class, check if the direct non-Netty caller is a plugin
-            owner = PluginCallerResolver.resolveDirectNettyCaller(pluginRegistry, selfClassLoader);
+        if (owner != null) {
+            return;
         }
 
+        // 2. If the handler is a standard Netty class, check if the direct non-Netty caller is a plugin
+        owner = PluginCallerResolver.resolveDirectNettyCaller(pluginRegistry, selfClassLoader);
         if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
             contextToPlugin.put(ctx, owner);
+            hasFallbackContexts = true;
         }
     }
 
@@ -319,7 +322,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (plugin != null) {
             return PluginCallerResolver.isSharedPacketFramework(plugin) ? null : plugin;
         }
-        return contextToPlugin.get(ctx);
+        return hasFallbackContexts ? contextToPlugin.get(ctx) : null;
     }
 
     /**

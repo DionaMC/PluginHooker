@@ -3,7 +3,7 @@ plugins {
 }
 
 val pluginVersion = providers.gradleProperty("pluginVersion")
-    .orElse("2.0.12")
+    .orElse("2.0.13")
     .get()
 
 allprojects {

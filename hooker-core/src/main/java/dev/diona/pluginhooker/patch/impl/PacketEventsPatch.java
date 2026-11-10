@@ -26,6 +26,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import com.google.common.collect.MapMaker;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
@@ -34,13 +35,11 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 
 /**
@@ -242,8 +241,9 @@ public final class PacketEventsPatch extends ClassPatch {
     private final PlayerRegistry playerRegistry;
     private final ClassLoader selfClassLoader;
 
-    private final Map<Object, Plugin> listenerToPlugin =
-            Collections.synchronizedMap(new WeakHashMap<>());
+    private final ConcurrentMap<Object, Plugin> listenerToPlugin =
+            new MapMaker().weakKeys().makeMap();
+    private volatile boolean hasFallbackListeners;
 
     @Override
     public boolean isEnabled() {
@@ -329,17 +329,22 @@ public final class PacketEventsPatch extends ClassPatch {
             return;
         }
         Plugin owner = resolveListenerOwner(listener);
-        if (owner == null) {
-            owner = PluginCallerResolver.resolveCallerPlugin(pluginRegistry, selfClassLoader);
+        if (owner != null) {
+            return;
         }
+        owner = PluginCallerResolver.resolveCallerPlugin(pluginRegistry, selfClassLoader);
         if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
             listenerToPlugin.put(listener, owner);
+            hasFallbackListeners = true;
         }
     }
 
     public void handleListenerUnregister(Object listener) {
-        if (listener != null) {
+        if (listener != null && hasFallbackListeners) {
             listenerToPlugin.remove(listener);
+            if (listenerToPlugin.isEmpty()) {
+                hasFallbackListeners = false;
+            }
         }
     }
 
@@ -389,7 +394,7 @@ public final class PacketEventsPatch extends ClassPatch {
         }
 
         Plugin plugin = resolveListenerOwner(listener);
-        if (plugin == null) {
+        if (plugin == null && hasFallbackListeners) {
             plugin = listenerToPlugin.get(listener);
         }
         if (plugin == null || !pluginRegistry.isHooked(plugin)) {
