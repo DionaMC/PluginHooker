@@ -53,7 +53,7 @@ public final class PatchManager {
         this.bukkitApiPatch = new BukkitApiPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.protocolLibPatch = new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.packetEventsPatch = new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
+        this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, selfClassLoader);
 
         this.patches = List.of(
                 bukkitEventPatch,

@@ -1,10 +1,8 @@
 package dev.diona.pluginhooker.util;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.lang.invoke.MethodHandle;
@@ -138,16 +136,6 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Resolves the {@link HookedPlayer} for a Netty {@link Channel} in O(1) time via the channel attribute.
-     */
-    public static HookedPlayer resolveHookedPlayer(Channel channel, PlayerRegistry playerRegistry) {
-        if (channel == null) {
-            return null;
-        }
-        return channel.attr(HOOKED_PLAYER_KEY).get();
-    }
-
-    /**
      * Extracts the Netty {@link Channel} for the given Bukkit {@link Player}.
      */
     public static Channel getChannel(Player player) {
@@ -254,21 +242,6 @@ public final class PlayerChannelResolver {
                         queue.add(new SearchNode(fieldType, nextPath));
                     }
                 }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Fallback lookup by scanning online players if a channel attribute has not been bound yet.
-     */
-    public static Player findOnlinePlayerByChannel(Channel targetChannel) {
-        if (targetChannel == null) {
-            return null;
-        }
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (getChannel(player) == targetChannel) {
-                return player;
             }
         }
         return null;

@@ -3,7 +3,6 @@ package dev.diona.pluginhooker.patch.impl;
 import dev.diona.pluginhooker.api.event.NettyHookEvent;
 import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
@@ -81,7 +80,6 @@ public final class NettyPipelinePatch extends ClassPatch {
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
-    private final PlayerRegistry playerRegistry;
     private final ClassLoader selfClassLoader;
 
     private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
@@ -196,7 +194,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
             return false;
         }
-        HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
+        HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
@@ -221,7 +219,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (!pluginRegistry.hasHookedPlugins() || !(ctxObj instanceof ChannelHandlerContext ctx)) {
             return false;
         }
-        HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
+        HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
         if (hookedPlayer == null || (!hookedPlayer.hasAnyDisabledPlugin() && !config.bukkitApi().isCallKickEvent())) {
             return false;
         }
@@ -288,7 +286,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (pluginRegistry.hasHookedPlugins()) {
             Plugin plugin = resolveHandlerPlugin(handlerObj, ctx);
             if (plugin != null && pluginRegistry.isHooked(plugin)) {
-                HookedPlayer hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(ctx.channel(), playerRegistry);
+                HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
                 if (hookedPlayer != null) {
                     if (!hookedPlayer.isPluginEnabled(plugin)) {
                         bypassHandler(ctx, msg, promiseObj, outbound);

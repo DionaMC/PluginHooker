@@ -362,13 +362,7 @@ public final class PacketEventsPatch extends ClassPatch {
                 }
             }
         }
-        if (hookedPlayer == null) {
-            hookedPlayer = PlayerChannelResolver.resolveHookedPlayer(channel, playerRegistry);
-            if (hookedPlayer == null) {
-                return false;
-            }
-        }
-        if (!hookedPlayer.hasAnyDisabledPlugin()) {
+        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
