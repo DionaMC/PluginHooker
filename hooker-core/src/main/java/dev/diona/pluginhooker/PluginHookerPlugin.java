@@ -4,7 +4,7 @@ import dev.diona.pluginhooker.agent.PatchManager;
 import dev.diona.pluginhooker.api.PluginHookerAPI;
 import dev.diona.pluginhooker.command.PluginHookerCommand;
 import dev.diona.pluginhooker.config.HookConfig;
-import dev.diona.pluginhooker.listener.PlayerConnectionListener;
+import dev.diona.pluginhooker.listener.PluginLifecycleListener;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import lombok.Getter;
@@ -72,7 +72,7 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
         }
 
         Bukkit.getPluginManager().registerEvents(
-                new PlayerConnectionListener(this.pluginRegistry),
+                new PluginLifecycleListener(this.pluginRegistry),
                 this
         );
     }

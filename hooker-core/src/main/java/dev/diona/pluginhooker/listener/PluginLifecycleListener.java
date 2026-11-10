@@ -12,7 +12,7 @@ import org.bukkit.event.server.PluginEnableEvent;
  * Manages plugin lifecycle events for the sandbox.
  */
 @RequiredArgsConstructor
-public final class PlayerConnectionListener implements Listener {
+public final class PluginLifecycleListener implements Listener {
 
     private final PluginRegistryImpl pluginRegistry;
 
