@@ -160,8 +160,8 @@ public final class PatchVerifier {
             }
             logger.info("Verified multi-ClassLoader live instrumentation!");
 
-            // 4b. Verify live Netty pipeline, Adventure wrapper, and NMS send/disconnect behavior before shutdown
-            verifyNettyPipelineBehavior(logger, pluginRegistry, playerRegistry, cl);
+            // 4b. Verify live Netty pipeline, Adventure wrapper, NMS send/disconnect, and collection filtering
+            verifyNettyPipelineBehavior(logger, config, pluginRegistry, playerRegistry, cl);
 
             patchManager.shutdown();
 
@@ -308,6 +308,7 @@ public final class PatchVerifier {
 
     private static void verifyNettyPipelineBehavior(
             Logger logger,
+            HookConfig config,
             PluginRegistryImpl pluginRegistry,
             PlayerRegistryImpl playerRegistry,
             ClassLoader parentLoader
@@ -432,6 +433,48 @@ public final class PatchVerifier {
                 if (!nmsConn.disconnected) {
                     throw new AssertionError("Expected server NMS disconnect to succeed");
                 }
+
+                // 7. Single-pass lazy collection filtering & mutability preservation
+                org.bukkit.entity.Player enabledPlayer = createStubBukkitPlayer(java.util.UUID.randomUUID(), "EnabledPlayer");
+                HookedPlayer enabledHp = playerRegistry.registerPlayer(enabledPlayer);
+                enabledHp.enablePlugin(mockPlugin);
+
+                config.bukkitApi().setHideFromEntityLists(true);
+                List<Object> rawEntities = new ArrayList<>(List.of("ZombieStub", enabledPlayer, mockBukkitPlayer));
+                java.util.function.Supplier<Object> filterCall = () -> dev.diona.pluginhooker.bridge.HookBridge.filterReturn(
+                        rawEntities,
+                        dev.diona.pluginhooker.patch.HookIds.FILTER_ENTITY_COLLECTION,
+                        null
+                );
+                @SuppressWarnings("unchecked")
+                List<Object> filteredForPlugin = (List<Object>) actorClass
+                        .getMethod("callViaAdventureWrapper", java.util.function.Supplier.class)
+                        .invoke(null, filterCall);
+                if (filteredForPlugin.size() != 2 || filteredForPlugin.contains(mockBukkitPlayer)) {
+                    throw new AssertionError("Expected disabled player to be hidden from entity list: " + filteredForPlugin);
+                }
+                // Downstream plugins commonly call removeIf/sort on getNearbyEntities()/getPlayers() results
+                filteredForPlugin.removeIf(e -> "ZombieStub".equals(e));
+                if (filteredForPlugin.size() != 1 || filteredForPlugin.get(0) != enabledPlayer) {
+                    throw new AssertionError("Expected filtered entity list to remain mutable");
+                }
+
+                // When list has only enabled players / non-players, original list reference must be returned with zero copy
+                List<Object> noHiddenList = new ArrayList<>(List.of("ZombieStub", enabledPlayer));
+                java.util.function.Supplier<Object> noCopyCall = () -> dev.diona.pluginhooker.bridge.HookBridge.filterReturn(
+                        noHiddenList,
+                        dev.diona.pluginhooker.patch.HookIds.FILTER_ENTITY_COLLECTION,
+                        null
+                );
+                Object sameRef = actorClass
+                        .getMethod("callViaAdventureWrapper", java.util.function.Supplier.class)
+                        .invoke(null, noCopyCall);
+                if (sameRef != noHiddenList) {
+                    throw new AssertionError("Expected zero-copy original list return when no hidden players present");
+                }
+                config.bukkitApi().setHideFromEntityLists(false);
+
+                playerRegistry.unregisterPlayer(enabledPlayer);
                 playerRegistry.unregisterPlayer(mockBukkitPlayer);
             } finally {
                 pluginRegistry.handlePluginDisable(mockPlugin);

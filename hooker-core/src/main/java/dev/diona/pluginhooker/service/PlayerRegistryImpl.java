@@ -70,6 +70,24 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         }
     }
 
+    /**
+     * Fast check returning whether at least one tracked online player currently has a disabled plugin.
+     */
+    public boolean hasAnyPlayerWithDisabledPlugin() {
+        if (players.isEmpty() || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        if (pluginRegistry instanceof PluginRegistryImpl impl && impl.hasWhitelistPlugins()) {
+            return true;
+        }
+        for (HookedPlayerImpl player : players.values()) {
+            if (player.hasExplicitlyDisabledPlugins()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public HookedPlayer getPlayer(Player player) {
         if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(player)) {

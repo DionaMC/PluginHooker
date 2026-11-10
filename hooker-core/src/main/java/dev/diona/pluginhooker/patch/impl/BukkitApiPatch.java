@@ -11,6 +11,7 @@ import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
@@ -32,10 +33,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.RandomAccess;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 /**
@@ -795,7 +797,8 @@ public final class BukkitApiPatch extends ClassPatch {
     private Object filterPlayerCollection(Object returnValue, boolean hideEnabled) {
         if (!hideEnabled
                 || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()) {
+                || rawCollection.isEmpty()
+                || !hasRestrictablePlayer(rawCollection)) {
             return returnValue;
         }
 
@@ -804,21 +807,28 @@ public final class BukkitApiPatch extends ClassPatch {
             return returnValue;
         }
 
-        return filterPlayerList((Collection<? extends Player>) rawCollection, caller);
+        return lazyFilterCollection(
+                (Collection<? extends Player>) rawCollection,
+                player -> isPlayerHiddenFrom(player, caller)
+        );
     }
 
     public Object filterGetPlayer(Object returnValue) {
-        if (!config.bukkitApi().isHideFromGetPlayer() || !(returnValue instanceof Player player)) {
+        if (!config.bukkitApi().isHideFromGetPlayer()
+                || !pluginRegistry.hasHookedPlugins()
+                || !(returnValue instanceof Player player)) {
             return returnValue;
         }
 
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-        if (hookedPlayer == null) {
+        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
+        if (hookedPlayer == null
+                || !hookedPlayer.hasAnyDisabledPlugin()
+                || hookedPlayer.isInJoinGracePeriod()) {
             return returnValue;
         }
 
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller) && !hookedPlayer.isInJoinGracePeriod()) {
+        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             return null;
         }
         return returnValue;
@@ -827,7 +837,8 @@ public final class BukkitApiPatch extends ClassPatch {
     public Object filterEntityCollection(Object returnValue) {
         if (!config.bukkitApi().isHideFromEntityLists()
                 || !(returnValue instanceof Collection<?> rawCollection)
-                || rawCollection.isEmpty()) {
+                || rawCollection.isEmpty()
+                || !hasRestrictablePlayer(rawCollection)) {
             return returnValue;
         }
 
@@ -836,47 +847,97 @@ public final class BukkitApiPatch extends ClassPatch {
             return returnValue;
         }
 
-        if (!containsHiddenPlayer(rawCollection, caller)) {
-            return returnValue;
-        }
-
-        List<Object> filtered = new ArrayList<>(rawCollection.size());
-        for (Object element : rawCollection) {
-            if (element instanceof Player player && isPlayerHiddenFrom(player, caller)) {
-                continue;
-            }
-            filtered.add(element);
-        }
-        return Collections.unmodifiableList(filtered);
+        return lazyFilterCollection(
+                rawCollection,
+                element -> element instanceof Player player && isPlayerHiddenFrom(player, caller)
+        );
     }
 
-    private Object filterPlayerList(Collection<? extends Player> original, Plugin caller) {
-        if (!containsHiddenPlayer(original, caller)) {
-            return original;
+    private boolean hasRestrictablePlayer(Collection<?> collection) {
+        if (!pluginRegistry.hasHookedPlugins()) {
+            return false;
         }
-        List<Player> filtered = new ArrayList<>(original.size());
-        for (Player player : original) {
-            if (!isPlayerHiddenFrom(player, caller)) {
-                filtered.add(player);
+        if (playerRegistry instanceof PlayerRegistryImpl impl && !impl.hasAnyPlayerWithDisabledPlugin()) {
+            return false;
+        }
+        if (collection instanceof List<?> list && list instanceof RandomAccess) {
+            for (int i = 0, size = list.size(); i < size; i++) {
+                if (list.get(i) instanceof Player player && isPlayerRestrictable(player)) {
+                    return true;
+                }
             }
+            return false;
         }
-        return Collections.unmodifiableList(filtered);
-    }
-
-    private boolean containsHiddenPlayer(Collection<?> collection, Plugin caller) {
         for (Object element : collection) {
-            if (element instanceof Player player && isPlayerHiddenFrom(player, caller)) {
+            if (element instanceof Player player && isPlayerRestrictable(player)) {
                 return true;
             }
         }
         return false;
     }
 
+    private boolean isPlayerRestrictable(Player player) {
+        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
+        return hookedPlayer != null
+                && hookedPlayer.hasAnyDisabledPlugin()
+                && !hookedPlayer.isInJoinGracePeriod();
+    }
+
     private boolean isPlayerHiddenFrom(Player player, Plugin caller) {
-        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
+        HookedPlayer hookedPlayer = resolveHookedPlayerFast(player);
         return hookedPlayer != null
                 && !hookedPlayer.isPluginEnabled(caller)
                 && !hookedPlayer.isInJoinGracePeriod();
+    }
+
+    private HookedPlayer resolveHookedPlayerFast(Player player) {
+        HookedPlayer byUuid = playerRegistry.getPlayer(player.getUniqueId());
+        return byUuid != null ? byUuid : playerRegistry.getPlayer(player);
+    }
+
+    private static <T> Object lazyFilterCollection(Collection<T> original, Predicate<T> shouldHide) {
+        if (original instanceof List<T> list && list instanceof RandomAccess) {
+            int size = list.size();
+            List<T> filtered = null;
+            for (int i = 0; i < size; i++) {
+                T element = list.get(i);
+                if (shouldHide.test(element)) {
+                    if (filtered == null) {
+                        filtered = new ArrayList<>(Math.max(0, size - 1));
+                        for (int j = 0; j < i; j++) {
+                            filtered.add(list.get(j));
+                        }
+                    }
+                } else if (filtered != null) {
+                    filtered.add(element);
+                }
+            }
+            return filtered != null ? filtered : original;
+        }
+
+        List<T> filtered = null;
+        int keptCount = 0;
+        for (T element : original) {
+            if (shouldHide.test(element)) {
+                if (filtered == null) {
+                    filtered = new ArrayList<>(Math.max(0, original.size() - 1));
+                    if (keptCount > 0) {
+                        int k = 0;
+                        for (T prev : original) {
+                            if (k++ >= keptCount) {
+                                break;
+                            }
+                            filtered.add(prev);
+                        }
+                    }
+                }
+            } else if (filtered != null) {
+                filtered.add(element);
+            } else {
+                keptCount++;
+            }
+        }
+        return filtered != null ? filtered : original;
     }
 
     private static String serializeKickReason(Object reasonObj) {

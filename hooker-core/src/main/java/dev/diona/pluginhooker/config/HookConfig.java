@@ -87,6 +87,7 @@ public final class HookConfig {
     }
 
     @Getter
+    @Setter
     public static final class BukkitHookSettings {
         private boolean enabled = true;
         private boolean callEvent = false;
@@ -94,6 +95,7 @@ public final class HookConfig {
     }
 
     @Getter
+    @Setter
     public static final class ApiHookSettings {
         private boolean enabled = true;
         private boolean hideFromOnlinePlayers = false;
@@ -110,6 +112,7 @@ public final class HookConfig {
     }
 
     @Getter
+    @Setter
     public static final class PacketHookSettings {
         private boolean enabled = true;
         private boolean callEvent = false;
