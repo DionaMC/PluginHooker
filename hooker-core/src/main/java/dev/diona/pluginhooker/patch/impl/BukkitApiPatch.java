@@ -374,7 +374,9 @@ public final class BukkitApiPatch extends ClassPatch {
     }
 
     private Plugin resolveDisabledCallerForPlayer(Object playerObj, boolean blockEnabled) {
-        if (!blockEnabled || !(playerObj instanceof Player bukkitPlayer)) {
+        if (!blockEnabled
+                || !playerRegistry.hasAnyPlayerWithDisabledPlugin()
+                || !(playerObj instanceof Player bukkitPlayer)) {
             return null;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);

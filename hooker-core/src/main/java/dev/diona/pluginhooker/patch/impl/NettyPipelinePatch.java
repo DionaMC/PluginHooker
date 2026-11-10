@@ -10,6 +10,7 @@ import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.HookedPlayerImpl;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
@@ -110,6 +111,7 @@ public final class NettyPipelinePatch extends ClassPatch {
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
+    private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
 
     private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
@@ -349,19 +351,24 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (pluginRegistry.hasHookedPlugins()) {
             ActivePlugin active = resolveHookedHandler(handlerObj, ctx);
             if (active != null) {
-                HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
-                if (hookedPlayer != null) {
-                    if (!HookedPlayerImpl.isAllowed(hookedPlayer, active.plugin(), active.mode())) {
-                        bypassHandler(ctx, msg, promiseObj, outbound);
-                        return;
-                    }
-                    if (BukkitEvents.fireCancellable(
-                            config.netty().isCallEvent(),
-                            false,
-                            () -> new NettyHookEvent(active.plugin(), hookedPlayer, msg, outbound)
-                    )) {
-                        bypassHandler(ctx, msg, promiseObj, outbound);
-                        return;
+                boolean callEvent = config.netty().isCallEvent();
+                if (active.mode() != HookMode.BLACKLIST
+                        || callEvent
+                        || playerRegistry.hasPlayersWithDisabledOverrides()) {
+                    HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
+                    if (hookedPlayer != null) {
+                        if (!HookedPlayerImpl.isAllowed(hookedPlayer, active.plugin(), active.mode())) {
+                            bypassHandler(ctx, msg, promiseObj, outbound);
+                            return;
+                        }
+                        if (BukkitEvents.fireCancellable(
+                                callEvent,
+                                false,
+                                () -> new NettyHookEvent(active.plugin(), hookedPlayer, msg, outbound)
+                        )) {
+                            bypassHandler(ctx, msg, promiseObj, outbound);
+                            return;
+                        }
                     }
                 }
             }

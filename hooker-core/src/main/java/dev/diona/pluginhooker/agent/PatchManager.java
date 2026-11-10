@@ -66,7 +66,7 @@ public final class PatchManager {
         this.nmsConnectionPatch = new NmsConnectionPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.protocolLibPatch = new ProtocolLibPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
         this.packetEventsPatch = new PacketEventsPatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
-        this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, selfClassLoader);
+        this.nettyPipelinePatch = new NettyPipelinePatch(logger, config, pluginRegistry, playerRegistry, selfClassLoader);
 
         this.patches = List.of(
                 bukkitEventPatch,

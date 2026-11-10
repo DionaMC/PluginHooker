@@ -106,6 +106,10 @@ public final class BukkitEventPatch extends ClassPatch {
         if (mode == null) {
             return false;
         }
+        boolean callEvent = config.bukkit().isCallEvent();
+        if (mode == HookMode.BLACKLIST && !callEvent && !playerRegistry.hasPlayersWithDisabledOverrides()) {
+            return false;
+        }
 
         Class<?> eventClass = event.getClass();
         // Always allow connection lifecycle events so plugins can create/remove their internal PlayerData,
@@ -124,7 +128,7 @@ public final class BukkitEventPatch extends ClassPatch {
             return true;
         }
         return BukkitEvents.fireCancellable(
-                config.bukkit().isCallEvent(),
+                callEvent,
                 false,
                 () -> new BukkitHookEvent(plugin, event, hookedPlayer)
         );

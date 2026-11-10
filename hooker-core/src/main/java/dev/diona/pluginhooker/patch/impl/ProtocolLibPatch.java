@@ -106,7 +106,7 @@ public final class ProtocolLibPatch extends ClassPatch {
     }
 
     public boolean handleSendOrReceivePacket(Object playerObj, Object packetObj) {
-        if (!(playerObj instanceof Player bukkitPlayer) || !pluginRegistry.hasHookedPlugins()) {
+        if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || !(playerObj instanceof Player bukkitPlayer)) {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
@@ -139,6 +139,10 @@ public final class ProtocolLibPatch extends ClassPatch {
         if (mode == null) {
             return false;
         }
+        boolean callEvent = config.protocolLib().isCallEvent();
+        if (mode == HookMode.BLACKLIST && !callEvent && !playerRegistry.hasPlayersWithDisabledOverrides()) {
+            return false;
+        }
 
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(event.getPlayer());
         if (hookedPlayer == null) {
@@ -153,7 +157,7 @@ public final class ProtocolLibPatch extends ClassPatch {
         }
 
         return BukkitEvents.fireCancellable(
-                config.protocolLib().isCallEvent(),
+                callEvent,
                 false,
                 () -> new ProtocolLibHookEvent(plugin, hookedPlayer, listener, event, outbound)
         );

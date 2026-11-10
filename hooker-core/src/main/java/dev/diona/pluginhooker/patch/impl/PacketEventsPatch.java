@@ -332,6 +332,10 @@ public final class PacketEventsPatch extends ClassPatch {
         if (active == null) {
             return false;
         }
+        boolean callEvent = config.packetEvents().isCallEvent();
+        if (active.mode() == HookMode.BLACKLIST && !callEvent && !playerRegistry.hasPlayersWithDisabledOverrides()) {
+            return false;
+        }
 
         HookedPlayer hookedPlayer = resolveHookedPlayer(event);
         if (hookedPlayer == null) {
@@ -347,7 +351,7 @@ public final class PacketEventsPatch extends ClassPatch {
 
         if (listener instanceof PacketListenerCommon commonListener && event instanceof PacketEvent packetEvent) {
             return BukkitEvents.fireCancellable(
-                    config.packetEvents().isCallEvent(),
+                    callEvent,
                     false,
                     () -> new PacketEventsHookEvent(active.plugin(), hookedPlayer, commonListener, packetEvent, outbound)
             );
