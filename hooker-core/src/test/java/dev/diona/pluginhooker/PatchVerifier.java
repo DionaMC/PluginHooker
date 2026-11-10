@@ -170,10 +170,13 @@ public final class PatchVerifier {
             }
         }
 
-        // 5. Verify Spigot/Paper libraryLoader, early plugin field, and child ClassLoader resolution
-        verifyPluginClassLoaderResolution(logger, pluginRegistry, cl);
+            // 5. Verify Spigot/Paper libraryLoader, early plugin field, and child ClassLoader resolution
+            verifyPluginClassLoaderResolution(logger, pluginRegistry, cl);
 
-        logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
+            // 6. Verify join-grace read-only isolation for PacketEvents & ProtocolLib
+            verifyJoinGraceReadOnlyIsolation(logger);
+
+            logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
     }
 
     private static final class SimulatedPluginClassLoader extends URLClassLoader {
@@ -432,6 +435,129 @@ public final class PatchVerifier {
             }
             logger.info("Verified live Netty pipeline bypass, 2-arg ByteBuf block, and close propagation!");
         }
+    }
+
+    private static void verifyJoinGraceReadOnlyIsolation(Logger logger) throws Exception {
+        // A. PacketEvents read-only ByteBuf, readerIndex, wrapper, and task rollback
+        ByteBuf origBuf = Unpooled.buffer(8).writeInt(123456);
+        int initReader = origBuf.readerIndex();
+        int initWriter = origBuf.writerIndex();
+        Object enabledPluginWrapper = new Object();
+
+        testplugin.packetevents.event.PacketSendEvent peEvent =
+                new testplugin.packetevents.event.PacketSendEvent(origBuf);
+        peEvent.setLastUsedWrapper(enabledPluginWrapper);
+        peEvent.markForReEncode(true);
+        Runnable existingTask = () -> {};
+        peEvent.getPostTasks().add(existingTask);
+
+        ByteBuf replacementLeakCheck = Unpooled.buffer(4).writeInt(999);
+        testplugin.packetevents.event.PacketSendEvent.MockShadedListener mutatingPeListener = ev -> {
+            ByteBuf view = (ByteBuf) ev.getByteBuf();
+            if (view.readInt() != 123456) {
+                throw new AssertionError("Read-only view could not read packet payload");
+            }
+            if (ev.getLastUsedWrapper() != null) {
+                throw new AssertionError("Expected lastUsedWrapper to be hidden (null) from read-only listener");
+            }
+            ev.setLastUsedWrapper(new Object());
+            ev.setCancelled(true);
+            ev.getPostTasks().add(() -> {});
+            ev.getTasksAfterSend().add(() -> {});
+            try {
+                view.setInt(0, -1);
+                throw new AssertionError("Expected write to read-only ByteBuf view to fail");
+            } catch (java.nio.ReadOnlyBufferException expected) {
+            }
+            ev.setByteBuf(replacementLeakCheck);
+        };
+
+        dev.diona.pluginhooker.util.PacketEventsReflector.invokeReadOnlyListener(mutatingPeListener, peEvent, true);
+
+        if (peEvent.getByteBuf() != origBuf
+                || origBuf.readerIndex() != initReader
+                || origBuf.writerIndex() != initWriter
+                || origBuf.getInt(0) != 123456) {
+            throw new AssertionError("Original ByteBuf state or indices were corrupted by read-only PacketEvents listener");
+        }
+        if (replacementLeakCheck.refCnt() != 0) {
+            throw new AssertionError("Replaced ByteBuf was not released during read-only rollback");
+        }
+        if (peEvent.isCancelled()
+                || !peEvent.needsReEncode()
+                || peEvent.getLastUsedWrapper() != enabledPluginWrapper
+                || peEvent.getPostTasks().size() != 1
+                || peEvent.getPostTasks().get(0) != existingTask
+                || peEvent.hasTasksAfterSend()) {
+            throw new AssertionError("PacketEvents event metadata was not properly restored after read-only listener");
+        }
+        origBuf.release();
+
+        // B. ProtocolLib read-only NetworkMarker partial postListeners, scheduledPackets & cancellation rollback
+        com.comphenix.protocol.events.NetworkMarker marker = new com.comphenix.protocol.events.NetworkMarker(
+                com.comphenix.protocol.events.ConnectionSide.SERVER_SIDE,
+                null
+        );
+        com.comphenix.protocol.events.PacketPostListener keepListener = new com.comphenix.protocol.events.PacketPostListener() {
+            @Override
+            public org.bukkit.plugin.Plugin getPlugin() {
+                return null;
+            }
+
+            @Override
+            public void onPostEvent(com.comphenix.protocol.events.PacketEvent event) {
+            }
+        };
+        marker.addPostListener(keepListener);
+        com.comphenix.protocol.events.PacketEvent plibEvent = new com.comphenix.protocol.events.PacketEvent(new Object());
+        plibEvent.setNetworkMarker(marker);
+
+        com.comphenix.protocol.events.PacketListener mutatingPlibListener = new com.comphenix.protocol.events.PacketListener() {
+            @Override
+            public void onPacketSending(com.comphenix.protocol.events.PacketEvent event) {
+                event.setCancelled(true);
+                event.getNetworkMarker().addPostListener(new com.comphenix.protocol.events.PacketPostListener() {
+                    @Override
+                    public org.bukkit.plugin.Plugin getPlugin() {
+                        return null;
+                    }
+
+                    @Override
+                    public void onPostEvent(com.comphenix.protocol.events.PacketEvent ev) {
+                    }
+                });
+                event.setNetworkMarker(null);
+            }
+
+            @Override
+            public void onPacketReceiving(com.comphenix.protocol.events.PacketEvent event) {
+            }
+
+            @Override
+            public com.comphenix.protocol.events.ListeningWhitelist getSendingWhitelist() {
+                return null;
+            }
+
+            @Override
+            public com.comphenix.protocol.events.ListeningWhitelist getReceivingWhitelist() {
+                return null;
+            }
+
+            @Override
+            public org.bukkit.plugin.Plugin getPlugin() {
+                return null;
+            }
+        };
+
+        ProtocolLibPatch.invokeReadOnlyListener(plibEvent, mutatingPlibListener, true);
+
+        if (plibEvent.isCancelled() || com.comphenix.protocol.events.NetworkMarker.getNetworkMarker(plibEvent) != marker) {
+            throw new AssertionError("ProtocolLib cancellation or NetworkMarker reference was not restored");
+        }
+        if (marker.getPostListeners().size() != 1 || !marker.getPostListeners().contains(keepListener)) {
+            throw new AssertionError("ProtocolLib partial postListeners rollback failed: " + marker.getPostListeners());
+        }
+        logger.info("Verified join-grace read-only isolation for PacketEvents & ProtocolLib!");
     }
 
     private static Path ensurePaperUnpacked(Logger logger, Path cacheDir) throws Exception {

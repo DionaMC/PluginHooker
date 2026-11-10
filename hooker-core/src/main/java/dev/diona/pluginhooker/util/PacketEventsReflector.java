@@ -4,6 +4,9 @@ import com.github.retrooper.packetevents.event.PacketListenerCommon;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.util.ReferenceCountUtil;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -23,6 +26,8 @@ public final class PacketEventsReflector {
             MethodHandle getPlayer,
             MethodHandle getChannel,
             MethodHandle getUser,
+            MethodHandle getByteBuf,
+            MethodHandle setByteBuf,
             MethodHandle isCancelled,
             MethodHandle setCancelled,
             MethodHandle needsReEncode,
@@ -62,6 +67,8 @@ public final class PacketEventsReflector {
                     findNoArgGetter(lookup, eventClass, "getPlayer"),
                     findNoArgGetter(lookup, eventClass, "getChannel"),
                     findNoArgGetter(lookup, eventClass, "getUser"),
+                    findNoArgGetter(lookup, eventClass, "getByteBuf"),
+                    findOneArgSetter(lookup, eventClass, "setByteBuf"),
                     findBooleanGetter(lookup, eventClass, "isCancelled"),
                     findBooleanSetter(lookup, eventClass, "setCancelled"),
                     findBooleanGetter(lookup, eventClass, "needsReEncode"),
@@ -136,13 +143,36 @@ public final class PacketEventsReflector {
             boolean wasCancelled = ppe.isCancelled();
             boolean wasNeedsReEncode = ppe.needsReEncode();
             PacketWrapper<?> prevWrapper = ppe.getLastUsedWrapper();
+            Object prevBufObj = ppe.getByteBuf();
+            ByteBuf prevBuf = prevBufObj instanceof ByteBuf b ? b : null;
+            int prevReaderIndex = prevBuf != null ? prevBuf.readerIndex() : 0;
+            int prevWriterIndex = prevBuf != null ? prevBuf.writerIndex() : 0;
+            ByteBuf readOnlyView = prevBuf != null ? Unpooled.unmodifiableBuffer(prevBuf.duplicate()) : null;
+
             int prevPostTasksSize = ppe.hasPostTasks() ? ppe.getPostTasks().size() : 0;
             PacketSendEvent pse = outbound && event instanceof PacketSendEvent s ? s : null;
             int prevAfterSendSize = pse != null && pse.hasTasksAfterSend() ? pse.getTasksAfterSend().size() : 0;
+
+            if (readOnlyView != null) {
+                ppe.setByteBuf(readOnlyView);
+            }
+            if (prevWrapper != null) {
+                ppe.setLastUsedWrapper(null);
+            }
             try {
                 invoker.invokeExact(listener, event);
             } catch (Throwable ignored) {
             } finally {
+                Object currentBufObj = ppe.getByteBuf();
+                if (currentBufObj != prevBufObj) {
+                    if (currentBufObj != readOnlyView) {
+                        ReferenceCountUtil.safeRelease(currentBufObj);
+                    }
+                    ppe.setByteBuf(prevBufObj);
+                }
+                if (prevBuf != null && prevBuf.refCnt() > 0) {
+                    prevBuf.setIndex(prevReaderIndex, prevWriterIndex);
+                }
                 if (ppe.isCancelled() != wasCancelled) {
                     ppe.setCancelled(wasCancelled);
                 }
@@ -166,6 +196,14 @@ public final class PacketEventsReflector {
             boolean wasCancelled = acc.isCancelled() != null && (boolean) acc.isCancelled().invokeExact(event);
             boolean wasNeedsReEncode = acc.needsReEncode() != null && (boolean) acc.needsReEncode().invokeExact(event);
             Object prevWrapper = acc.getLastUsedWrapper() != null ? acc.getLastUsedWrapper().invokeExact(event) : null;
+            Object prevBufObj = acc.getByteBuf() != null ? acc.getByteBuf().invokeExact(event) : null;
+            ByteBuf prevBuf = prevBufObj instanceof ByteBuf b ? b : null;
+            int prevReaderIndex = prevBuf != null ? prevBuf.readerIndex() : 0;
+            int prevWriterIndex = prevBuf != null ? prevBuf.writerIndex() : 0;
+            ByteBuf readOnlyView = prevBuf != null && acc.setByteBuf() != null
+                    ? Unpooled.unmodifiableBuffer(prevBuf.duplicate())
+                    : null;
+
             int prevPostTasksSize = acc.hasPostTasks() != null
                     && acc.getPostTasks() != null
                     && (boolean) acc.hasPostTasks().invokeExact(event)
@@ -177,10 +215,29 @@ public final class PacketEventsReflector {
                     && (boolean) acc.hasTasksAfterSend().invokeExact(event)
                     ? ((List) acc.getTasksAfterSend().invokeExact(event)).size()
                     : 0;
+
+            if (readOnlyView != null) {
+                acc.setByteBuf().invokeExact(event, (Object) readOnlyView);
+            }
+            if (prevWrapper != null && acc.setLastUsedWrapper() != null) {
+                acc.setLastUsedWrapper().invokeExact(event, (Object) null);
+            }
             try {
                 acc.invokeListener().invokeExact(listener, event);
             } catch (Throwable ignored) {
             } finally {
+                if (acc.getByteBuf() != null && acc.setByteBuf() != null) {
+                    Object currentBufObj = acc.getByteBuf().invokeExact(event);
+                    if (currentBufObj != prevBufObj) {
+                        if (currentBufObj != readOnlyView) {
+                            ReferenceCountUtil.safeRelease(currentBufObj);
+                        }
+                        acc.setByteBuf().invokeExact(event, prevBufObj);
+                    }
+                }
+                if (prevBuf != null && prevBuf.refCnt() > 0) {
+                    prevBuf.setIndex(prevReaderIndex, prevWriterIndex);
+                }
                 if (acc.isCancelled() != null && acc.setCancelled() != null) {
                     boolean nowCancelled = (boolean) acc.isCancelled().invokeExact(event);
                     if (nowCancelled != wasCancelled) {
