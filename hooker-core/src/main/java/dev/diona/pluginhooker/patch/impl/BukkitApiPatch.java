@@ -740,28 +740,47 @@ public final class BukkitApiPatch extends ClassPatch {
             return returnValue;
         }
 
+        if (!containsHiddenPlayer(rawCollection, caller)) {
+            return returnValue;
+        }
+
         List<Object> filtered = new ArrayList<>(rawCollection.size());
         for (Object element : rawCollection) {
-            if (element instanceof Player player) {
-                HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-                if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(caller) && !hookedPlayer.isInJoinGracePeriod()) {
-                    continue;
-                }
+            if (element instanceof Player player && isPlayerHiddenFrom(player, caller)) {
+                continue;
             }
             filtered.add(element);
         }
         return Collections.unmodifiableList(filtered);
     }
 
-    private List<Player> filterPlayerList(Collection<? extends Player> original, Plugin caller) {
+    private Object filterPlayerList(Collection<? extends Player> original, Plugin caller) {
+        if (!containsHiddenPlayer(original, caller)) {
+            return original;
+        }
         List<Player> filtered = new ArrayList<>(original.size());
         for (Player player : original) {
-            HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
-            if (hookedPlayer == null || hookedPlayer.isPluginEnabled(caller) || hookedPlayer.isInJoinGracePeriod()) {
+            if (!isPlayerHiddenFrom(player, caller)) {
                 filtered.add(player);
             }
         }
         return Collections.unmodifiableList(filtered);
+    }
+
+    private boolean containsHiddenPlayer(Collection<?> collection, Plugin caller) {
+        for (Object element : collection) {
+            if (element instanceof Player player && isPlayerHiddenFrom(player, caller)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isPlayerHiddenFrom(Player player, Plugin caller) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
+        return hookedPlayer != null
+                && !hookedPlayer.isPluginEnabled(caller)
+                && !hookedPlayer.isInJoinGracePeriod();
     }
 
     private static String serializeKickReason(Object reasonObj) {
