@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -25,8 +26,10 @@ public final class PluginRegistryImpl implements PluginRegistry {
     private final HookConfig config;
     private final Map<Plugin, HookMode> hookedPlugins = new ConcurrentHashMap<>();
     private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
-    private final Map<ClassLoader, Plugin> classLoaderToPlugin = new ConcurrentHashMap<>();
-    private final Set<ClassLoader> inspectedLoaders = ConcurrentHashMap.newKeySet();
+    private final Map<ClassLoader, Plugin> classLoaderToPlugin =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final Set<ClassLoader> inspectedLoaders =
+            Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
     @Setter
     private PlayerRegistryImpl playerRegistry;
 
@@ -48,6 +51,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
         if (plugin == null) {
             return false;
         }
+        classLoaderToPlugin.remove(plugin.getClass().getClassLoader(), plugin);
         boolean removed = hookedPlugins.remove(plugin) != null;
         if (removed && playerRegistry != null) {
             playerRegistry.clearPluginFromAllPlayers(plugin);

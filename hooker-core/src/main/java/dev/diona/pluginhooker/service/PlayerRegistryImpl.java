@@ -46,7 +46,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             PlayerChannelResolver.bindPlayerToChannel(
                     channel,
                     hookedPlayer,
-                    () -> players.remove(uuid, hookedPlayer)
+                    closedPlayer -> players.remove(uuid, closedPlayer)
             );
         }
         return hookedPlayer;
@@ -77,7 +77,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return hookedPlayer;
         }
         Channel channel = PlayerChannelResolver.getChannel(player);
-        if (!PlayerChannelResolver.isRealNetworkChannel(channel) || channel.isOpen()) {
+        if (PlayerChannelResolver.isRealNetworkChannel(channel) && channel.isOpen()) {
             return registerPlayer(player);
         }
         return null;

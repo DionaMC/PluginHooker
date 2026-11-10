@@ -332,7 +332,7 @@ public final class PacketEventsPatch extends ClassPatch {
             if (user != null && user.getUUID() != null) {
                 hookedPlayer = playerRegistry.getPlayer(user.getUUID());
                 if (hookedPlayer != null) {
-                    channel.attr(PlayerChannelResolver.HOOKED_PLAYER_KEY).set(hookedPlayer);
+                    playerRegistry.registerPlayer(hookedPlayer.getBukkitPlayer());
                 }
             }
         }

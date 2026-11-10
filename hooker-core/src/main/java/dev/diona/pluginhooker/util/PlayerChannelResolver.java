@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Version-independent resolver for extracting a player's Netty {@link Channel} across Spigot 1.8.8 ~ 26.3.
@@ -28,6 +29,8 @@ public final class PlayerChannelResolver {
 
     public static final AttributeKey<HookedPlayer> HOOKED_PLAYER_KEY =
             AttributeKey.valueOf("pluginhooker_hooked_player");
+    private static final AttributeKey<Boolean> CLOSE_LISTENER_BOUND_KEY =
+            AttributeKey.valueOf("pluginhooker_close_listener_bound");
 
     private static volatile List<MethodHandle> channelAccessorChain;
     private static volatile MethodHandle proxyDelegateGetter;
@@ -52,13 +55,21 @@ public final class PlayerChannelResolver {
      * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup,
      * and registers a cleanup callback on the channel's close future.
      */
-    public static void bindPlayerToChannel(Channel channel, HookedPlayer hookedPlayer, Runnable onChannelClose) {
+    public static void bindPlayerToChannel(
+            Channel channel,
+            HookedPlayer hookedPlayer,
+            Consumer<HookedPlayer> onChannelClose
+    ) {
         if (!isRealNetworkChannel(channel)) {
             return;
         }
-        HookedPlayer previous = channel.attr(HOOKED_PLAYER_KEY).getAndSet(hookedPlayer);
-        if (previous == null && onChannelClose != null) {
-            channel.closeFuture().addListener(future -> onChannelClose.run());
+        channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
+        if (onChannelClose != null
+                && !Boolean.TRUE.equals(channel.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
+            channel.closeFuture().addListener(future -> {
+                HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).getAndSet(null);
+                onChannelClose.accept(bound != null ? bound : hookedPlayer);
+            });
         }
     }
 
@@ -96,11 +107,7 @@ public final class PlayerChannelResolver {
         }
         Player onlinePlayer = findOnlinePlayerByChannel(channel);
         if (onlinePlayer != null) {
-            hookedPlayer = playerRegistry.getPlayer(onlinePlayer);
-            if (hookedPlayer != null) {
-                channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
-                return hookedPlayer;
-            }
+            return playerRegistry.registerPlayer(onlinePlayer);
         }
         return null;
     }
