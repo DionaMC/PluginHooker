@@ -320,7 +320,8 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 String simpleName = callerClass.getSimpleName();
-                if (simpleName.equals("NettyChannelOperator")
+                if (simpleName.equals("ChannelOperatorImpl")
+                        || simpleName.equals("NettyChannelOperator")
                         || simpleName.equals("ChannelOperator")
                         || simpleName.equals("ChannelHelper")
                         || simpleName.equals("User")) {
