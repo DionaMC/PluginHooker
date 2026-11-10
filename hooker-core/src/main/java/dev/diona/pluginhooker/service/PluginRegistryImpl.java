@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,10 +25,8 @@ public final class PluginRegistryImpl implements PluginRegistry {
     private final HookConfig config;
     private final Map<Plugin, HookMode> hookedPlugins = new ConcurrentHashMap<>();
     private final Set<Plugin> unmodifiableHookedView = Collections.unmodifiableSet(hookedPlugins.keySet());
-    private final Map<ClassLoader, Plugin> classLoaderToPlugin =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private final Set<ClassLoader> inspectedLoaders =
-            Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
+    private final Map<ClassLoader, Plugin> classLoaderToPlugin = new ConcurrentHashMap<>();
+    private volatile boolean cacheInitialized = false;
     @Setter
     private PlayerRegistryImpl playerRegistry;
 
@@ -51,12 +48,19 @@ public final class PluginRegistryImpl implements PluginRegistry {
         if (plugin == null) {
             return false;
         }
-        classLoaderToPlugin.remove(plugin.getClass().getClassLoader(), plugin);
         boolean removed = hookedPlugins.remove(plugin) != null;
         if (removed && playerRegistry != null) {
             playerRegistry.clearPluginFromAllPlayers(plugin);
         }
         return removed;
+    }
+
+    public void handlePluginDisable(Plugin plugin) {
+        if (plugin == null) {
+            return;
+        }
+        classLoaderToPlugin.remove(plugin.getClass().getClassLoader(), plugin);
+        unregisterPlugin(plugin);
     }
 
     @Override
@@ -95,7 +99,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
         if (cached != null) {
             return cached;
         }
-        if (inspectedLoaders.add(classLoader)) {
+        if (!cacheInitialized) {
             refreshClassLoaderCache();
             return classLoaderToPlugin.get(classLoader);
         }
@@ -111,6 +115,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
                         classLoaderToPlugin.putIfAbsent(plugin.getClass().getClassLoader(), plugin);
                     }
                 }
+                cacheInitialized = true;
                 return;
             }
         } catch (Throwable ignored) {

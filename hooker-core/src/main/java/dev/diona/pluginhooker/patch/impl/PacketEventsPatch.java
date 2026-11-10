@@ -75,6 +75,27 @@ public final class PacketEventsPatch extends ClassPatch {
             "PacketConfigSendEvent"
     );
 
+    private static final ClassValue<Boolean> IGNORED_EVENT_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> eventClass) {
+            return IGNORED_EVENT_SIMPLE_NAMES.contains(eventClass.getSimpleName());
+        }
+    };
+
+    private static final ClassValue<Boolean> INTERNAL_LISTENER_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> listenerClass) {
+            String name = listenerClass.getName();
+            String simpleName = listenerClass.getSimpleName();
+            return name.contains(".packetevents.manager.")
+                    || name.contains(".packetevents.util.")
+                    || name.contains(".packetevents.bukkit.")
+                    || name.contains(".packetevents.injector.")
+                    || simpleName.equals("InternalPacketListener")
+                    || simpleName.equals("InternalBukkitPacketListener");
+        }
+    };
+
     private record ShadedEventAccessors(
             MethodHandle getPlayer,
             MethodHandle getChannel,
@@ -360,19 +381,16 @@ public final class PacketEventsPatch extends ClassPatch {
         if (listener == null || event == null) {
             return false;
         }
-        if (IGNORED_EVENT_SIMPLE_NAMES.contains(event.getClass().getSimpleName())) {
+        if (IGNORED_EVENT_CACHE.get(event.getClass())) {
             return false;
         }
         if (isInternalPacketEventsListener(listener.getClass())) {
             return false;
         }
 
-        Plugin plugin = listenerToPlugin.get(listener);
+        Plugin plugin = resolveListenerOwner(listener);
         if (plugin == null) {
-            plugin = resolveListenerOwner(listener);
-            if (plugin != null) {
-                listenerToPlugin.put(listener, plugin);
-            }
+            plugin = listenerToPlugin.get(listener);
         }
         if (plugin == null || !pluginRegistry.isHooked(plugin)) {
             return false;
@@ -531,14 +549,7 @@ public final class PacketEventsPatch extends ClassPatch {
      * Never block PacketEvents' own internal state-tracking listeners (in both standalone and shaded instances).
      */
     private static boolean isInternalPacketEventsListener(Class<?> listenerClass) {
-        String name = listenerClass.getName();
-        String simpleName = listenerClass.getSimpleName();
-        return name.contains(".packetevents.manager.")
-                || name.contains(".packetevents.util.")
-                || name.contains(".packetevents.bukkit.")
-                || name.contains(".packetevents.injector.")
-                || simpleName.equals("InternalPacketListener")
-                || simpleName.equals("InternalBukkitPacketListener");
+        return INTERNAL_LISTENER_CACHE.get(listenerClass);
     }
 
     private HookedPlayer resolveHookedPlayer(Object event) {

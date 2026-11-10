@@ -61,6 +61,23 @@ public final class NettyPipelinePatch extends ClassPatch {
             "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V"
     );
 
+    private static final ClassValue<Boolean> EXCLUDED_HANDLER_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> handlerClass) {
+            String name = handlerClass.getName();
+            String simpleName = handlerClass.getSimpleName();
+            return name.startsWith("net.minecraft.")
+                    || name.startsWith("org.bukkit.")
+                    || name.startsWith("io.papermc.")
+                    || name.startsWith("ca.spottedleaf.")
+                    || name.startsWith("com.mojang.")
+                    || name.startsWith("com.comphenix.protocol.")
+                    || name.contains(".packetevents.")
+                    || simpleName.startsWith("PacketEvents")
+                    || simpleName.equals("InboundPacketInterceptor");
+        }
+    };
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -312,17 +329,7 @@ public final class NettyPipelinePatch extends ClassPatch {
      * and {@code handleCompression} pipeline relocation).
      */
     private static boolean isExcludedHandler(Class<?> handlerClass) {
-        String name = handlerClass.getName();
-        String simpleName = handlerClass.getSimpleName();
-        return name.startsWith("net.minecraft.")
-                || name.startsWith("org.bukkit.")
-                || name.startsWith("io.papermc.")
-                || name.startsWith("ca.spottedleaf.")
-                || name.startsWith("com.mojang.")
-                || name.startsWith("com.comphenix.protocol.")
-                || name.contains(".packetevents.")
-                || simpleName.startsWith("PacketEvents")
-                || simpleName.equals("InboundPacketInterceptor");
+        return EXCLUDED_HANDLER_CACHE.get(handlerClass);
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {

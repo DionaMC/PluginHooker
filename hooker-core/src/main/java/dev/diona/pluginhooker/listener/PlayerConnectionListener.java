@@ -23,6 +23,6 @@ public final class PlayerConnectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPluginDisable(PluginDisableEvent event) {
-        pluginRegistry.unregisterPlugin(event.getPlugin());
+        pluginRegistry.handlePluginDisable(event.getPlugin());
     }
 }
