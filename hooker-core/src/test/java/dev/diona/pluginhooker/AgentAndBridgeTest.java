@@ -56,8 +56,8 @@ class AgentAndBridgeTest {
             assertFalse(patchManager.isClassTransformed(emB));
         }
 
-        // Verify HookBridge unbound fallback forwards Netty read/write losslessly when NETTY_DISPATCHER == null
-        assertNull(bootstrapBridge.getField("NETTY_DISPATCHER").get(null));
+        // Verify HookBridge unbound fallback forwards Netty read/write losslessly when unbound
+        assertFalse((Boolean) bootstrapBridge.getMethod("isBound").invoke(null));
         AtomicReference<Object> readMsg = new AtomicReference<>();
         AtomicReference<Object> writtenMsg = new AtomicReference<>();
         ChannelDuplexHandler probe = new ChannelDuplexHandler() {

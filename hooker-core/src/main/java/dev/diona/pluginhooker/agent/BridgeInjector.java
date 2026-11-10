@@ -78,12 +78,12 @@ public final class BridgeInjector {
 
         // Bind dispatchers on the Bootstrap ClassLoader copy
         Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, true, null);
-        bindHandles(bootstrapBridge, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
+        invokeBind(bootstrapBridge, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
         bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, HookBridge.HAS_HOOKED_PLUGINS);
 
         // Also bind on local class if loaded separately by a child-first PluginClassLoader
         if (bootstrapBridge != HookBridge.class) {
-            bindHandles(HookBridge.class, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
+            HookBridge.bindDispatchers(guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
         }
     }
 
@@ -101,28 +101,29 @@ public final class BridgeInjector {
     }
 
     public static synchronized void unbind() {
-        HookBridge.HAS_HOOKED_PLUGINS = false;
+        HookBridge.unbindDispatchers();
         try {
             Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, false, null);
-            bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, false);
-            bindHandles(bootstrapBridge, null, null, null, null);
             if (bootstrapBridge != HookBridge.class) {
-                bindHandles(HookBridge.class, null, null, null, null);
+                bootstrapBridge.getMethod("unbindDispatchers").invoke(null);
             }
         } catch (Throwable ignored) {
         }
     }
 
-    private static void bindHandles(
+    private static void invokeBind(
             Class<?> bridgeClass,
             MethodHandle guardDispatcher,
             MethodHandle filterDispatcher,
             MethodHandle notifyDispatcher,
             MethodHandle nettyDispatcher
     ) throws ReflectiveOperationException {
-        bridgeClass.getField("GUARD_DISPATCHER").set(null, guardDispatcher);
-        bridgeClass.getField("FILTER_DISPATCHER").set(null, filterDispatcher);
-        bridgeClass.getField("NOTIFY_DISPATCHER").set(null, notifyDispatcher);
-        bridgeClass.getField("NETTY_DISPATCHER").set(null, nettyDispatcher);
+        bridgeClass.getMethod(
+                "bindDispatchers",
+                MethodHandle.class,
+                MethodHandle.class,
+                MethodHandle.class,
+                MethodHandle.class
+        ).invoke(null, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
     }
 }
