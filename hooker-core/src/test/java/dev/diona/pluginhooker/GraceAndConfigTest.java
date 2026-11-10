@@ -8,8 +8,8 @@ import com.comphenix.protocol.events.PacketListener;
 import com.comphenix.protocol.events.PacketPostListener;
 import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
-import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
 import dev.diona.pluginhooker.util.PacketEventsReflector;
+import dev.diona.pluginhooker.util.ProtocolLibReadOnly;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -125,7 +125,7 @@ class GraceAndConfigTest {
             }
         };
 
-        ProtocolLibPatch.invokeReadOnlyListener(plibEvent, mutatingPlibListener, true);
+        ProtocolLibReadOnly.invokeReadOnlyListener(plibEvent, mutatingPlibListener, true);
 
         assertFalse(plibEvent.isCancelled());
         assertSame(marker, NetworkMarker.getNetworkMarker(plibEvent));
