@@ -108,16 +108,12 @@ public final class PacketEventsPatch extends ClassPatch {
         return internalClassName.endsWith(EVENT_MANAGER_SUFFIX)
                 || internalClassName.endsWith(PACKET_RECEIVE_SUFFIX)
                 || internalClassName.endsWith(PACKET_SEND_SUFFIX)
-                || isProtocolManagerClass(internalClassName);
-    }
-
-    private static boolean isProtocolManagerClass(String internalClassName) {
-        return internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX);
+                || internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX);
     }
 
     @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
-        if (isProtocolManagerClass(internalClassName)) {
+        if (internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX)) {
             return ClassTransform.transformingMethodBodies(
                     method -> PROTOCOL_SEND_METHODS.contains(method.methodName().stringValue())
                             && method.methodTypeSymbol().parameterCount() == 2,
@@ -178,7 +174,7 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     public void handleListenerRegister(Object listener) {
-        if (listener == null || isInternalPacketEventsListener(listener.getClass())) {
+        if (listener == null || INTERNAL_LISTENER_CACHE.get(listener.getClass())) {
             return;
         }
         Plugin owner = resolveListenerOwner(listener);
@@ -236,10 +232,7 @@ public final class PacketEventsPatch extends ClassPatch {
         if (listener == null || event == null) {
             return false;
         }
-        if (IGNORED_EVENT_CACHE.get(event.getClass())) {
-            return false;
-        }
-        if (isInternalPacketEventsListener(listener.getClass())) {
+        if (IGNORED_EVENT_CACHE.get(event.getClass()) || INTERNAL_LISTENER_CACHE.get(listener.getClass())) {
             return false;
         }
 
@@ -296,13 +289,6 @@ public final class PacketEventsPatch extends ClassPatch {
             }
         }
         return null;
-    }
-
-    /**
-     * Never block PacketEvents' own internal state-tracking listeners (in both standalone and shaded instances).
-     */
-    private static boolean isInternalPacketEventsListener(Class<?> listenerClass) {
-        return INTERNAL_LISTENER_CACHE.get(listenerClass);
     }
 
     private HookedPlayer resolveHookedPlayer(Object event) {

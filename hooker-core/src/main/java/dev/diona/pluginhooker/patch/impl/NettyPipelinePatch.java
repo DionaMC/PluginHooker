@@ -261,7 +261,7 @@ public final class NettyPipelinePatch extends ClassPatch {
             return;
         }
         ChannelHandler handler = ctx.handler();
-        if (handler == null || isExcludedHandler(handler.getClass())) {
+        if (handler == null || EXCLUDED_HANDLER_CACHE.get(handler.getClass())) {
             return;
         }
 
@@ -313,7 +313,7 @@ public final class NettyPipelinePatch extends ClassPatch {
 
     private Plugin resolveHandlerPlugin(Object handlerObj, ChannelHandlerContext ctx) {
         Class<?> handlerClass = handlerObj.getClass();
-        if (isExcludedHandler(handlerClass)) {
+        if (EXCLUDED_HANDLER_CACHE.get(handlerClass)) {
             return null;
         }
         Plugin plugin = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
@@ -321,16 +321,6 @@ public final class NettyPipelinePatch extends ClassPatch {
             return PluginCallerResolver.isSharedPacketFramework(plugin) ? null : plugin;
         }
         return hasFallbackContexts ? contextToPlugin.get(ctx) : null;
-    }
-
-    /**
-     * Excludes server-internal handlers, ProtocolLib injectors, and PacketEvents handlers
-     * (both standalone and shaded PacketEvents are hooked at the {@code EventManager}/{@code PacketEvent}
-     * layer by {@link PacketEventsPatch}, preserving {@code PacketEventsEncoder#setHold} queue ordering
-     * and {@code handleCompression} pipeline relocation).
-     */
-    private static boolean isExcludedHandler(Class<?> handlerClass) {
-        return EXCLUDED_HANDLER_CACHE.get(handlerClass);
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {

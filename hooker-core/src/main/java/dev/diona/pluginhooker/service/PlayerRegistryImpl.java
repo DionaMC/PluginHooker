@@ -28,7 +28,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     @Override
     public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
-        if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+        if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return null;
         }
         Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
@@ -57,7 +57,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     @Override
     public void unregisterPlayer(Player bukkitPlayer) {
-        if (isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+        if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return;
         }
         players.remove(bukkitPlayer.getUniqueId());
@@ -72,7 +72,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
 
     @Override
     public HookedPlayer getPlayer(Player player) {
-        if (isInvalidOrTemporaryPlayer(player)) {
+        if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(player)) {
             return null;
         }
         HookedPlayerImpl hookedPlayer = players.get(player.getUniqueId());
@@ -94,9 +94,5 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     @Override
     public Collection<HookedPlayer> getPlayers() {
         return Collections.unmodifiableCollection(players.values());
-    }
-
-    private static boolean isInvalidOrTemporaryPlayer(Player player) {
-        return PlayerChannelResolver.isInvalidOrTemporaryPlayer(player);
     }
 }
