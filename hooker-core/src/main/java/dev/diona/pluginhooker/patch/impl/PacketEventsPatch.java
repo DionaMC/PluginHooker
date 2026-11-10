@@ -8,11 +8,13 @@ import com.github.retrooper.packetevents.protocol.player.User;
 import com.google.common.collect.MapMaker;
 import dev.diona.pluginhooker.api.event.PacketEventsHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
@@ -113,12 +115,15 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     };
 
+    private record ActivePlugin(Plugin plugin, HookMode mode) {
+    }
+
     private static final class ListenerOwnerSlot {
         final boolean excluded;
         final boolean unwrapInner;
         final WeakReference<Plugin> ownerRef;
         volatile int syncedVersion;
-        volatile boolean hooked;
+        volatile ActivePlugin active;
 
         private ListenerOwnerSlot(boolean excluded, boolean unwrapInner, WeakReference<Plugin> ownerRef) {
             this.excluded = excluded;
@@ -323,8 +328,8 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
 
-        Plugin plugin = resolveHookedListenerPlugin(listener);
-        if (plugin == null) {
+        ActivePlugin active = resolveHookedListener(listener);
+        if (active == null) {
             return false;
         }
 
@@ -333,7 +338,7 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
 
-        if (!hookedPlayer.isPluginEnabled(plugin)) {
+        if (!HookedPlayerImpl.isAllowed(hookedPlayer, active.plugin(), active.mode())) {
             if (hookedPlayer.isInJoinGracePeriod()) {
                 PacketEventsReflector.invokeReadOnlyListener(listener, event, outbound);
             }
@@ -344,45 +349,53 @@ public final class PacketEventsPatch extends ClassPatch {
             return BukkitEvents.fireCancellable(
                     config.packetEvents().isCallEvent(),
                     false,
-                    () -> new PacketEventsHookEvent(plugin, hookedPlayer, commonListener, packetEvent, outbound)
+                    () -> new PacketEventsHookEvent(active.plugin(), hookedPlayer, commonListener, packetEvent, outbound)
             );
         }
         return false;
     }
 
-    private Plugin resolveHookedListenerPlugin(Object listener) {
+    private ActivePlugin resolveHookedListener(Object listener) {
         ListenerOwnerSlot slot = listenerOwnerCache.get(listener.getClass());
         if (slot.excluded) {
             return null;
         }
         if (!slot.unwrapInner) {
-            return checkSlotHooked(slot);
+            return checkSlotActive(slot);
         }
         Object inner = PacketEventsReflector.unwrapListener(listener);
         if (inner != null) {
             ListenerOwnerSlot innerSlot = listenerOwnerCache.get(inner.getClass());
             if (!innerSlot.excluded && !innerSlot.unwrapInner) {
-                return checkSlotHooked(innerSlot);
+                return checkSlotActive(innerSlot);
             }
         }
         if (hasFallbackListeners) {
             Plugin fallback = listenerToPlugin.get(listener);
-            return fallback != null && pluginRegistry.isHooked(fallback) ? fallback : null;
+            if (fallback != null) {
+                HookMode mode = pluginRegistry.getHookMode(fallback);
+                return mode != null ? new ActivePlugin(fallback, mode) : null;
+            }
         }
         return null;
     }
 
-    private Plugin checkSlotHooked(ListenerOwnerSlot slot) {
+    private ActivePlugin checkSlotActive(ListenerOwnerSlot slot) {
+        int currentVersion = pluginRegistry.getVersion();
+        if (slot.syncedVersion == currentVersion) {
+            return slot.active;
+        }
         Plugin owner = slot.ownerRef.get();
         if (owner == null) {
+            slot.active = null;
+            slot.syncedVersion = currentVersion;
             return null;
         }
-        int currentVersion = pluginRegistry.getVersion();
-        if (slot.syncedVersion != currentVersion) {
-            slot.hooked = pluginRegistry.isHooked(owner);
-            slot.syncedVersion = currentVersion;
-        }
-        return slot.hooked ? owner : null;
+        HookMode mode = pluginRegistry.getHookMode(owner);
+        ActivePlugin resolved = mode != null ? new ActivePlugin(owner, mode) : null;
+        slot.active = resolved;
+        slot.syncedVersion = currentVersion;
+        return resolved;
     }
 
     /**

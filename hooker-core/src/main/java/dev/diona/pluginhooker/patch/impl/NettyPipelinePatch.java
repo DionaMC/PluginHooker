@@ -3,11 +3,13 @@ package dev.diona.pluginhooker.patch.impl;
 import dev.diona.pluginhooker.api.event.NettyHookEvent;
 import dev.diona.pluginhooker.api.event.PlayerChannelCloseHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
@@ -85,12 +87,15 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     };
 
+    private record ActivePlugin(Plugin plugin, HookMode mode) {
+    }
+
     private static final class HandlerOwnerSlot {
         final boolean permanentlyExcluded;
         final boolean needsContextFallback;
         final WeakReference<Plugin> ownerRef;
         volatile int syncedVersion;
-        volatile boolean hooked;
+        volatile ActivePlugin active;
 
         private HandlerOwnerSlot(boolean permanentlyExcluded, boolean needsContextFallback, WeakReference<Plugin> ownerRef) {
             this.permanentlyExcluded = permanentlyExcluded;
@@ -342,18 +347,18 @@ public final class NettyPipelinePatch extends ClassPatch {
         boolean outbound = isOutbound != 0;
 
         if (pluginRegistry.hasHookedPlugins()) {
-            Plugin plugin = resolveHookedHandlerPlugin(handlerObj, ctx);
-            if (plugin != null) {
+            ActivePlugin active = resolveHookedHandler(handlerObj, ctx);
+            if (active != null) {
                 HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(ctx.channel());
                 if (hookedPlayer != null) {
-                    if (!hookedPlayer.isPluginEnabled(plugin)) {
+                    if (!HookedPlayerImpl.isAllowed(hookedPlayer, active.plugin(), active.mode())) {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
                     }
                     if (BukkitEvents.fireCancellable(
                             config.netty().isCallEvent(),
                             false,
-                            () -> new NettyHookEvent(plugin, hookedPlayer, msg, outbound)
+                            () -> new NettyHookEvent(active.plugin(), hookedPlayer, msg, outbound)
                     )) {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
@@ -369,7 +374,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     }
 
-    private Plugin resolveHookedHandlerPlugin(Object handlerObj, ChannelHandlerContext ctx) {
+    private ActivePlugin resolveHookedHandler(Object handlerObj, ChannelHandlerContext ctx) {
         HandlerOwnerSlot slot = handlerOwnerCache.get(handlerObj.getClass());
         if (slot.permanentlyExcluded) {
             return null;
@@ -379,18 +384,27 @@ public final class NettyPipelinePatch extends ClassPatch {
                 return null;
             }
             Plugin fallback = contextToPlugin.get(ctx);
-            return fallback != null && pluginRegistry.isHooked(fallback) ? fallback : null;
+            if (fallback == null) {
+                return null;
+            }
+            HookMode mode = pluginRegistry.getHookMode(fallback);
+            return mode != null ? new ActivePlugin(fallback, mode) : null;
         }
         int currentVersion = pluginRegistry.getVersion();
+        if (slot.syncedVersion == currentVersion) {
+            return slot.active;
+        }
         Plugin owner = slot.ownerRef.get();
         if (owner == null) {
+            slot.active = null;
+            slot.syncedVersion = currentVersion;
             return null;
         }
-        if (slot.syncedVersion != currentVersion) {
-            slot.hooked = pluginRegistry.isHooked(owner);
-            slot.syncedVersion = currentVersion;
-        }
-        return slot.hooked ? owner : null;
+        HookMode mode = pluginRegistry.getHookMode(owner);
+        ActivePlugin resolved = mode != null ? new ActivePlugin(owner, mode) : null;
+        slot.active = resolved;
+        slot.syncedVersion = currentVersion;
+        return resolved;
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {

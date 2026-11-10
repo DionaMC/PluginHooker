@@ -24,6 +24,8 @@ public final class HookedPlayerImpl implements HookedPlayer {
 
     private final Set<Plugin> explicitlyEnabled = ConcurrentHashMap.newKeySet();
     private final Set<Plugin> explicitlyDisabled = ConcurrentHashMap.newKeySet();
+    private volatile boolean hasEnabledOverrides;
+    private volatile boolean hasDisabledOverrides;
     private volatile long joinGraceUntilMillis;
 
     public HookedPlayerImpl(Player bukkitPlayer, PluginRegistryImpl pluginRegistry, long joinGraceDurationMillis) {
@@ -56,8 +58,11 @@ public final class HookedPlayerImpl implements HookedPlayer {
         if (plugin == null || !pluginRegistry.isHooked(plugin)) {
             return;
         }
-        explicitlyDisabled.remove(plugin);
+        if (explicitlyDisabled.remove(plugin)) {
+            hasDisabledOverrides = !explicitlyDisabled.isEmpty();
+        }
         explicitlyEnabled.add(plugin);
+        hasEnabledOverrides = true;
     }
 
     @Override
@@ -65,9 +70,12 @@ public final class HookedPlayerImpl implements HookedPlayer {
         if (plugin == null) {
             return;
         }
-        explicitlyEnabled.remove(plugin);
+        if (explicitlyEnabled.remove(plugin)) {
+            hasEnabledOverrides = !explicitlyEnabled.isEmpty();
+        }
         if (pluginRegistry.isHooked(plugin)) {
             explicitlyDisabled.add(plugin);
+            hasDisabledOverrides = true;
         }
     }
 
@@ -76,20 +84,34 @@ public final class HookedPlayerImpl implements HookedPlayer {
         if (plugin == null) {
             return;
         }
-        explicitlyEnabled.remove(plugin);
-        explicitlyDisabled.remove(plugin);
+        if (explicitlyEnabled.remove(plugin)) {
+            hasEnabledOverrides = !explicitlyEnabled.isEmpty();
+        }
+        if (explicitlyDisabled.remove(plugin)) {
+            hasDisabledOverrides = !explicitlyDisabled.isEmpty();
+        }
     }
 
     @Override
     public boolean isPluginEnabled(Plugin plugin) {
-        HookMode mode = pluginRegistry.getHookMode(plugin);
+        return isPluginEnabled(plugin, pluginRegistry.getHookMode(plugin));
+    }
+
+    public boolean isPluginEnabled(Plugin plugin, HookMode mode) {
         if (mode == null) {
             return true;
         }
         return switch (mode) {
-            case WHITELIST -> explicitlyEnabled.contains(plugin);
-            case BLACKLIST -> !explicitlyDisabled.contains(plugin);
+            case WHITELIST -> hasEnabledOverrides && explicitlyEnabled.contains(plugin);
+            case BLACKLIST -> !hasDisabledOverrides || !explicitlyDisabled.contains(plugin);
         };
+    }
+
+    public static boolean isAllowed(HookedPlayer player, Plugin plugin, HookMode mode) {
+        if (player instanceof HookedPlayerImpl impl) {
+            return impl.isPluginEnabled(plugin, mode);
+        }
+        return player.isPluginEnabled(plugin);
     }
 
     @Override
@@ -105,16 +127,19 @@ public final class HookedPlayerImpl implements HookedPlayer {
     }
 
     public boolean hasExplicitlyDisabledPlugins() {
-        return !explicitlyDisabled.isEmpty();
+        return hasDisabledOverrides;
     }
 
     @Override
     public boolean hasAnyDisabledPlugin() {
-        if (!explicitlyDisabled.isEmpty()) {
+        if (hasDisabledOverrides) {
             return true;
         }
         if (!pluginRegistry.hasWhitelistPlugins()) {
             return false;
+        }
+        if (!hasEnabledOverrides) {
+            return true;
         }
         for (Plugin plugin : pluginRegistry.getHookedPlugins()) {
             if (!isPluginEnabled(plugin)) {

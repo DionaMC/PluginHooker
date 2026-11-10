@@ -8,11 +8,13 @@ import com.comphenix.protocol.events.PacketPostListener;
 import com.comphenix.protocol.events.ScheduledPacket;
 import dev.diona.pluginhooker.api.event.ProtocolLibHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
@@ -125,15 +127,16 @@ public final class ProtocolLibPatch extends ClassPatch {
     }
 
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {
-        if (!(eventObj instanceof PacketEvent event) || !(listenerObj instanceof PacketListener listener)) {
-            return false;
-        }
-        if (event.isPlayerTemporary()) {
+        if (!pluginRegistry.hasHookedPlugins()
+                || !(eventObj instanceof PacketEvent event)
+                || !(listenerObj instanceof PacketListener listener)
+                || event.isPlayerTemporary()) {
             return false;
         }
 
         Plugin plugin = listener.getPlugin();
-        if (!pluginRegistry.isHooked(plugin)) {
+        HookMode mode = pluginRegistry.getHookMode(plugin);
+        if (mode == null) {
             return false;
         }
 
@@ -142,7 +145,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
 
-        if (!hookedPlayer.isPluginEnabled(plugin)) {
+        if (!HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode)) {
             if (hookedPlayer.isInJoinGracePeriod()) {
                 invokeReadOnlyListener(event, listener, outbound);
             }

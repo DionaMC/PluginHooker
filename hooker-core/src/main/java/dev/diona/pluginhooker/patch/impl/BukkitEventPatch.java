@@ -2,11 +2,13 @@ package dev.diona.pluginhooker.patch.impl;
 
 import dev.diona.pluginhooker.api.event.BukkitHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
+import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
@@ -95,9 +97,13 @@ public final class BukkitEventPatch extends ClassPatch {
      * Returns true if the event execution for this listener should be blocked.
      */
     public boolean handleCallEvent(Object pluginObj, Object eventObj) {
-        if (!(pluginObj instanceof Plugin plugin)
-                || !pluginRegistry.isHooked(plugin)
+        if (!pluginRegistry.hasHookedPlugins()
+                || !(pluginObj instanceof Plugin plugin)
                 || !(eventObj instanceof Event event)) {
+            return false;
+        }
+        HookMode mode = pluginRegistry.getHookMode(plugin);
+        if (mode == null) {
             return false;
         }
 
@@ -114,7 +120,7 @@ public final class BukkitEventPatch extends ClassPatch {
         );
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
 
-        if (hookedPlayer != null && !hookedPlayer.isPluginEnabled(plugin)) {
+        if (hookedPlayer != null && !HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode)) {
             return true;
         }
         return BukkitEvents.fireCancellable(
