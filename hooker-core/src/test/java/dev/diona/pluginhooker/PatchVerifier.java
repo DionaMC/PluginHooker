@@ -127,7 +127,29 @@ public final class PatchVerifier {
             verifyTargets(logger, "Paper " + PAPER_VERSION, paperLoader, patches, PAPER_26_3_TARGETS);
         }
 
-        patchManager.shutdown();
+        // 4. Verify live multi-ClassLoader instrumentation & shutdown revert (e.g. multiple plugins shading PacketEvents)
+        URL peJarUrl = Class.forName("com.github.retrooper.packetevents.event.EventManager", false, cl)
+                .getProtectionDomain()
+                .getCodeSource()
+                .getLocation();
+        try (URLClassLoader isolatedA = new URLClassLoader(new URL[]{peJarUrl}, null);
+             URLClassLoader isolatedB = new URLClassLoader(new URL[]{peJarUrl}, null)) {
+            Class<?> emA = Class.forName("com.github.retrooper.packetevents.event.EventManager", true, isolatedA);
+            Class<?> emB = Class.forName("com.github.retrooper.packetevents.event.EventManager", true, isolatedB);
+            if (emA == emB) {
+                throw new AssertionError("Expected isolated ClassLoaders to produce distinct Class instances");
+            }
+            if (!patchManager.isClassTransformed(emA) || !patchManager.isClassTransformed(emB)) {
+                throw new AssertionError("Expected identical shaded class across multiple ClassLoaders to both be transformed");
+            }
+            logger.info("Verified multi-ClassLoader live instrumentation!");
+
+            patchManager.shutdown();
+
+            if (patchManager.isClassTransformed(emA) || patchManager.isClassTransformed(emB)) {
+                throw new AssertionError("Expected all ClassLoader copies of transformed classes to be reverted on shutdown");
+            }
+        }
         logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
     }
 

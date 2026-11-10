@@ -1,5 +1,6 @@
 package dev.diona.pluginhooker.agent;
 
+import com.google.common.collect.MapMaker;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import dev.diona.pluginhooker.config.HookConfig;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,6 +31,8 @@ import java.util.logging.Logger;
  */
 public final class PatchManager {
 
+    private static final Object BOOTSTRAP_LOADER_KEY = new Object();
+
     private final Logger logger;
     private final BukkitEventPatch bukkitEventPatch;
     private final BukkitApiPatch bukkitApiPatch;
@@ -36,7 +40,8 @@ public final class PatchManager {
     private final PacketEventsPatch packetEventsPatch;
     private final NettyPipelinePatch nettyPipelinePatch;
     private final List<ClassPatch> patches;
-    private final Set<String> transformedClasses = ConcurrentHashMap.newKeySet();
+    private final ConcurrentMap<Object, Set<String>> transformedClassesByLoader =
+            new MapMaker().weakKeys().makeMap();
 
     private Instrumentation instrumentation;
     private ClassFileTransformer activeTransformer;
@@ -113,15 +118,44 @@ public final class PatchManager {
                     continue;
                 }
                 String internalName = loadedClass.getName().replace('.', '/');
-                if (transformedClasses.remove(internalName)) {
+                if (unmarkTransformed(loadedClass.getClassLoader(), internalName)) {
                     try {
                         instrumentation.retransformClasses(loadedClass);
-                    } catch (Throwable ignored) {
+                    } catch (Throwable t) {
+                        logger.log(Level.WARNING, "Failed to revert transformed class " + loadedClass.getName(), t);
                     }
                 }
             }
+            transformedClassesByLoader.clear();
         }
         BridgeInjector.unbind();
+    }
+
+    public boolean isClassTransformed(Class<?> clazz) {
+        if (clazz == null) {
+            return false;
+        }
+        return isTransformed(clazz.getClassLoader(), clazz.getName().replace('.', '/'));
+    }
+
+    private static Object loaderKey(ClassLoader loader) {
+        return loader != null ? loader : BOOTSTRAP_LOADER_KEY;
+    }
+
+    private boolean isTransformed(ClassLoader loader, String internalClassName) {
+        Set<String> classes = transformedClassesByLoader.get(loaderKey(loader));
+        return classes != null && classes.contains(internalClassName);
+    }
+
+    private boolean markTransformed(ClassLoader loader, String internalClassName) {
+        return transformedClassesByLoader
+                .computeIfAbsent(loaderKey(loader), k -> ConcurrentHashMap.newKeySet())
+                .add(internalClassName);
+    }
+
+    private boolean unmarkTransformed(ClassLoader loader, String internalClassName) {
+        Set<String> classes = transformedClassesByLoader.get(loaderKey(loader));
+        return classes != null && classes.remove(internalClassName);
     }
 
     private void retransformAlreadyLoadedClasses() {
@@ -131,7 +165,7 @@ public final class PatchManager {
                 continue;
             }
             String internalName = loadedClass.getName().replace('.', '/');
-            if (transformedClasses.contains(internalName)) {
+            if (isTransformed(loadedClass.getClassLoader(), internalName)) {
                 continue;
             }
             for (ClassPatch patch : patches) {
@@ -214,7 +248,7 @@ public final class PatchManager {
                 if (!patch.isEnabled() || !patch.matchesClass(className)) {
                     continue;
                 }
-                if (!transformedClasses.add(className) && classBeingRedefined == null) {
+                if (!markTransformed(loader, className) && classBeingRedefined == null) {
                     return null;
                 }
                 try {
@@ -222,6 +256,7 @@ public final class PatchManager {
                     logger.info("Hooked class: " + className.replace('/', '.'));
                     return transformed;
                 } catch (Throwable t) {
+                    unmarkTransformed(loader, className);
                     logger.log(Level.SEVERE, "Error transforming class " + className, t);
                     return null;
                 }
