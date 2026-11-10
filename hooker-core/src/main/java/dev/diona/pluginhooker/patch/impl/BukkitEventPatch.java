@@ -115,7 +115,7 @@ public final class BukkitEventPatch extends ClassPatch {
         HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
 
         if (hookedPlayer == null) {
-            if (!config.bukkit().isCallEvent()) {
+            if (!config.bukkit().isCallEvent() || Bukkit.getServer() == null) {
                 return false;
             }
             BukkitHookEvent hookEvent = new BukkitHookEvent(plugin, event, null);
@@ -127,7 +127,7 @@ public final class BukkitEventPatch extends ClassPatch {
             return true;
         }
 
-        if (config.bukkit().isCallEvent()) {
+        if (config.bukkit().isCallEvent() && Bukkit.getServer() != null) {
             BukkitHookEvent hookEvent = new BukkitHookEvent(plugin, event, hookedPlayer);
             Bukkit.getPluginManager().callEvent(hookEvent);
             return hookEvent.isCancelled();

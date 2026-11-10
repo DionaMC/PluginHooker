@@ -49,6 +49,7 @@ public final class PluginHookerCommand implements TabExecutor {
             case "plugin" -> handlePluginCommand(sender, Arrays.copyOfRange(args, 1, args.length));
             case "player" -> handlePlayerCommand(sender, Arrays.copyOfRange(args, 1, args.length));
             case "debug" -> handleDebugCommand(sender);
+            case "reload" -> handleReloadCommand(sender);
             default -> {
                 sendHelp(sender);
                 yield true;
@@ -60,6 +61,12 @@ public final class PluginHookerCommand implements TabExecutor {
         boolean next = !selfPlugin.getHookConfig().isDebug();
         selfPlugin.getHookConfig().setDebug(next);
         sendMsg(sender, "Sandbox debug logging is now " + (next ? "&aENABLED" : "&cDISABLED") + "&b.");
+        return true;
+    }
+
+    private boolean handleReloadCommand(CommandSender sender) {
+        selfPlugin.reloadSandboxConfig();
+        sendMsg(sender, "Reloaded &fconfig.yml &b(" + pluginRegistry.getHookedPlugins().size() + " hooked plugins active).");
         return true;
     }
 
@@ -215,7 +222,7 @@ public final class PluginHookerCommand implements TabExecutor {
             return Collections.emptyList();
         }
         if (args.length == 1) {
-            return filterPrefix(List.of("plugin", "player", "debug"), args[0]);
+            return filterPrefix(List.of("plugin", "player", "debug", "reload"), args[0]);
         }
         String root = args[0].toLowerCase(Locale.ROOT);
         if (root.equals("plugin")) {
@@ -271,6 +278,7 @@ public final class PluginHookerCommand implements TabExecutor {
         sendMsg(sender, "/ph plugin <add|remove|mode|list> &f- &bManage hooked plugins");
         sendMsg(sender, "/ph player <player> <add|remove|reset|list> &f- &bManage player sandbox");
         sendMsg(sender, "/ph debug &f- &bToggle sandbox interception debug logs");
+        sendMsg(sender, "/ph reload &f- &bReload config.yml and apply configured plugins");
     }
 
     private static HookMode parseMode(String input) {

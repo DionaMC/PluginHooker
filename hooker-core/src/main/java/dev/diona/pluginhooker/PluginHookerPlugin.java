@@ -2,6 +2,7 @@ package dev.diona.pluginhooker;
 
 import dev.diona.pluginhooker.agent.PatchManager;
 import dev.diona.pluginhooker.api.PluginHookerAPI;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.command.PluginHookerCommand;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.listener.PluginLifecycleListener;
@@ -12,6 +13,7 @@ import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -54,6 +56,7 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
     @Override
     public void onEnable() {
         this.pluginRegistry.refreshClassLoaderCache();
+        applyConfiguredPlugins();
 
         // Register online players if reloaded
         for (Player online : Bukkit.getOnlinePlayers()) {
@@ -72,9 +75,38 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
         }
 
         Bukkit.getPluginManager().registerEvents(
-                new PluginLifecycleListener(this.pluginRegistry),
+                new PluginLifecycleListener(this, this.hookConfig, this.pluginRegistry),
                 this
         );
+    }
+
+    public void reloadSandboxConfig() {
+        this.hookConfig.load(this);
+        this.patchManager.reloadPatches();
+        this.pluginRegistry.refreshClassLoaderCache();
+        applyConfiguredPlugins();
+    }
+
+    public void applyConfiguredPlugins() {
+        if (this.hookConfig.getConfiguredPlugins().isEmpty()) {
+            return;
+        }
+        for (Plugin target : Bukkit.getPluginManager().getPlugins()) {
+            if (target == null || target.equals(this)) {
+                continue;
+            }
+            HookMode mode = this.hookConfig.getConfiguredPluginMode(target.getName());
+            if (mode == null) {
+                continue;
+            }
+            if (!this.pluginRegistry.isHooked(target)) {
+                this.pluginRegistry.registerPlugin(target, mode);
+                getLogger().info("Auto-hooked configured plugin: " + target.getName() + " [" + mode + "]");
+            } else if (this.pluginRegistry.getHookMode(target) != mode) {
+                this.pluginRegistry.setHookMode(target, mode);
+                getLogger().info("Updated configured plugin mode: " + target.getName() + " [" + mode + "]");
+            }
+        }
     }
 
     @Override

@@ -30,6 +30,11 @@ import org.bukkit.plugin.Plugin;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
@@ -88,6 +93,25 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     };
 
+    private static final ClassValue<Optional<MethodHandle>> EVENT_MANAGER_LISTENERS_GETTER = new ClassValue<>() {
+        @Override
+        protected Optional<MethodHandle> computeValue(Class<?> emClass) {
+            try {
+                Field f = emClass.getDeclaredField("listeners");
+                if (Object[].class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    return Optional.of(
+                            MethodHandles.lookup()
+                                    .unreflectGetter(f)
+                                    .asType(MethodType.methodType(Object[].class, Object.class))
+                    );
+                }
+            } catch (ReflectiveOperationException ignored) {
+            }
+            return Optional.empty();
+        }
+    };
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -130,26 +154,38 @@ public final class PacketEventsPatch extends ClassPatch {
             return ClassTransform.transformingMethods(
                     method -> {
                         String name = method.methodName().stringValue();
-                        return (name.equals("registerListenerNoRecalculation")
-                                || name.equals("unregisterListenerNoRecalculation"))
-                                && method.methodTypeSymbol().parameterCount() == 1;
+                        int params = method.methodTypeSymbol().parameterCount();
+                        return ((name.equals("registerListenerNoRecalculation")
+                                || name.equals("unregisterListenerNoRecalculation")) && params == 1)
+                                || (name.equals("unregisterAllListeners") && params == 0);
                     },
                     (mb, element) -> {
                         if (element instanceof CodeModel codeModel) {
                             String name = codeModel.parent()
                                     .map(m -> m.methodName().stringValue())
                                     .orElse("");
-                            int hookId = name.equals("registerListenerNoRecalculation")
-                                    ? HookIds.NOTIFY_PACKETEVENTS_REGISTER
-                                    : HookIds.NOTIFY_PACKETEVENTS_UNREGISTER;
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.notifyAtEntry(
-                                            hookId,
-                                            ArgSpec.param(0),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
+                            if (name.equals("unregisterAllListeners")) {
+                                mb.transformCode(
+                                        codeModel,
+                                        CodeTransforms.notifyAtEntry(
+                                                HookIds.NOTIFY_PACKETEVENTS_UNREGISTER_ALL,
+                                                ArgSpec.thisRef(),
+                                                ArgSpec.nullConst()
+                                        )
+                                );
+                            } else {
+                                int hookId = name.equals("registerListenerNoRecalculation")
+                                        ? HookIds.NOTIFY_PACKETEVENTS_REGISTER
+                                        : HookIds.NOTIFY_PACKETEVENTS_UNREGISTER;
+                                mb.transformCode(
+                                        codeModel,
+                                        CodeTransforms.notifyAtEntry(
+                                                hookId,
+                                                ArgSpec.param(0),
+                                                ArgSpec.nullConst()
+                                        )
+                                );
+                            }
                         } else {
                             mb.with(element);
                         }
@@ -191,10 +227,29 @@ public final class PacketEventsPatch extends ClassPatch {
     public void handleListenerUnregister(Object listener) {
         if (listener != null && hasFallbackListeners) {
             listenerToPlugin.remove(listener);
-            if (listenerToPlugin.isEmpty()) {
-                hasFallbackListeners = false;
+            hasFallbackListeners = !listenerToPlugin.isEmpty();
+        }
+    }
+
+    public void handleUnregisterAllListeners(Object eventManager) {
+        if (eventManager == null || !hasFallbackListeners) {
+            return;
+        }
+        Optional<MethodHandle> getterOpt = EVENT_MANAGER_LISTENERS_GETTER.get(eventManager.getClass());
+        if (getterOpt.isPresent()) {
+            try {
+                Object[] current = (Object[]) getterOpt.get().invokeExact(eventManager);
+                if (current != null) {
+                    for (Object listener : current) {
+                        if (listener != null) {
+                            listenerToPlugin.remove(listener);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
             }
         }
+        hasFallbackListeners = !listenerToPlugin.isEmpty();
     }
 
     public boolean handleSendPacket(Object protocolManagerObj, Object channelObj, Object byteBufObj) {
@@ -257,6 +312,7 @@ public final class PacketEventsPatch extends ClassPatch {
         }
 
         if (config.packetEvents().isCallEvent()
+                && Bukkit.getServer() != null
                 && listener instanceof PacketListenerCommon commonListener
                 && event instanceof PacketEvent packetEvent) {
             PacketEventsHookEvent hookEvent = new PacketEventsHookEvent(

@@ -12,6 +12,12 @@ sandbox:
   # Grace period (in ticks) after a player joins during which packets are allowed
   # so anticheats/plugins can initialize their internal PlayerData without errors.
   join-grace-ticks: 5
+  # Plugins automatically registered into the sandbox on startup or when enabled.
+  # Example:
+  # plugins:
+  #   GrimAC: WHITELIST
+  #   Vulcan: BLACKLIST
+  plugins: {}
 
 # Hook modules
 hook:

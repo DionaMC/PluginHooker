@@ -131,6 +131,12 @@ public final class PatchManager {
         BridgeInjector.unbind();
     }
 
+    public void reloadPatches() {
+        if (instrumentation != null && activeTransformer != null) {
+            retransformAlreadyLoadedClasses();
+        }
+    }
+
     public boolean isClassTransformed(Class<?> clazz) {
         if (clazz == null) {
             return false;
@@ -225,6 +231,7 @@ public final class PatchManager {
             case HookIds.NOTIFY_NETTY_HANDLER_ADD -> nettyPipelinePatch.handlePipelineAdd(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_REGISTER -> packetEventsPatch.handleListenerRegister(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER -> packetEventsPatch.handleListenerUnregister(arg0);
+            case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER_ALL -> packetEventsPatch.handleUnregisterAllListeners(arg0);
             case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> bukkitApiPatch.handleNmsConnectionInit(arg0);
             default -> {
             }

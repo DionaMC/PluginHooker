@@ -181,6 +181,9 @@ public final class PatchVerifier {
         // 6. Verify join-grace read-only isolation for PacketEvents & ProtocolLib
         verifyJoinGraceReadOnlyIsolation(logger);
 
+        // 7. Verify HookConfig pre-configured plugins parsing (both Map & List YAML formats)
+        verifyHookConfigPluginsParsing(logger);
+
         logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
     }
 
@@ -655,6 +658,39 @@ public final class PatchVerifier {
             throw new AssertionError("ProtocolLib partial postListeners rollback failed: " + marker.getPostListeners());
         }
         logger.info("Verified join-grace read-only isolation for PacketEvents & ProtocolLib!");
+    }
+
+    private static void verifyHookConfigPluginsParsing(Logger logger) throws Exception {
+        HookConfig cfg = new HookConfig();
+        org.bukkit.configuration.file.YamlConfiguration mapYaml = new org.bukkit.configuration.file.YamlConfiguration();
+        mapYaml.loadFromString("""
+                sandbox:
+                  default-mode: WHITELIST
+                  plugins:
+                    GrimAC: WHITELIST
+                    Vulcan: BLACKLIST
+                """);
+        cfg.loadFromYaml(mapYaml);
+        if (cfg.getConfiguredPluginMode("grimac") != HookMode.WHITELIST
+                || cfg.getConfiguredPluginMode("VULCAN") != HookMode.BLACKLIST
+                || cfg.getConfiguredPluginMode("Unknown") != null) {
+            throw new AssertionError("Failed to parse map-style sandbox.plugins");
+        }
+
+        org.bukkit.configuration.file.YamlConfiguration listYaml = new org.bukkit.configuration.file.YamlConfiguration();
+        listYaml.loadFromString("""
+                sandbox:
+                  default-mode: WHITELIST
+                  plugins:
+                    - Matrix
+                    - Karhu:BLACKLIST
+                """);
+        cfg.loadFromYaml(listYaml);
+        if (cfg.getConfiguredPluginMode("Matrix") != HookMode.WHITELIST
+                || cfg.getConfiguredPluginMode("karhu") != HookMode.BLACKLIST) {
+            throw new AssertionError("Failed to parse list-style sandbox.plugins");
+        }
+        logger.info("Verified HookConfig sandbox.plugins YAML parsing!");
     }
 
     private static void verifyHookBridgeUnboundFallback(Logger logger, Class<?> bootstrapBridge) throws Exception {

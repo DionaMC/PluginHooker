@@ -28,6 +28,7 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 * `/ph plugin <add|remove|mode|list> [plugin] [WHITELIST|BLACKLIST]` - 管理受控插件与默认沙箱策略
 * `/ph player <player> <add|remove|reset|list> [plugin]` - 管理单个玩家的插件启用/禁用状态
 * `/ph debug` - 在线开关沙箱拦截调试日志输出
+* `/ph reload` - 热重载 `config.yml` 并应用预置受控插件配置
 
 ## API 用法
 

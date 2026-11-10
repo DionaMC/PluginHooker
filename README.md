@@ -28,6 +28,7 @@ PluginHooker is a per-player plugin sandbox for Bukkit/Spigot/Paper servers (1.8
 * `/ph plugin <add|remove|mode|list> [plugin] [WHITELIST|BLACKLIST]` - Manage hooked plugins and default sandbox mode
 * `/ph player <player> <add|remove|reset|list> [plugin]` - Manage per-player plugin sandbox state
 * `/ph debug` - Toggle sandbox interception debug logs
+* `/ph reload` - Reload `config.yml` and apply pre-configured sandbox plugins
 
 ## API Usage
 
