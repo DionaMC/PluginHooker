@@ -170,13 +170,16 @@ public final class PatchVerifier {
             }
         }
 
-            // 5. Verify Spigot/Paper libraryLoader, early plugin field, and child ClassLoader resolution
-            verifyPluginClassLoaderResolution(logger, pluginRegistry, cl);
+        // 4c. Verify HookBridge fallback Netty dispatch works losslessly when NETTY_DISPATCHER is unbound (null)
+        verifyHookBridgeUnboundFallback(logger, bootstrapBridge);
 
-            // 6. Verify join-grace read-only isolation for PacketEvents & ProtocolLib
-            verifyJoinGraceReadOnlyIsolation(logger);
+        // 5. Verify Spigot/Paper libraryLoader, early plugin field, and child ClassLoader resolution
+        verifyPluginClassLoaderResolution(logger, pluginRegistry, cl);
 
-            logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
+        // 6. Verify join-grace read-only isolation for PacketEvents & ProtocolLib
+        verifyJoinGraceReadOnlyIsolation(logger);
+
+        logger.info("ALL TARGET CLASSES PASSED JDK 25 BYTECODE VERIFICATION!");
     }
 
     private static final class SimulatedPluginClassLoader extends URLClassLoader {
@@ -558,6 +561,40 @@ public final class PatchVerifier {
             throw new AssertionError("ProtocolLib partial postListeners rollback failed: " + marker.getPostListeners());
         }
         logger.info("Verified join-grace read-only isolation for PacketEvents & ProtocolLib!");
+    }
+
+    private static void verifyHookBridgeUnboundFallback(Logger logger, Class<?> bootstrapBridge) throws Exception {
+        if (bootstrapBridge.getField("NETTY_DISPATCHER").get(null) != null) {
+            throw new AssertionError("Expected NETTY_DISPATCHER to be null after shutdown");
+        }
+        java.util.concurrent.atomic.AtomicReference<Object> readMsg = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Object> writtenMsg = new java.util.concurrent.atomic.AtomicReference<>();
+        ChannelDuplexHandler probe = new ChannelDuplexHandler() {
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                readMsg.set(msg);
+            }
+
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                writtenMsg.set(msg);
+                promise.trySuccess();
+            }
+        };
+        EmbeddedChannel ch = new EmbeddedChannel(probe);
+        ChannelHandlerContext ctx = ch.pipeline().context(probe);
+        ChannelPromise promise = ch.newPromise();
+
+        bootstrapBridge.getMethod("dispatchNettyRead", Object.class, Object.class, Object.class)
+                .invoke(null, probe, ctx, "inbound_ok");
+        bootstrapBridge.getMethod("dispatchNettyWrite", Object.class, Object.class, Object.class, Object.class)
+                .invoke(null, probe, ctx, "outbound_ok", promise);
+
+        if (!"inbound_ok".equals(readMsg.get()) || !"outbound_ok".equals(writtenMsg.get()) || !promise.isSuccess()) {
+            throw new AssertionError("HookBridge unbound Netty fallback failed to forward read/write");
+        }
+        ch.finish();
+        logger.info("Verified HookBridge unbound Netty fallback & cached bridge JAR!");
     }
 
     private static Path ensurePaperUnpacked(Logger logger, Path cacheDir) throws Exception {

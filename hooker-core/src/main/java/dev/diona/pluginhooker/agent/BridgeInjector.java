@@ -7,6 +7,9 @@ import java.lang.instrument.Instrumentation;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -33,23 +36,43 @@ public final class BridgeInjector {
             MethodHandle nettyDispatcher
     ) throws Exception {
         if (!injected) {
-            Path tempJar = Files.createTempFile("pluginhooker-bridge-", ".jar");
-            tempJar.toFile().deleteOnExit();
-
+            byte[] classBytes;
             try (InputStream in = BridgeInjector.class.getResourceAsStream(BRIDGE_RESOURCE_PATH)) {
                 if (in == null) {
                     throw new IllegalStateException("Could not locate " + BRIDGE_RESOURCE_PATH);
                 }
-                byte[] classBytes = in.readAllBytes();
-                try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(tempJar))) {
-                    JarEntry entry = new JarEntry("dev/diona/pluginhooker/bridge/HookBridge.class");
-                    jos.putNextEntry(entry);
-                    jos.write(classBytes);
-                    jos.closeEntry();
+                classBytes = in.readAllBytes();
+            }
+
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(classBytes);
+            String hashSuffix = HexFormat.of().formatHex(digest, 0, 8);
+            Path tempDir = Path.of(System.getProperty("java.io.tmpdir"));
+            Path bridgeJar = tempDir.resolve("pluginhooker-bridge-" + hashSuffix + ".jar");
+
+            if (!Files.isRegularFile(bridgeJar) || Files.size(bridgeJar) == 0L) {
+                Path stagingJar = Files.createTempFile(tempDir, "pluginhooker-bridge-tmp-", ".jar");
+                try {
+                    try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(stagingJar))) {
+                        JarEntry entry = new JarEntry("dev/diona/pluginhooker/bridge/HookBridge.class");
+                        jos.putNextEntry(entry);
+                        jos.write(classBytes);
+                        jos.closeEntry();
+                    }
+                    try {
+                        Files.move(stagingJar, bridgeJar, StandardCopyOption.REPLACE_EXISTING);
+                    } catch (Exception moveEx) {
+                        if (!Files.isRegularFile(bridgeJar)) {
+                            bridgeJar = stagingJar;
+                        }
+                    }
+                } finally {
+                    if (!stagingJar.equals(bridgeJar)) {
+                        Files.deleteIfExists(stagingJar);
+                    }
                 }
             }
 
-            instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(tempJar.toFile()));
+            instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(bridgeJar.toFile()));
             injected = true;
         }
 

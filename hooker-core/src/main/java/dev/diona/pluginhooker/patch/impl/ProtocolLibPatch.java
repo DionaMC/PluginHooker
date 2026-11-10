@@ -41,11 +41,6 @@ public final class ProtocolLibPatch extends ClassPatch {
     private static final String ASYNC_HANDLER = "com/comphenix/protocol/async/AsyncListenerHandler";
     private static final String PACKET_FILTER_MANAGER = "com/comphenix/protocol/injector/PacketFilterManager";
 
-    private static final ClassDesc ASYNC_HANDLER_DESC =
-            ClassDesc.ofInternalName(ASYNC_HANDLER);
-    private static final ClassDesc PACKET_LISTENER_DESC =
-            ClassDesc.ofInternalName("com/comphenix/protocol/events/PacketListener");
-
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
@@ -86,13 +81,9 @@ public final class ProtocolLibPatch extends ClassPatch {
 
         if (ASYNC_HANDLER.equals(internalClassName)) {
             return ClassTransform.transformingMethodBodies(
-                    method -> method.methodName().stringValue().startsWith("lambda$processPacket$")
-                            && method.methodTypeSymbol().parameterCount() == 1,
-                    CodeTransforms.guardVoidEntry(
-                            HookIds.GUARD_PROTOCOLLIB_ASYNC,
-                            ArgSpec.param(0),
-                            ArgSpec.getThisField(ASYNC_HANDLER_DESC, "listener", PACKET_LISTENER_DESC),
-                            ArgSpec.nullConst()
+                    CodeTransforms.guardProtocolLibListenerCalls(
+                            HookIds.GUARD_PROTOCOLLIB_OUTBOUND,
+                            HookIds.GUARD_PROTOCOLLIB_INBOUND
                     )
             );
         }
@@ -166,7 +157,7 @@ public final class ProtocolLibPatch extends ClassPatch {
             return true;
         }
 
-        if (config.protocolLib().isCallEvent()) {
+        if (config.protocolLib().isCallEvent() && Bukkit.getServer() != null) {
             ProtocolLibHookEvent hookEvent = new ProtocolLibHookEvent(
                     plugin,
                     hookedPlayer,

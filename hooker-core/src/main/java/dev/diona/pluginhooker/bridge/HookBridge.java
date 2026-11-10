@@ -1,6 +1,8 @@
 package dev.diona.pluginhooker.bridge;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.StackWalker;
 
 /**
@@ -45,6 +47,9 @@ public final class HookBridge {
      */
     public static volatile MethodHandle NETTY_DISPATCHER;
 
+    private static volatile MethodHandle FALLBACK_NETTY_READ;
+    private static volatile MethodHandle FALLBACK_NETTY_WRITE;
+
     private HookBridge() {
     }
 
@@ -87,6 +92,8 @@ public final class HookBridge {
         MethodHandle mh = NETTY_DISPATCHER;
         if (mh != null) {
             mh.invokeExact(0, handler, ctx, msg, (Object) null);
+        } else {
+            invokeFallbackNettyRead(handler, ctx, msg);
         }
     }
 
@@ -94,6 +101,37 @@ public final class HookBridge {
         MethodHandle mh = NETTY_DISPATCHER;
         if (mh != null) {
             mh.invokeExact(1, handler, ctx, msg, promise);
+        } else {
+            invokeFallbackNettyWrite(handler, ctx, msg, promise);
         }
+    }
+
+    private static void invokeFallbackNettyRead(Object handler, Object ctx, Object msg) throws Throwable {
+        MethodHandle fallback = FALLBACK_NETTY_READ;
+        if (fallback == null) {
+            ClassLoader nettyLoader = ctx.getClass().getClassLoader();
+            Class<?> inboundClass = Class.forName("io.netty.channel.ChannelInboundHandler", false, nettyLoader);
+            Class<?> ctxClass = Class.forName("io.netty.channel.ChannelHandlerContext", false, nettyLoader);
+            fallback = MethodHandles.publicLookup()
+                    .findVirtual(inboundClass, "channelRead", MethodType.methodType(void.class, ctxClass, Object.class))
+                    .asType(MethodType.methodType(void.class, Object.class, Object.class, Object.class));
+            FALLBACK_NETTY_READ = fallback;
+        }
+        fallback.invokeExact(handler, ctx, msg);
+    }
+
+    private static void invokeFallbackNettyWrite(Object handler, Object ctx, Object msg, Object promise) throws Throwable {
+        MethodHandle fallback = FALLBACK_NETTY_WRITE;
+        if (fallback == null) {
+            ClassLoader nettyLoader = ctx.getClass().getClassLoader();
+            Class<?> outboundClass = Class.forName("io.netty.channel.ChannelOutboundHandler", false, nettyLoader);
+            Class<?> ctxClass = Class.forName("io.netty.channel.ChannelHandlerContext", false, nettyLoader);
+            Class<?> promiseClass = Class.forName("io.netty.channel.ChannelPromise", false, nettyLoader);
+            fallback = MethodHandles.publicLookup()
+                    .findVirtual(outboundClass, "write", MethodType.methodType(void.class, ctxClass, Object.class, promiseClass))
+                    .asType(MethodType.methodType(void.class, Object.class, Object.class, Object.class, Object.class));
+            FALLBACK_NETTY_WRITE = fallback;
+        }
+        fallback.invokeExact(handler, ctx, msg, promise);
     }
 }

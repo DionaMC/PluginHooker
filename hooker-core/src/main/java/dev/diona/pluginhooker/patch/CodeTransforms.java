@@ -297,6 +297,45 @@ public final class CodeTransforms {
     }
 
     /**
+     * Wraps {@code PacketListener#onPacketSending(PacketEvent)} and {@code PacketListener#onPacketReceiving(PacketEvent)}
+     * interface invocations inside ProtocolLib's {@code AsyncListenerHandler} with a guard check, avoiding brittle
+     * reliance on compiler-generated synthetic lambda method names while executing inside {@code AsyncMarker}'s lock.
+     */
+    public static CodeTransform guardProtocolLibListenerCalls(int outboundHookId, int inboundHookId) {
+        return (cb, element) -> {
+            if (element instanceof InvokeInstruction inv
+                    && inv.opcode() == Opcode.INVOKEINTERFACE
+                    && inv.owner().asInternalName().equals("com/comphenix/protocol/events/PacketListener")
+                    && inv.type().equalsString("(Lcom/comphenix/protocol/events/PacketEvent;)V")) {
+                String methodName = inv.name().stringValue();
+                int hookId = methodName.equals("onPacketSending")
+                        ? outboundHookId
+                        : (methodName.equals("onPacketReceiving") ? inboundHookId : -1);
+                if (hookId != -1) {
+                    // Stack before call: [..., listener, event]
+                    Label invokeLabel = cb.newLabel();
+                    Label doneLabel = cb.newLabel();
+                    cb.dup2();        // [..., listener, event, listener, event]
+                    cb.swap();        // [..., listener, event, event, listener]
+                    cb.ldc(hookId);   // [..., listener, event, event, listener, hookId]
+                    cb.dup_x2();      // [..., listener, event, hookId, event, listener, hookId]
+                    cb.pop();         // [..., listener, event, hookId, event, listener]
+                    cb.aconst_null(); // [..., listener, event, hookId, event, listener, null]
+                    cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
+                    cb.ifeq(invokeLabel);
+                    cb.pop2();        // blocked -> drop [listener, event]
+                    cb.goto_(doneLabel);
+                    cb.labelBinding(invokeLabel);
+                    cb.with(element); // allowed -> invoke original PacketListener method
+                    cb.labelBinding(doneLabel);
+                    return;
+                }
+            }
+            cb.with(element);
+        };
+    }
+
+    /**
      * Replaces a Netty handler invocation ({@code invokeinterface} or Netty 4.2 devirtualized {@code invokevirtual})
      * inside {@code AbstractChannelHandlerContext} with a static bridge call, excluding {@code HeadContext}.
      */
