@@ -64,12 +64,19 @@ public final class PlayerChannelResolver {
             return;
         }
         channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
-        if (onChannelClose != null
-                && !Boolean.TRUE.equals(channel.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
-            channel.closeFuture().addListener(future -> {
+        if (onChannelClose != null) {
+            if (!Boolean.TRUE.equals(channel.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
+                channel.closeFuture().addListener(future -> {
+                    HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).getAndSet(null);
+                    onChannelClose.accept(bound != null ? bound : hookedPlayer);
+                });
+            }
+            if (!channel.isOpen()) {
                 HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).getAndSet(null);
-                onChannelClose.accept(bound != null ? bound : hookedPlayer);
-            });
+                if (bound != null) {
+                    onChannelClose.accept(bound);
+                }
+            }
         }
     }
 

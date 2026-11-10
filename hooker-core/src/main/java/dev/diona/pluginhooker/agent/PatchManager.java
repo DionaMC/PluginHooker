@@ -107,7 +107,21 @@ public final class PatchManager {
     public void shutdown() {
         if (instrumentation != null && activeTransformer != null) {
             instrumentation.removeTransformer(activeTransformer);
+            activeTransformer = null;
+            for (Class<?> loadedClass : instrumentation.getAllLoadedClasses()) {
+                if (!instrumentation.isModifiableClass(loadedClass)) {
+                    continue;
+                }
+                String internalName = loadedClass.getName().replace('.', '/');
+                if (transformedClasses.remove(internalName)) {
+                    try {
+                        instrumentation.retransformClasses(loadedClass);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
         }
+        BridgeInjector.unbind();
     }
 
     private void retransformAlreadyLoadedClasses() {

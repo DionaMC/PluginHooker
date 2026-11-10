@@ -33,6 +33,9 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         }
         Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
         boolean realChannel = PlayerChannelResolver.isRealNetworkChannel(channel);
+        if (realChannel && !channel.isOpen()) {
+            return null;
+        }
         long graceMillis = realChannel ? config.getJoinGraceMillis() : 0L;
         UUID uuid = bukkitPlayer.getUniqueId();
         HookedPlayerImpl hookedPlayer = players.compute(uuid, (id, existing) -> {

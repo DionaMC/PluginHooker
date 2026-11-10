@@ -63,6 +63,17 @@ public final class BridgeInjector {
         }
     }
 
+    public static synchronized void unbind() {
+        try {
+            Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, false, null);
+            bindHandles(bootstrapBridge, null, null, null, null);
+            if (bootstrapBridge != HookBridge.class) {
+                bindHandles(HookBridge.class, null, null, null, null);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void bindHandles(
             Class<?> bridgeClass,
             MethodHandle guardDispatcher,
