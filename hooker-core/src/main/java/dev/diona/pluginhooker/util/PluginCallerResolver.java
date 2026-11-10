@@ -238,7 +238,11 @@ public final class PluginCallerResolver {
      * pipeline processing (e.g. ViaVersion or PacketEvents compression/relocation), returns {@code null}
      * immediately so pipeline-internal forwarding is never blocked as an active packet send.
      */
-    public static Plugin resolveDirectByteBufWriteCaller(PluginRegistry registry, ClassLoader selfLoader) {
+    public static Plugin resolveDirectByteBufWriteCaller(
+            PluginRegistry registry,
+            ClassLoader selfLoader,
+            boolean fromTailContext
+    ) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
@@ -255,21 +259,23 @@ public final class PluginCallerResolver {
                 if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
                     continue;
                 }
-                // If the direct caller of 1-arg write/writeAndFlush is a ChannelHandler (or inside a pipeline
-                // encode/decode/write/channelRead callback), this is pipeline forwarding, not an active send!
-                if (ChannelHandler.class.isAssignableFrom(callerClass)) {
-                    return null;
-                }
-                String methodName = frame.getMethodName();
-                if (methodName.equals("encode")
-                        || methodName.equals("decode")
-                        || methodName.equals("channelRead")
-                        || methodName.equals("handleClientBoundPacket")
-                        || methodName.equals("handleServerBoundPacket")
-                        || methodName.equals("handleCompression")
-                        || methodName.equals("compress")
-                        || methodName.equals("decompress")) {
-                    return null;
+                if (!fromTailContext) {
+                    // When invoked on a mid-pipeline ChannelHandlerContext (ctx.write/writeAndFlush) from inside a
+                    // ChannelHandler or codec method, this is pipeline forwarding rather than an active send.
+                    if (ChannelHandler.class.isAssignableFrom(callerClass)) {
+                        return null;
+                    }
+                    String methodName = frame.getMethodName();
+                    if (methodName.equals("encode")
+                            || methodName.equals("decode")
+                            || methodName.equals("channelRead")
+                            || methodName.equals("handleClientBoundPacket")
+                            || methodName.equals("handleServerBoundPacket")
+                            || methodName.equals("handleCompression")
+                            || methodName.equals("compress")
+                            || methodName.equals("decompress")) {
+                        return null;
+                    }
                 }
                 return resolveHookedPluginFromLoader(registry, loader);
             }
@@ -291,33 +297,76 @@ public final class PluginCallerResolver {
         }
         return DIRECT_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
+            boolean seenHookedEntry = false;
+            Plugin candidate = null;
+            int postCandidateDepth = 0;
+
             while (iterator.hasNext()) {
                 StackWalker.StackFrame frame = iterator.next();
                 Class<?> callerClass = frame.getDeclaringClass();
-                ClassLoader loader = callerClass.getClassLoader();
-                if (loader == null || loader == selfLoader) {
-                    continue;
-                }
                 String className = callerClass.getName();
-                if (className.startsWith("io.netty.") || className.startsWith("dev.diona.pluginhooker.")) {
-                    continue;
-                }
-                String simpleName = callerClass.getSimpleName();
-                if (simpleName.equals("ChannelOperatorImpl")
-                        || simpleName.equals("NettyChannelOperator")
-                        || simpleName.equals("ChannelOperator")
-                        || simpleName.equals("ChannelHelper")
-                        || simpleName.equals("User")) {
-                    continue;
-                }
                 String methodName = frame.getMethodName();
-                if (ChannelHandler.class.isAssignableFrom(callerClass)
-                        && (methodName.equals("close") || methodName.equals("disconnect"))) {
-                    return null;
+
+                if (className.startsWith("dev.diona.pluginhooker.")) {
+                    continue;
                 }
-                return resolveHookedPluginFromLoader(registry, loader);
+
+                if (candidate == null) {
+                    if (className.equals("io.netty.channel.AbstractChannelHandlerContext")
+                            && (methodName.equals("close") || methodName.equals("disconnect"))) {
+                        if (frame.getDescriptor().startsWith("()")) {
+                            // Unhooked 0-arg close()/disconnect() delegating into 1-arg close(ChannelPromise)
+                            continue;
+                        }
+                        if (!seenHookedEntry) {
+                            seenHookedEntry = true;
+                            continue;
+                        }
+                        // Already checked by an outer 1-arg disconnect(ChannelPromise) / close(ChannelPromise)
+                        return null;
+                    }
+                    if (className.startsWith("io.netty.")) {
+                        if (methodName.equals("invokeClose") || methodName.equals("invokeDisconnect")) {
+                            return null;
+                        }
+                        continue;
+                    }
+                    ClassLoader loader = callerClass.getClassLoader();
+                    if (loader == null || loader == selfLoader) {
+                        return null;
+                    }
+                    String simpleName = callerClass.getSimpleName();
+                    if (simpleName.equals("ChannelOperatorImpl")
+                            || simpleName.equals("NettyChannelOperator")
+                            || simpleName.equals("ChannelOperator")
+                            || simpleName.equals("ChannelHelper")
+                            || simpleName.equals("User")) {
+                        continue;
+                    }
+                    if (ChannelHandler.class.isAssignableFrom(callerClass)
+                            && (methodName.equals("close") || methodName.equals("disconnect"))) {
+                        return null;
+                    }
+                    candidate = resolveHookedPluginFromLoader(registry, loader);
+                    if (candidate == null) {
+                        return null;
+                    }
+                } else {
+                    // Ensure the hooked plugin frame was not merely forwarding an already-active pipeline
+                    // close/disconnect (e.g. via a helper method inside ChannelOutboundHandler#close)
+                    if (className.equals("io.netty.channel.AbstractChannelHandlerContext")
+                            && (methodName.equals("close")
+                                || methodName.equals("invokeClose")
+                                || methodName.equals("disconnect")
+                                || methodName.equals("invokeDisconnect"))) {
+                        return null;
+                    }
+                    if (++postCandidateDepth >= 8) {
+                        break;
+                    }
+                }
             }
-            return null;
+            return candidate;
         });
     }
 

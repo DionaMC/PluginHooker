@@ -1,6 +1,8 @@
 package dev.diona.pluginhooker;
 
 import dev.diona.pluginhooker.agent.PatchManager;
+import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.impl.BukkitApiPatch;
@@ -10,6 +12,15 @@ import dev.diona.pluginhooker.patch.impl.PacketEventsPatch;
 import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
+import dev.diona.pluginhooker.util.PlayerChannelResolver;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
+import io.netty.channel.embedded.EmbeddedChannel;
 
 import java.io.File;
 import java.io.InputStream;
@@ -145,6 +156,9 @@ public final class PatchVerifier {
             }
             logger.info("Verified multi-ClassLoader live instrumentation!");
 
+            // 4b. Verify live Netty pipeline behavior before shutdown
+            verifyNettyPipelineBehavior(logger, pluginRegistry, cl);
+
             patchManager.shutdown();
 
             if (patchManager.isClassTransformed(emA) || patchManager.isClassTransformed(emB)) {
@@ -211,6 +225,123 @@ public final class PatchVerifier {
                 throw new AssertionError("Expected disabled plugin libraryLoader mapping to be cleared");
             }
             logger.info("Verified PluginRegistryImpl libraryLoader & child ClassLoader resolution!");
+        }
+    }
+
+    private static final class ChildFirstActorLoader extends URLClassLoader {
+        ChildFirstActorLoader(URL testClassesUrl, ClassLoader parent) {
+            super(new URL[]{testClassesUrl}, parent);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (name.startsWith("testplugin.")) {
+                synchronized (getClassLoadingLock(name)) {
+                    Class<?> c = findLoadedClass(name);
+                    if (c == null) {
+                        c = findClass(name);
+                    }
+                    if (resolve) {
+                        resolveClass(c);
+                    }
+                    return c;
+                }
+            }
+            return super.loadClass(name, resolve);
+        }
+    }
+
+    private static void verifyNettyPipelineBehavior(
+            Logger logger,
+            PluginRegistryImpl pluginRegistry,
+            ClassLoader parentLoader
+    ) throws Exception {
+        URL testClassesUrl = PatchVerifier.class.getProtectionDomain().getCodeSource().getLocation();
+        try (ChildFirstActorLoader pluginLoader = new ChildFirstActorLoader(testClassesUrl, parentLoader)) {
+            org.bukkit.plugin.Plugin mockPlugin = (org.bukkit.plugin.Plugin) Proxy.newProxyInstance(
+                    pluginLoader,
+                    new Class<?>[]{org.bukkit.plugin.Plugin.class},
+                    (proxy, method, mArgs) -> switch (method.getName()) {
+                        case "getName" -> "DisabledNettyAnticheat";
+                        case "equals" -> proxy == mArgs[0];
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        default -> null;
+                    }
+            );
+            pluginRegistry.registerPlugin(mockPlugin, HookMode.WHITELIST);
+
+            HookedPlayer mockHookedPlayer = (HookedPlayer) Proxy.newProxyInstance(
+                    parentLoader,
+                    new Class<?>[]{HookedPlayer.class},
+                    (proxy, method, mArgs) -> switch (method.getName()) {
+                        case "getName" -> "TestPlayer";
+                        case "isPluginEnabled" -> false;
+                        case "hasAnyDisabledPlugin" -> true;
+                        case "isInJoinGracePeriod" -> false;
+                        default -> null;
+                    }
+            );
+
+            Class<?> actorClass = Class.forName("testplugin.MockNettyPluginActor", true, pluginLoader);
+            ChannelDuplexHandler disabledHandler = (ChannelDuplexHandler) actorClass.getDeclaredConstructor().newInstance();
+
+            java.util.concurrent.atomic.AtomicReference<Object> headReceivedWrite = new java.util.concurrent.atomic.AtomicReference<>();
+            ChannelDuplexHandler captureDownstream = new ChannelDuplexHandler() {
+                @Override
+                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                    headReceivedWrite.set(msg);
+                    super.write(ctx, msg, promise);
+                }
+            };
+
+            EmbeddedChannel ch = new EmbeddedChannel(captureDownstream);
+            ch.attr(PlayerChannelResolver.HOOKED_PLAYER_KEY).set(mockHookedPlayer);
+            ch.pipeline().addLast("disabled_ac", disabledHandler);
+
+            try {
+                // 1. Bypassing disabled handler must NOT swallow Unpooled.EMPTY_BUFFER flush markers
+                ChannelFuture emptyFuture = ch.writeAndFlush(Unpooled.EMPTY_BUFFER);
+                ch.runPendingTasks();
+                if (headReceivedWrite.get() != Unpooled.EMPTY_BUFFER || !emptyFuture.isSuccess()) {
+                    throw new AssertionError("Expected Unpooled.EMPTY_BUFFER to pass through bypassed handler, got: " + headReceivedWrite.get());
+                }
+                headReceivedWrite.set(null);
+                ch.readOutbound();
+
+                // 2. 2-arg write(buf, voidPromise) and writeAndFlush(buf, promise) from disabled plugin must be blocked
+                ByteBuf raw1 = Unpooled.buffer(4).writeInt(42);
+                actorClass.getMethod("writeTwoArgVoidPromise", Channel.class, ByteBuf.class).invoke(null, ch, raw1);
+                ch.runPendingTasks();
+                if (headReceivedWrite.get() != null || raw1.refCnt() != 0) {
+                    throw new AssertionError("Expected 2-arg write(ByteBuf, voidPromise) from disabled plugin to be blocked and released");
+                }
+
+                ByteBuf raw2 = Unpooled.buffer(4).writeInt(99);
+                ChannelPromise customPromise = ch.newPromise();
+                Object retFuture = actorClass.getMethod("writeAndFlushTwoArgPromise", Channel.class, ByteBuf.class, ChannelPromise.class)
+                        .invoke(null, ch, raw2, customPromise);
+                ch.runPendingTasks();
+                if (retFuture != customPromise || !customPromise.isSuccess() || headReceivedWrite.get() != null || raw2.refCnt() != 0) {
+                    throw new AssertionError("Expected 2-arg writeAndFlush(ByteBuf, promise) to be blocked, released, and succeed promise");
+                }
+
+                // 3. Direct channel.close() from disabled plugin must be blocked
+                actorClass.getMethod("directClose", Channel.class).invoke(null, ch);
+                ch.runPendingTasks();
+                if (!ch.isOpen()) {
+                    throw new AssertionError("Expected direct channel.close() from disabled plugin to be blocked");
+                }
+
+                // 4. Server-initiated channel.close() propagating through disabled handler's helper method must succeed!
+                ch.close();
+                ch.runPendingTasks();
+                if (ch.isOpen()) {
+                    throw new AssertionError("Server-initiated channel.close() was falsely blocked by disabled handler helper!");
+                }
+            } finally {
+                pluginRegistry.handlePluginDisable(mockPlugin);
+            }
+            logger.info("Verified live Netty pipeline bypass, 2-arg ByteBuf block, and close propagation!");
         }
     }
 

@@ -59,6 +59,13 @@ public final class NettyPipelinePatch extends ClassPatch {
             "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V"
     );
 
+    private static final ClassValue<Boolean> TAIL_CONTEXT_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> contextClass) {
+            return contextClass.getName().endsWith("$TailContext");
+        }
+    };
+
     private static final ClassValue<Boolean> EXCLUDED_HANDLER_CACHE = new ClassValue<>() {
         @Override
         protected Boolean computeValue(Class<?> handlerClass) {
@@ -147,31 +154,46 @@ public final class NettyPipelinePatch extends ClassPatch {
                 var methodOpt = codeModel.parent();
                 String name = methodOpt.map(m -> m.methodName().stringValue()).orElse("");
                 String desc = methodOpt.map(m -> m.methodType().stringValue()).orElse("");
-                if ((name.equals("write") || name.equals("writeAndFlush"))
+                if (name.equals("write")
                         && desc.equals("(Ljava/lang/Object;)Lio/netty/channel/ChannelFuture;")) {
                     CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
                             HookIds.GUARD_NETTY_WRITE_BYTEBUF,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
-                            ArgSpec.nullConst()
+                            ArgSpec.nullConst(),
+                            -1
+                    );
+                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                } else if (name.equals("write")
+                        && desc.equals("(Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
+                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_WRITE_BYTEBUF_TAIL,
+                            ArgSpec.thisRef(),
+                            ArgSpec.param(0),
+                            ArgSpec.param(1),
+                            1
+                    );
+                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                } else if (name.equals("writeAndFlush")
+                        && desc.equals("(Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
+                    // Note: 1-arg writeAndFlush(Object) always delegates to 2-arg writeAndFlush(Object, ChannelPromise)
+                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_WRITE_BYTEBUF,
+                            ArgSpec.thisRef(),
+                            ArgSpec.param(0),
+                            ArgSpec.param(1),
+                            1
                     );
                     mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
                 } else if ((name.equals("close") || name.equals("disconnect"))
-                        && desc.equals("()Lio/netty/channel/ChannelFuture;")) {
-                    CodeTransform closeGuard = CodeTransforms.guardNettyChannelFutureEntry(
-                            HookIds.GUARD_NETTY_CLOSE,
-                            ArgSpec.thisRef(),
-                            ArgSpec.nullConst(),
-                            ArgSpec.nullConst()
-                    );
-                    mb.transformCode(codeModel, closeGuard.andThen(handlerCallsTransform));
-                } else if ((name.equals("close") || name.equals("disconnect"))
                         && desc.equals("(Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
+                    // Note: 0-arg close() and disconnect() always delegate to their 1-arg ChannelPromise overloads
                     CodeTransform closeGuard = CodeTransforms.guardNettyChannelFutureEntry(
                             HookIds.GUARD_NETTY_CLOSE,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
-                            ArgSpec.nullConst()
+                            ArgSpec.nullConst(),
+                            0
                     );
                     mb.transformCode(codeModel, closeGuard.andThen(handlerCallsTransform));
                 } else {
@@ -184,11 +206,16 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     /**
-     * Intercepts direct {@code channel.write/writeAndFlush(ByteBuf)} and {@code ctx.write/writeAndFlush(ByteBuf)}
-     * calls initiated by disabled plugins (including completely obfuscated shaded PacketEvents).
+     * Intercepts direct {@code channel.write/writeAndFlush(ByteBuf[, promise])} and
+     * {@code ctx.write/writeAndFlush(ByteBuf[, promise])} calls initiated by disabled plugins
+     * (including completely obfuscated shaded PacketEvents).
      */
-    public boolean handleWriteByteBuf(Object ctxObj, Object msg) {
+    public boolean handleWriteByteBuf(Object ctxObj, Object msg, Object promiseObj, boolean requireTailContext) {
         if (!(msg instanceof ByteBuf buf) || !pluginRegistry.hasHookedPlugins()) {
+            return false;
+        }
+        boolean isTail = TAIL_CONTEXT_CACHE.get(ctxObj.getClass());
+        if (requireTailContext && !isTail) {
             return false;
         }
         if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
@@ -198,7 +225,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader);
+        Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader, isTail);
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -206,6 +233,9 @@ public final class NettyPipelinePatch extends ClassPatch {
                         + " to player " + hookedPlayer.getName());
             }
             ReferenceCountUtil.safeRelease(msg);
+            if (promiseObj instanceof ChannelPromise promise) {
+                promise.trySuccess();
+            }
             return true;
         }
         return false;
@@ -231,7 +261,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         boolean enabled = hookedPlayer.isPluginEnabled(caller);
         boolean shouldBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
 
-        if (config.bukkitApi().isCallKickEvent()) {
+        if (config.bukkitApi().isCallKickEvent() && Bukkit.getServer() != null) {
             PlayerChannelCloseHookEvent hookEvent = new PlayerChannelCloseHookEvent(
                     caller,
                     hookedPlayer,
@@ -292,7 +322,7 @@ public final class NettyPipelinePatch extends ClassPatch {
                         bypassHandler(ctx, msg, promiseObj, outbound);
                         return;
                     }
-                    if (config.netty().isCallEvent()) {
+                    if (config.netty().isCallEvent() && Bukkit.getServer() != null) {
                         NettyHookEvent hookEvent = new NettyHookEvent(plugin, hookedPlayer, msg, outbound);
                         Bukkit.getPluginManager().callEvent(hookEvent);
                         if (hookEvent.isCancelled()) {
@@ -324,13 +354,6 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {
-        if ( msg instanceof ByteBuf buf && !buf.isReadable()) {
-            ReferenceCountUtil.safeRelease(msg);
-            if (outbound && promiseObj instanceof ChannelPromise promise) {
-                promise.trySuccess();
-            }
-            return;
-        }
         if (outbound) {
             ctx.write(msg, (ChannelPromise) promiseObj);
         } else {

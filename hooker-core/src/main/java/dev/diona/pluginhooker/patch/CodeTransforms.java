@@ -151,10 +151,25 @@ public final class CodeTransforms {
 
     /**
      * Injects a guard check at the start of Netty's 1-arg {@code AbstractChannelHandlerContext#write(Object)}
-     * or {@code writeAndFlush(Object)} (returning {@code ChannelFuture}):
+     * (returning {@code ChannelFuture}):
      * {@code if (HookBridge.checkGuard(hookId, this, msg, null)) return this.newSucceededFuture();}
      */
     public static CodeTransform guardNettyChannelFutureEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
+        return guardNettyChannelFutureEntry(hookId, arg0, arg1, arg2, -1);
+    }
+
+    /**
+     * Injects a guard check at the start of a Netty {@code AbstractChannelHandlerContext} outbound method
+     * returning {@code ChannelFuture}. If {@code promiseParamIndex >= 0} and the passed {@code ChannelPromise}
+     * argument is non-null, returns that promise directly; otherwise returns {@code this.newSucceededFuture()}.
+     */
+    public static CodeTransform guardNettyChannelFutureEntry(
+            int hookId,
+            ArgSpec arg0,
+            ArgSpec arg1,
+            ArgSpec arg2,
+            int promiseParamIndex
+    ) {
         ClassDesc ctxDesc = ClassDesc.of("io.netty.channel.AbstractChannelHandlerContext");
         MethodTypeDesc succeededFutureMtd = MethodTypeDesc.ofDescriptor("()Lio/netty/channel/ChannelFuture;");
         return new CodeTransform() {
@@ -167,6 +182,15 @@ public final class CodeTransforms {
                 cb.invokestatic(BRIDGE_DESC, "checkGuard", GUARD_MTD);
                 Label continueLabel = cb.newLabel();
                 cb.ifeq(continueLabel);
+                if (promiseParamIndex >= 0) {
+                    int promiseSlot = cb.parameterSlot(promiseParamIndex);
+                    Label nullPromiseLabel = cb.newLabel();
+                    cb.aload(promiseSlot);
+                    cb.ifnull(nullPromiseLabel);
+                    cb.aload(promiseSlot);
+                    cb.areturn();
+                    cb.labelBinding(nullPromiseLabel);
+                }
                 cb.aload(0);
                 cb.invokevirtual(ctxDesc, "newSucceededFuture", succeededFutureMtd);
                 cb.areturn();
