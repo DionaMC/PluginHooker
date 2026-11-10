@@ -11,11 +11,16 @@ dependencies {
 
     implementation("net.bytebuddy:byte-buddy-agent:1.18.17")
     implementation("org.bstats:bstats-bukkit:3.2.1")
+
+    testImplementation(platform("org.junit:junit-bom:5.12.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 sourceSets {
     test {
         compileClasspath += main.get().compileClasspath
+        runtimeClasspath += main.get().compileClasspath
     }
 }
 
@@ -39,7 +44,8 @@ tasks {
     }
 
     test {
-        failOnNoDiscoveredTests.set(false)
+        useJUnitPlatform()
+        jvmArgs("-XX:+EnableDynamicAgentLoading")
     }
 
     val verifyPatches = register<JavaExec>("verifyPatches") {
