@@ -11,6 +11,8 @@ import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginOwnerSlot;
+import dev.diona.pluginhooker.service.PluginOwnerSlot.ActivePlugin;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
@@ -31,7 +33,6 @@ import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.CodeTransform;
 import java.lang.constant.MethodTypeDesc;
-import java.lang.ref.WeakReference;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
@@ -88,26 +89,6 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     };
 
-    private record ActivePlugin(Plugin plugin, HookMode mode) {
-    }
-
-    private static final class HandlerOwnerSlot {
-        final boolean permanentlyExcluded;
-        final boolean needsContextFallback;
-        final WeakReference<Plugin> ownerRef;
-        volatile int syncedVersion;
-        volatile ActivePlugin active;
-
-        private HandlerOwnerSlot(boolean permanentlyExcluded, boolean needsContextFallback, WeakReference<Plugin> ownerRef) {
-            this.permanentlyExcluded = permanentlyExcluded;
-            this.needsContextFallback = needsContextFallback;
-            this.ownerRef = ownerRef;
-        }
-
-        static final HandlerOwnerSlot EXCLUDED = new HandlerOwnerSlot(true, false, null);
-        static final HandlerOwnerSlot CONTEXT_FALLBACK = new HandlerOwnerSlot(false, true, null);
-    }
-
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
@@ -118,20 +99,20 @@ public final class NettyPipelinePatch extends ClassPatch {
             new MapMaker().weakKeys().makeMap();
     private volatile boolean hasFallbackContexts;
 
-    private final ClassValue<HandlerOwnerSlot> handlerOwnerCache = new ClassValue<>() {
+    private final ClassValue<PluginOwnerSlot> handlerOwnerCache = new ClassValue<>() {
         @Override
-        protected HandlerOwnerSlot computeValue(Class<?> handlerClass) {
+        protected PluginOwnerSlot computeValue(Class<?> handlerClass) {
             if (EXCLUDED_HANDLER_CACHE.get(handlerClass)) {
-                return HandlerOwnerSlot.EXCLUDED;
+                return PluginOwnerSlot.EXCLUDED;
             }
             Plugin owner = pluginRegistry.getPluginByClassLoader(handlerClass.getClassLoader());
             if (owner == null) {
-                return HandlerOwnerSlot.CONTEXT_FALLBACK;
+                return PluginOwnerSlot.FALLBACK;
             }
             if (PluginCallerResolver.isSharedPacketFramework(owner)) {
-                return HandlerOwnerSlot.EXCLUDED;
+                return PluginOwnerSlot.EXCLUDED;
             }
-            return new HandlerOwnerSlot(false, false, new WeakReference<>(owner));
+            return PluginOwnerSlot.forOwner(owner);
         }
     };
 
@@ -382,36 +363,14 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     private ActivePlugin resolveHookedHandler(Object handlerObj, ChannelHandlerContext ctx) {
-        HandlerOwnerSlot slot = handlerOwnerCache.get(handlerObj.getClass());
-        if (slot.permanentlyExcluded) {
+        PluginOwnerSlot slot = handlerOwnerCache.get(handlerObj.getClass());
+        if (slot.isExcluded()) {
             return null;
         }
-        if (slot.needsContextFallback) {
-            if (!hasFallbackContexts) {
-                return null;
-            }
-            Plugin fallback = contextToPlugin.get(ctx);
-            if (fallback == null) {
-                return null;
-            }
-            HookMode mode = pluginRegistry.getHookMode(fallback);
-            return mode != null ? new ActivePlugin(fallback, mode) : null;
+        if (!slot.isFallback()) {
+            return slot.resolveActive(pluginRegistry);
         }
-        int currentVersion = pluginRegistry.getVersion();
-        if (slot.syncedVersion == currentVersion) {
-            return slot.active;
-        }
-        Plugin owner = slot.ownerRef.get();
-        if (owner == null) {
-            slot.active = null;
-            slot.syncedVersion = currentVersion;
-            return null;
-        }
-        HookMode mode = pluginRegistry.getHookMode(owner);
-        ActivePlugin resolved = mode != null ? new ActivePlugin(owner, mode) : null;
-        slot.active = resolved;
-        slot.syncedVersion = currentVersion;
-        return resolved;
+        return hasFallbackContexts ? ActivePlugin.of(contextToPlugin.get(ctx), pluginRegistry) : null;
     }
 
     private static void bypassHandler(ChannelHandlerContext ctx, Object msg, Object promiseObj, boolean outbound) {

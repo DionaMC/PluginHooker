@@ -1,8 +1,14 @@
 package dev.diona.pluginhooker.util;
 
+import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
+import com.github.retrooper.packetevents.protocol.player.User;
+import dev.diona.pluginhooker.api.player.HookedPlayer;
+import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.util.ReferenceCountUtil;
+import org.bukkit.entity.Player;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -10,7 +16,6 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -18,7 +23,7 @@ import java.util.UUID;
  */
 public final class PacketEventsReflector {
 
-    public record ShadedEventAccessors(
+    private record ShadedEventAccessors(
             MethodHandle getPlayer,
             MethodHandle getChannel,
             MethodHandle getUser,
@@ -38,20 +43,35 @@ public final class PacketEventsReflector {
     ) {
     }
 
-    private static final ClassValue<Optional<MethodHandle>> UNWRAP_LISTENER_HANDLE = new ClassValue<>() {
+    private static final ClassValue<MethodHandle> UNWRAP_LISTENER_HANDLE = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> listenerClass) {
+        protected MethodHandle computeValue(Class<?> listenerClass) {
             try {
                 Field f = listenerClass.getDeclaredField("this$0");
                 f.setAccessible(true);
-                return Optional.of(
-                        MethodHandles.lookup()
-                                .unreflectGetter(f)
-                                .asType(MethodType.methodType(Object.class, Object.class))
-                );
+                return MethodHandles.lookup()
+                        .unreflectGetter(f)
+                        .asType(MethodType.methodType(Object.class, Object.class));
             } catch (ReflectiveOperationException e) {
-                return Optional.empty();
+                return null;
             }
+        }
+    };
+
+    private static final ClassValue<MethodHandle> EVENT_MANAGER_LISTENERS_GETTER = new ClassValue<>() {
+        @Override
+        protected MethodHandle computeValue(Class<?> emClass) {
+            try {
+                Field f = emClass.getDeclaredField("listeners");
+                if (Object[].class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    return MethodHandles.lookup()
+                            .unreflectGetter(f)
+                            .asType(MethodType.methodType(Object[].class, Object.class));
+                }
+            } catch (ReflectiveOperationException ignored) {
+            }
+            return null;
         }
     };
 
@@ -80,45 +100,112 @@ public final class PacketEventsReflector {
         }
     };
 
-    private static final ClassValue<Optional<MethodHandle>> SHADED_USER_UUID_GETTER = new ClassValue<>() {
+    private static final ClassValue<MethodHandle> SHADED_USER_UUID_GETTER = new ClassValue<>() {
         @Override
-        protected Optional<MethodHandle> computeValue(Class<?> userClass) {
-            return Optional.ofNullable(findNoArgGetter(MethodHandles.lookup(), userClass, "getUUID"));
+        protected MethodHandle computeValue(Class<?> userClass) {
+            return findNoArgGetter(MethodHandles.lookup(), userClass, "getUUID");
         }
     };
 
     private PacketEventsReflector() {
     }
 
-    public static ShadedEventAccessors getAccessors(Class<?> eventClass) {
-        return SHADED_EVENT_ACCESSORS.get(eventClass);
-    }
-
     /**
      * Unwraps {@code PacketListener$1.this$0} when a plugin registers via {@code PacketListener#asAbstract}.
      */
     public static Object unwrapListener(Object listener) {
-        Optional<MethodHandle> unwrapOpt = UNWRAP_LISTENER_HANDLE.get(listener.getClass());
-        if (unwrapOpt.isEmpty()) {
+        MethodHandle unwrap = UNWRAP_LISTENER_HANDLE.get(listener.getClass());
+        if (unwrap == null) {
             return null;
         }
         try {
-            return unwrapOpt.get().invokeExact(listener);
+            return unwrap.invokeExact(listener);
         } catch (Throwable ignored) {
             return null;
         }
     }
 
-    public static UUID extractShadedUserUuid(Object userObj) {
-        if (userObj == null) {
-            return null;
-        }
-        Optional<MethodHandle> uuidGetter = SHADED_USER_UUID_GETTER.get(userObj.getClass());
-        if (uuidGetter.isEmpty()) {
+    /**
+     * Extracts the snapshot {@code listeners} array from a standalone or shaded PacketEvents {@code EventManager}.
+     */
+    public static Object[] extractListenersArray(Object eventManager) {
+        MethodHandle getter = EVENT_MANAGER_LISTENERS_GETTER.get(eventManager.getClass());
+        if (getter == null) {
             return null;
         }
         try {
-            Object uuidObj = uuidGetter.get().invokeExact(userObj);
+            return (Object[]) getter.invokeExact(eventManager);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolves the {@link HookedPlayer} associated with a standalone or shaded PacketEvents packet event.
+     */
+    public static HookedPlayer resolveEventPlayer(Object event, PlayerRegistryImpl playerRegistry) {
+        if (event instanceof ProtocolPacketEvent ppe) {
+            if (ppe.getChannel() instanceof Channel ch) {
+                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+                if (hp != null) {
+                    return hp;
+                }
+            }
+            if (ppe.getPlayer() instanceof Player p) {
+                HookedPlayer hp = playerRegistry.getPlayer(p);
+                if (hp != null) {
+                    return hp;
+                }
+            }
+            User user = ppe.getUser();
+            if (user != null && user.getUUID() != null) {
+                return playerRegistry.getPlayer(user.getUUID());
+            }
+            return null;
+        }
+
+        ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
+        try {
+            if (accessors.getChannel() != null) {
+                Object channelObj = accessors.getChannel().invokeExact(event);
+                if (channelObj instanceof Channel ch) {
+                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+                    if (hp != null) {
+                        return hp;
+                    }
+                }
+            }
+            if (accessors.getPlayer() != null) {
+                Object playerObj = accessors.getPlayer().invokeExact(event);
+                if (playerObj instanceof Player p) {
+                    HookedPlayer hp = playerRegistry.getPlayer(p);
+                    if (hp != null) {
+                        return hp;
+                    }
+                }
+            }
+            if (accessors.getUser() != null) {
+                Object userObj = accessors.getUser().invokeExact(event);
+                UUID uuid = extractShadedUserUuid(userObj);
+                if (uuid != null) {
+                    return playerRegistry.getPlayer(uuid);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static UUID extractShadedUserUuid(Object userObj) {
+        if (userObj == null) {
+            return null;
+        }
+        MethodHandle uuidGetter = SHADED_USER_UUID_GETTER.get(userObj.getClass());
+        if (uuidGetter == null) {
+            return null;
+        }
+        try {
+            Object uuidObj = uuidGetter.invokeExact(userObj);
             return uuidObj instanceof UUID uuid ? uuid : null;
         } catch (Throwable ignored) {
             return null;

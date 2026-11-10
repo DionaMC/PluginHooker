@@ -2,7 +2,6 @@ package dev.diona.pluginhooker.patch.impl;
 
 import com.github.retrooper.packetevents.event.PacketEvent;
 import com.github.retrooper.packetevents.event.PacketListenerCommon;
-import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
 import com.github.retrooper.packetevents.manager.protocol.ProtocolManager;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.google.common.collect.MapMaker;
@@ -16,30 +15,23 @@ import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
+import dev.diona.pluginhooker.service.PluginOwnerSlot;
+import dev.diona.pluginhooker.service.PluginOwnerSlot.ActivePlugin;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.PacketEventsReflector;
-import dev.diona.pluginhooker.util.PacketEventsReflector.ShadedEventAccessors;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
-import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 
@@ -96,45 +88,6 @@ public final class PacketEventsPatch extends ClassPatch {
         }
     };
 
-    private static final ClassValue<Optional<MethodHandle>> EVENT_MANAGER_LISTENERS_GETTER = new ClassValue<>() {
-        @Override
-        protected Optional<MethodHandle> computeValue(Class<?> emClass) {
-            try {
-                Field f = emClass.getDeclaredField("listeners");
-                if (Object[].class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    return Optional.of(
-                            MethodHandles.lookup()
-                                    .unreflectGetter(f)
-                                    .asType(MethodType.methodType(Object[].class, Object.class))
-                    );
-                }
-            } catch (ReflectiveOperationException ignored) {
-            }
-            return Optional.empty();
-        }
-    };
-
-    private record ActivePlugin(Plugin plugin, HookMode mode) {
-    }
-
-    private static final class ListenerOwnerSlot {
-        final boolean excluded;
-        final boolean unwrapInner;
-        final WeakReference<Plugin> ownerRef;
-        volatile int syncedVersion;
-        volatile ActivePlugin active;
-
-        private ListenerOwnerSlot(boolean excluded, boolean unwrapInner, WeakReference<Plugin> ownerRef) {
-            this.excluded = excluded;
-            this.unwrapInner = unwrapInner;
-            this.ownerRef = ownerRef;
-        }
-
-        static final ListenerOwnerSlot EXCLUDED = new ListenerOwnerSlot(true, false, null);
-        static final ListenerOwnerSlot UNWRAP_OR_FALLBACK = new ListenerOwnerSlot(false, true, null);
-    }
-
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
@@ -145,17 +98,17 @@ public final class PacketEventsPatch extends ClassPatch {
             new MapMaker().weakKeys().makeMap();
     private volatile boolean hasFallbackListeners;
 
-    private final ClassValue<ListenerOwnerSlot> listenerOwnerCache = new ClassValue<>() {
+    private final ClassValue<PluginOwnerSlot> listenerOwnerCache = new ClassValue<>() {
         @Override
-        protected ListenerOwnerSlot computeValue(Class<?> listenerClass) {
+        protected PluginOwnerSlot computeValue(Class<?> listenerClass) {
             if (INTERNAL_LISTENER_CACHE.get(listenerClass)) {
-                return ListenerOwnerSlot.EXCLUDED;
+                return PluginOwnerSlot.EXCLUDED;
             }
             Plugin owner = pluginRegistry.getPluginByClassLoader(listenerClass.getClassLoader());
             if (owner != null && !PluginCallerResolver.isSharedPacketFramework(owner)) {
-                return new ListenerOwnerSlot(false, false, new WeakReference<>(owner));
+                return PluginOwnerSlot.forOwner(owner);
             }
-            return ListenerOwnerSlot.UNWRAP_OR_FALLBACK;
+            return PluginOwnerSlot.FALLBACK;
         }
     };
 
@@ -272,18 +225,12 @@ public final class PacketEventsPatch extends ClassPatch {
         if (eventManager == null || !hasFallbackListeners) {
             return;
         }
-        Optional<MethodHandle> getterOpt = EVENT_MANAGER_LISTENERS_GETTER.get(eventManager.getClass());
-        if (getterOpt.isPresent()) {
-            try {
-                Object[] current = (Object[]) getterOpt.get().invokeExact(eventManager);
-                if (current != null) {
-                    for (Object listener : current) {
-                        if (listener != null) {
-                            listenerToPlugin.remove(listener);
-                        }
-                    }
+        Object[] current = PacketEventsReflector.extractListenersArray(eventManager);
+        if (current != null) {
+            for (Object listener : current) {
+                if (listener != null) {
+                    listenerToPlugin.remove(listener);
                 }
-            } catch (Throwable ignored) {
             }
         }
         hasFallbackListeners = !listenerToPlugin.isEmpty();
@@ -337,7 +284,7 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
 
-        HookedPlayer hookedPlayer = resolveHookedPlayer(event);
+        HookedPlayer hookedPlayer = PacketEventsReflector.resolveEventPlayer(event, playerRegistry);
         if (hookedPlayer == null) {
             return false;
         }
@@ -360,46 +307,21 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     private ActivePlugin resolveHookedListener(Object listener) {
-        ListenerOwnerSlot slot = listenerOwnerCache.get(listener.getClass());
-        if (slot.excluded) {
+        PluginOwnerSlot slot = listenerOwnerCache.get(listener.getClass());
+        if (slot.isExcluded()) {
             return null;
         }
-        if (!slot.unwrapInner) {
-            return checkSlotActive(slot);
+        if (!slot.isFallback()) {
+            return slot.resolveActive(pluginRegistry);
         }
         Object inner = PacketEventsReflector.unwrapListener(listener);
         if (inner != null) {
-            ListenerOwnerSlot innerSlot = listenerOwnerCache.get(inner.getClass());
-            if (!innerSlot.excluded && !innerSlot.unwrapInner) {
-                return checkSlotActive(innerSlot);
+            PluginOwnerSlot innerSlot = listenerOwnerCache.get(inner.getClass());
+            if (!innerSlot.isExcluded() && !innerSlot.isFallback()) {
+                return innerSlot.resolveActive(pluginRegistry);
             }
         }
-        if (hasFallbackListeners) {
-            Plugin fallback = listenerToPlugin.get(listener);
-            if (fallback != null) {
-                HookMode mode = pluginRegistry.getHookMode(fallback);
-                return mode != null ? new ActivePlugin(fallback, mode) : null;
-            }
-        }
-        return null;
-    }
-
-    private ActivePlugin checkSlotActive(ListenerOwnerSlot slot) {
-        int currentVersion = pluginRegistry.getVersion();
-        if (slot.syncedVersion == currentVersion) {
-            return slot.active;
-        }
-        Plugin owner = slot.ownerRef.get();
-        if (owner == null) {
-            slot.active = null;
-            slot.syncedVersion = currentVersion;
-            return null;
-        }
-        HookMode mode = pluginRegistry.getHookMode(owner);
-        ActivePlugin resolved = mode != null ? new ActivePlugin(owner, mode) : null;
-        slot.active = resolved;
-        slot.syncedVersion = currentVersion;
-        return resolved;
+        return hasFallbackListeners ? ActivePlugin.of(listenerToPlugin.get(listener), pluginRegistry) : null;
     }
 
     /**
@@ -416,60 +338,6 @@ public final class PacketEventsPatch extends ClassPatch {
             if (innerOwner != null && !PluginCallerResolver.isSharedPacketFramework(innerOwner)) {
                 return innerOwner;
             }
-        }
-        return null;
-    }
-
-    private HookedPlayer resolveHookedPlayer(Object event) {
-        if (event instanceof ProtocolPacketEvent ppe) {
-            if (ppe.getChannel() instanceof Channel ch) {
-                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            if (ppe.getPlayer() instanceof Player p) {
-                HookedPlayer hp = playerRegistry.getPlayer(p);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            User user = ppe.getUser();
-            if (user != null && user.getUUID() != null) {
-                return playerRegistry.getPlayer(user.getUUID());
-            }
-            return null;
-        }
-
-        // Shaded/relocated PacketEvents event instance
-        ShadedEventAccessors accessors = PacketEventsReflector.getAccessors(event.getClass());
-        try {
-            if (accessors.getChannel() != null) {
-                Object channelObj = accessors.getChannel().invokeExact(event);
-                if (channelObj instanceof Channel ch) {
-                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                    if (hp != null) {
-                        return hp;
-                    }
-                }
-            }
-            if (accessors.getPlayer() != null) {
-                Object playerObj = accessors.getPlayer().invokeExact(event);
-                if (playerObj instanceof Player p) {
-                    HookedPlayer hp = playerRegistry.getPlayer(p);
-                    if (hp != null) {
-                        return hp;
-                    }
-                }
-            }
-            if (accessors.getUser() != null) {
-                Object userObj = accessors.getUser().invokeExact(event);
-                UUID uuid = PacketEventsReflector.extractShadedUserUuid(userObj);
-                if (uuid != null) {
-                    return playerRegistry.getPlayer(uuid);
-                }
-            }
-        } catch (Throwable ignored) {
         }
         return null;
     }
