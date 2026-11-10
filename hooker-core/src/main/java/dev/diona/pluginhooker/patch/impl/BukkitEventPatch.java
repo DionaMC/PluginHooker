@@ -49,6 +49,19 @@ public final class BukkitEventPatch extends ClassPatch {
             "PlayerServerFullCheckEvent"
     );
 
+    private static final ClassValue<Boolean> WHITELISTED_EVENT_CACHE = new ClassValue<>() {
+        @Override
+        @SuppressWarnings("deprecation")
+        protected Boolean computeValue(Class<?> eventClass) {
+            return AsyncPlayerPreLoginEvent.class.isAssignableFrom(eventClass)
+                    || PlayerPreLoginEvent.class.isAssignableFrom(eventClass)
+                    || PlayerLoginEvent.class.isAssignableFrom(eventClass)
+                    || PlayerJoinEvent.class.isAssignableFrom(eventClass)
+                    || PlayerQuitEvent.class.isAssignableFrom(eventClass)
+                    || WHITELISTED_LIFECYCLE_EVENTS.contains(eventClass.getSimpleName());
+        }
+    };
+
     private final HookConfig config;
     private final PluginRegistry pluginRegistry;
     private final PlayerRegistry playerRegistry;
@@ -81,28 +94,17 @@ public final class BukkitEventPatch extends ClassPatch {
     /**
      * Returns true if the event execution for this listener should be blocked.
      */
-    @SuppressWarnings("deprecation")
     public boolean handleCallEvent(Object pluginObj, Object eventObj) {
-        if (!(pluginObj instanceof Plugin plugin) || !(eventObj instanceof Event event)) {
+        if (!(pluginObj instanceof Plugin plugin)
+                || !pluginRegistry.isHooked(plugin)
+                || !(eventObj instanceof Event event)) {
             return false;
         }
 
-        // Always allow connection lifecycle events so plugins can create/remove their internal PlayerData
-        if (event instanceof AsyncPlayerPreLoginEvent
-                || event instanceof PlayerPreLoginEvent
-                || event instanceof PlayerLoginEvent
-                || event instanceof PlayerJoinEvent
-                || event instanceof PlayerQuitEvent
-                || WHITELISTED_LIFECYCLE_EVENTS.contains(event.getClass().getSimpleName())) {
-            return false;
-        }
-
-        // Ignore PluginHooker's own hook events
-        if (event.getClass().getClassLoader() == selfClassLoader) {
-            return false;
-        }
-
-        if (!pluginRegistry.isHooked(plugin)) {
+        Class<?> eventClass = event.getClass();
+        // Always allow connection lifecycle events so plugins can create/remove their internal PlayerData,
+        // and ignore PluginHooker's own hook events
+        if (eventClass.getClassLoader() == selfClassLoader || WHITELISTED_EVENT_CACHE.get(eventClass)) {
             return false;
         }
 
