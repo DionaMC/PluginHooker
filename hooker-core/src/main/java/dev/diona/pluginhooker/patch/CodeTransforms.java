@@ -62,6 +62,13 @@ public final class CodeTransforms {
                 cb.getfield(owner, fieldName, fieldType);
             };
         }
+
+        static ArgSpec invokeThisGetter(ClassDesc owner, String methodName, ClassDesc returnType) {
+            return cb -> {
+                cb.aload(0);
+                cb.invokevirtual(owner, methodName, MethodTypeDesc.of(returnType));
+            };
+        }
     }
 
     /**

@@ -185,7 +185,7 @@ public final class PatchManager {
                 continue;
             }
             for (ClassPatch patch : patches) {
-                if (patch.isEnabled() && patch.matchesClass(internalName)) {
+                if (patch.isEnabled() && (patch.matchesClass(internalName) || patch.matchesLoadedClass(loadedClass))) {
                     toRetransform.add(loadedClass);
                     break;
                 }
@@ -266,7 +266,8 @@ public final class PatchManager {
             byte[] currentBytes = classfileBuffer;
             boolean anyMatched = false;
             for (ClassPatch patch : patches) {
-                if (!patch.isEnabled() || !patch.matchesClass(className)) {
+                if (!patch.isEnabled()
+                        || !patch.matchesClass(className) && !patch.matchesClassFile(className, currentBytes)) {
                     continue;
                 }
                 if (!anyMatched) {

@@ -6,7 +6,7 @@ PluginHooker is a per-player plugin sandbox for Bukkit/Spigot/Paper servers (1.8
 
 ## Features
 
-* **Hook Bukkit Events**: Per-player isolation at `RegisteredListener#callEvent` with lock-free `ClassValue` `MethodHandle` player extraction.
+* **Hook Bukkit Events**: Per-player isolation at `RegisteredListener#callEvent`, and in subclasses that override it without calling it, with lock-free `ClassValue` `MethodHandle` player extraction.
 * **Hook Bukkit Player & Entity Lookup APIs**: Hide disabled players from hooked plugins in `Bukkit.getOnlinePlayers()`, `Bukkit.matchPlayer()`, `Bukkit.getPlayer(...)`, `World#getPlayers()`, `World#getPlayersSeeingChunk(...)`, `World#getEntities()`, `World#getLivingEntities()`, `World#getEntitiesByClass(...)`, and `getNearbyEntities(...)`.
 * **Hook Bukkit & NMS Player Side-Effects**: Block disabled plugins from interfering with players via `Player#kickPlayer` / `Player#kick(Component)`, `Bukkit.dispatchCommand`, `Player#teleport` / `Player#teleportAsync`, `Player#setVelocity`, `Player#sendMessage`, `Player.Spigot#sendMessage`, `Bukkit.broadcast`, and direct NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`.
 * **Hook NMS Connection Lifecycle**: Hooks `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>` directly to bind the player's Netty `Channel` and fire `PlayerHookRegisterEvent` before the very first `JOIN_GAME` packet is sent, with automatic `channel.closeFuture()` cleanup and zero-grace protection for NPC / fake players (`EmptyChannel`).

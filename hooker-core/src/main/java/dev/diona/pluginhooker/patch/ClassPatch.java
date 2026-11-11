@@ -34,6 +34,28 @@ public abstract class ClassPatch {
     public abstract boolean matchesClass(String internalClassName);
 
     /**
+     * Checks whether this patch applies to a class its name does not identify, such as a subclass of a target. Only
+     * asked for classes {@link #matchesClass} rejects.
+     *
+     * @param internalClassName the JVM internal class name
+     * @param classfileBuffer   the class bytes
+     * @return true if this patch targets the class
+     */
+    public boolean matchesClassFile(String internalClassName, byte[] classfileBuffer) {
+        return false;
+    }
+
+    /**
+     * Checks whether an already loaded class may be one {@link #matchesClassFile} accepts, so that it is retransformed.
+     *
+     * @param loadedClass the loaded class
+     * @return true if the class should be offered to the transformer
+     */
+    public boolean matchesLoadedClass(Class<?> loadedClass) {
+        return false;
+    }
+
+    /**
      * Creates the {@link ClassTransform} for the matched class.
      *
      * @param internalClassName the JVM internal class name

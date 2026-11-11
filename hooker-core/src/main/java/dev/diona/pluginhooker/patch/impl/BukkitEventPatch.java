@@ -23,18 +23,27 @@ import org.bukkit.event.player.PlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 
+import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.InvokeInstruction;
 import java.lang.constant.ClassDesc;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
- * Hooks {@code org.bukkit.plugin.RegisteredListener#callEvent(Event)} to sandbox Bukkit event listeners per player.
+ * Hooks {@code org.bukkit.plugin.RegisteredListener#callEvent(Event)} to sandbox Bukkit event listeners per player,
+ * and the {@code callEvent} of subclasses that override it without calling it, such as Intave's.
  */
 @RequiredArgsConstructor
 public final class BukkitEventPatch extends ClassPatch {
 
     private static final String TARGET_CLASS = "org/bukkit/plugin/RegisteredListener";
+    private static final byte[] TARGET_CLASS_UTF8 = TARGET_CLASS.getBytes(StandardCharsets.UTF_8);
+    private static final String CALL_EVENT = "callEvent";
+    private static final String CALL_EVENT_TYPE = "(Lorg/bukkit/event/Event;)V";
     private static final ClassDesc REGISTERED_LISTENER_DESC = ClassDesc.of("org.bukkit.plugin.RegisteredListener");
     private static final ClassDesc PLUGIN_DESC = ClassDesc.of("org.bukkit.plugin.Plugin");
 
@@ -80,17 +89,63 @@ public final class BukkitEventPatch extends ClassPatch {
     }
 
     @Override
+    public boolean matchesClassFile(String internalClassName, byte[] classfileBuffer) {
+        // Most classes never name RegisteredListener, and finding that out needs no parsing
+        if (!contains(classfileBuffer, TARGET_CLASS_UTF8)) {
+            return false;
+        }
+        ClassModel model = ClassFile.of().parse(classfileBuffer);
+        boolean subclass = model.superclass()
+                .map(superclass -> superclass.asInternalName().equals(TARGET_CLASS))
+                .orElse(false);
+        return subclass && model.methods().stream()
+                .filter(BukkitEventPatch::isCallEvent)
+                .anyMatch(method -> method.code().isPresent() && !callsBaseCallEvent(method));
+    }
+
+    @Override
+    public boolean matchesLoadedClass(Class<?> loadedClass) {
+        Class<?> superclass = loadedClass.getSuperclass();
+        return superclass != null && superclass.getName().replace('.', '/').equals(TARGET_CLASS);
+    }
+
+    @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
+        ArgSpec plugin = TARGET_CLASS.equals(internalClassName)
+                ? ArgSpec.getThisField(REGISTERED_LISTENER_DESC, "plugin", PLUGIN_DESC)
+                // The field is private to RegisteredListener
+                : ArgSpec.invokeThisGetter(REGISTERED_LISTENER_DESC, "getPlugin", PLUGIN_DESC);
         return ClassTransform.transformingMethodBodies(
-                method -> method.methodName().equalsString("callEvent")
-                        && method.methodType().equalsString("(Lorg/bukkit/event/Event;)V"),
-                CodeTransforms.guardVoidEntry(
-                        HookIds.GUARD_BUKKIT_EVENT,
-                        ArgSpec.getThisField(REGISTERED_LISTENER_DESC, "plugin", PLUGIN_DESC),
-                        ArgSpec.param(0),
-                        ArgSpec.nullConst()
-                )
+                BukkitEventPatch::isCallEvent,
+                CodeTransforms.guardVoidEntry(HookIds.GUARD_BUKKIT_EVENT, plugin, ArgSpec.param(0), ArgSpec.nullConst())
         );
+    }
+
+    private static boolean isCallEvent(MethodModel method) {
+        return method.methodName().equalsString(CALL_EVENT) && method.methodType().equalsString(CALL_EVENT_TYPE);
+    }
+
+    /** An override that calls {@code super.callEvent} goes through the hooked base method already. */
+    private static boolean callsBaseCallEvent(MethodModel method) {
+        return method.code().orElseThrow().elementStream().anyMatch(element ->
+                element instanceof InvokeInstruction invoke
+                        && invoke.opcode() == Opcode.INVOKESPECIAL
+                        && invoke.owner().asInternalName().equals(TARGET_CLASS)
+                        && invoke.name().equalsString(CALL_EVENT)
+        );
+    }
+
+    private static boolean contains(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = 0, last = haystack.length - needle.length; i <= last; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
