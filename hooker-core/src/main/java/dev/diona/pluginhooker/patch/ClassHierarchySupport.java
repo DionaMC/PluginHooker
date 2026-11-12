@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 public final class ClassHierarchySupport {
 
+    private static final ClassFile DEFAULT_CLASS_FILE = ClassFile.of();
     private static final String OBJECT_INTERNAL_NAME = "java/lang/Object";
     private static final String NO_SUPER = "";
     private static final int MAX_HIERARCHY_DEPTH = 32;
@@ -34,6 +35,10 @@ public final class ClassHierarchySupport {
             new MapMaker().weakKeys().makeMap();
 
     private ClassHierarchySupport() {
+    }
+
+    public static void clear() {
+        LOADER_CACHE.clear();
     }
 
     /**
@@ -88,7 +93,7 @@ public final class ClassHierarchySupport {
     private static String loadSuperInternalName(ClassLoader loader, String internalClassName) {
         try (InputStream in = loader.getResourceAsStream(internalClassName + ".class")) {
             if (in != null) {
-                ClassModel model = ClassFile.of().parse(in.readAllBytes());
+                ClassModel model = DEFAULT_CLASS_FILE.parse(in.readAllBytes());
                 return isInterface(model) ? null : model.superclass().map(ClassEntry::asInternalName).orElse(null);
             }
         } catch (Throwable ignored) {

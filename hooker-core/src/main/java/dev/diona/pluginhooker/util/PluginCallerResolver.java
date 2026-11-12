@@ -222,15 +222,26 @@ public final class PluginCallerResolver {
     /**
      * Resolves the direct plugin caller (including reflective {@code Method.invoke} / {@code MethodHandle} calls)
      * of an instrumented NMS connection method such as {@code sendPacket}, {@code send}, or {@code disconnect}.
-     * Only invoked after verifying that the target player actually has disabled plugins or kick event hooks.
+     * Uses the C2-intrinsified {@code directCallerObj} ({@link StackWalker#getCallerClass()}) in O(1) without
+     * {@link StackWalker#walk}, falling back to stack walking only for bootstrap-loaded reflection frames.
      */
     public static Plugin resolveDirectNmsCaller(
             PluginRegistry registry,
             ClassLoader selfLoader,
-            Class<?> connectionClass
+            Class<?> connectionClass,
+            Object directCallerObj
     ) {
         if (!registry.hasHookedPlugins()) {
             return null;
+        }
+        if (directCallerObj instanceof Class<?> directCaller) {
+            if (directCaller.isAssignableFrom(connectionClass)) {
+                return null;
+            }
+            ClassLoader loader = directCaller.getClassLoader();
+            if (loader != null) {
+                return loader == selfLoader ? null : resolveHookedPluginFromLoader(registry, loader);
+            }
         }
         return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();

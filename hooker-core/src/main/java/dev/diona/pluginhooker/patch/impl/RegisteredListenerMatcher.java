@@ -20,6 +20,7 @@ import java.lang.classfile.instruction.LoadInstruction;
 import java.lang.classfile.instruction.ReturnInstruction;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * Identifies direct and multi-level {@code RegisteredListener} subclasses that override {@code callEvent(Event)}
@@ -35,8 +36,11 @@ final class RegisteredListenerMatcher {
 
     private static final String CALL_EVENT = "callEvent";
     private static final String CALL_EVENT_TYPE = "(Lorg/bukkit/event/Event;)V";
-    private static final byte[] CALL_EVENT_UTF8 = CALL_EVENT.getBytes(StandardCharsets.UTF_8);
-    private static final byte[] CALL_EVENT_TYPE_UTF8 = CALL_EVENT_TYPE.getBytes(StandardCharsets.UTF_8);
+
+    private static final ClassLoader PLATFORM_CLASS_LOADER = ClassLoader.getPlatformClassLoader();
+    private static final ClassFile DEFAULT_CLASS_FILE = ClassFile.of();
+    private static final BytePattern CALL_EVENT_TYPE_PATTERN = new BytePattern(CALL_EVENT_TYPE);
+    private static final BytePattern CALL_EVENT_NAME_PATTERN = new BytePattern(CALL_EVENT);
 
     private final LoaderClassSet verifiedPassthroughClasses = new LoaderClassSet();
 
@@ -49,12 +53,15 @@ final class RegisteredListenerMatcher {
     }
 
     boolean matchesClassFile(ClassLoader loader, String internalClassName, byte[] classfileBuffer) {
-        // Any class overriding void callEvent(Event) must contain its UTF-8 method name and descriptor in the
-        // constant pool, regardless of how many intermediate superclasses sit between it and RegisteredListener
-        if (!containsBytes(classfileBuffer, CALL_EVENT_UTF8) || !containsBytes(classfileBuffer, CALL_EVENT_TYPE_UTF8)) {
+        if (loader == null || loader == PLATFORM_CLASS_LOADER || isNonCandidateClass(internalClassName)) {
             return false;
         }
-        ClassModel model = ClassFile.of().parse(classfileBuffer);
+        // Any class overriding void callEvent(Event) must contain its UTF-8 descriptor and method name in the
+        // constant pool; check the 27-byte descriptor first via Boyer-Moore-Horspool to skip ~27 bytes per step
+        if (!CALL_EVENT_TYPE_PATTERN.matchesIn(classfileBuffer) || !CALL_EVENT_NAME_PATTERN.matchesIn(classfileBuffer)) {
+            return false;
+        }
+        ClassModel model = DEFAULT_CLASS_FILE.parse(classfileBuffer);
         if ((model.flags().flagsMask() & ClassFile.ACC_INTERFACE) != 0) {
             return false;
         }
@@ -187,16 +194,63 @@ final class RegisteredListenerMatcher {
         return callsSuper;
     }
 
-    private static boolean containsBytes(byte[] haystack, byte[] needle) {
-        outer:
-        for (int i = 0, last = haystack.length - needle.length; i <= last; i++) {
-            for (int j = 0; j < needle.length; j++) {
-                if (haystack[i + j] != needle[j]) {
-                    continue outer;
-                }
+    private static boolean isNonCandidateClass(String internalName) {
+        return internalName.startsWith("java/")
+                || internalName.startsWith("javax/")
+                || internalName.startsWith("jdk/")
+                || internalName.startsWith("sun/")
+                || internalName.startsWith("com/sun/")
+                || internalName.startsWith("net/minecraft/")
+                || internalName.startsWith("com/mojang/")
+                || internalName.startsWith("io/netty/")
+                || internalName.startsWith("com/google/")
+                || internalName.startsWith("it/unimi/")
+                || internalName.startsWith("org/apache/")
+                || internalName.startsWith("org/slf4j/")
+                || internalName.startsWith("org/objectweb/asm/")
+                || internalName.startsWith("dev/diona/pluginhooker/");
+    }
+
+    private static final class BytePattern {
+        private final byte[] pattern;
+        private final int[] shift;
+
+        BytePattern(String ascii) {
+            this.pattern = ascii.getBytes(StandardCharsets.UTF_8);
+            this.shift = new int[256];
+            int len = pattern.length;
+            Arrays.fill(shift, len);
+            for (int i = 0; i < len - 1; i++) {
+                shift[pattern[i] & 0xFF] = len - 1 - i;
             }
-            return true;
         }
-        return false;
+
+        boolean matchesIn(byte[] data) {
+            byte[] pat = this.pattern;
+            int m = pat.length;
+            int last = m - 1;
+            int limit = data.length - m;
+            if (limit < 0) {
+                return false;
+            }
+            byte lastByte = pat[last];
+            byte firstByte = pat[0];
+            int[] shiftTable = this.shift;
+            int i = 0;
+            while (i <= limit) {
+                byte b = data[i + last];
+                if (b == lastByte && data[i] == firstByte) {
+                    int j = 1;
+                    while (j < last && data[i + j] == pat[j]) {
+                        j++;
+                    }
+                    if (j == last) {
+                        return true;
+                    }
+                }
+                i += shiftTable[b & 0xFF];
+            }
+            return false;
+        }
     }
 }

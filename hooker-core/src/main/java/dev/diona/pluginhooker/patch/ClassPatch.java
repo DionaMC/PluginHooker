@@ -10,6 +10,8 @@ import java.lang.classfile.ClassTransform;
  */
 public abstract class ClassPatch {
 
+    private static final ClassFile DEFAULT_CLASS_FILE = ClassFile.of();
+
     /**
      * Checks whether this patch is enabled in the configuration.
      *
@@ -72,7 +74,7 @@ public abstract class ClassPatch {
      * @return the transformed class bytes
      */
     public final byte[] transform(ClassLoader loader, String internalClassName, byte[] classfileBuffer) {
-        ClassModel model = ClassFile.of().parse(classfileBuffer);
+        ClassModel model = DEFAULT_CLASS_FILE.parse(classfileBuffer);
         ClassHierarchyResolver resolver = ClassHierarchySupport.resolverFor(loader, model);
         ClassFile cf = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(resolver));
         return cf.transformClass(model, createTransform(internalClassName, model));

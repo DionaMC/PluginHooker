@@ -22,7 +22,10 @@ import org.bukkit.plugin.Plugin;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
+import java.lang.classfile.CodeElement;
 import java.lang.classfile.CodeModel;
+import java.lang.classfile.CodeTransform;
+import java.lang.classfile.MethodModel;
 import java.lang.constant.ConstantDescs;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -196,76 +199,52 @@ public final class NmsConnectionPatch extends ClassPatch {
                 || internalClassName.endsWith("/ServerGamePacketListenerImpl");
         boolean isRawConnection = internalClassName.equals("net/minecraft/network/Connection")
                 || internalClassName.endsWith("/NetworkManager");
+        CodeTransform channelWriteWrapper = isRawConnection
+                ? CodeTransforms.wrapNmsChannelWriteCalls(HookIds.NOTIFY_NMS_INTERNAL_WRITE)
+                : null;
 
         return ClassTransform.transformingMethods(
-                method -> {
-                    int flags = method.flags().flagsMask();
-                    if ((flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_BRIDGE | ClassFile.ACC_SYNTHETIC)) != 0) {
-                        return false;
-                    }
-                    String name = method.methodName().stringValue();
-                    var mtd = method.methodTypeSymbol();
-                    if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
-                        return false;
-                    }
-                    if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
-                        return true;
-                    }
-                    int paramCount = mtd.parameterCount();
-                    if ((flags & ClassFile.ACC_PUBLIC) == 0
-                            || paramCount < 1
-                            || mtd.parameterType(0).isPrimitive()) {
-                        return false;
-                    }
-                    if ((name.equals("sendPacket") || name.equals("send")) && paramCount <= 3) {
-                        return true;
-                    }
-                    if (isRawConnection) {
-                        if (name.equals("sendPacketAndScheduleNettyTask") && paramCount == 3) {
-                            return true;
-                        }
-                        if ((name.equals("handle") && paramCount == 1)
-                                || (name.equals("a") && (paramCount == 2 || paramCount == 3))) {
-                            return isPacketDescriptor(mtd.parameterType(0).descriptorString());
-                        }
-                        if (name.equals("close") && paramCount == 1) {
-                            return true;
-                        }
-                    }
-                    return name.equals("disconnect") || name.equals("disconnectAsync");
-                },
+                method -> isTargetGuardMethod(method, isGameConnection, isRawConnection)
+                        || (isRawConnection && hasChannelWriteCall(method)),
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
-                        String name = codeModel.parent().map(m -> m.methodName().stringValue()).orElse("");
-                        if (name.equals(ConstantDescs.INIT_NAME)) {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.notifyBeforeReturn(
-                                            HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
-                        } else if (name.equals("disconnect") || name.equals("disconnectAsync") || name.equals("close")) {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.guardVoidEntry(
-                                            HookIds.GUARD_NMS_DISCONNECT,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.param(0),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
+                        var parentOpt = codeModel.parent();
+                        boolean guardTarget = parentOpt
+                                .map(m -> isTargetGuardMethod(m, isGameConnection, isRawConnection))
+                                .orElse(false);
+                        String name = parentOpt.map(m -> m.methodName().stringValue()).orElse("");
+
+                        CodeTransform transform = null;
+                        if (guardTarget) {
+                            if (name.equals(ConstantDescs.INIT_NAME)) {
+                                transform = CodeTransforms.notifyBeforeReturn(
+                                        HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT,
+                                        ArgSpec.thisRef(),
+                                        ArgSpec.nullConst()
+                                );
+                            } else if (name.equals("disconnect") || name.equals("disconnectAsync") || name.equals("close")) {
+                                transform = CodeTransforms.guardVoidEntry(
+                                        HookIds.GUARD_NMS_DISCONNECT,
+                                        ArgSpec.thisRef(),
+                                        ArgSpec.param(0),
+                                        ArgSpec.callerClass()
+                                );
+                            } else {
+                                transform = CodeTransforms.guardVoidEntry(
+                                        HookIds.GUARD_NMS_SEND_PACKET,
+                                        ArgSpec.thisRef(),
+                                        ArgSpec.param(0),
+                                        ArgSpec.callerClass()
+                                );
+                            }
+                        }
+                        if (channelWriteWrapper != null && containsChannelWriteCall(codeModel)) {
+                            transform = transform != null ? transform.andThen(channelWriteWrapper) : channelWriteWrapper;
+                        }
+                        if (transform != null) {
+                            mb.transformCode(codeModel, transform);
                         } else {
-                            mb.transformCode(
-                                    codeModel,
-                                    CodeTransforms.guardVoidEntry(
-                                            HookIds.GUARD_NMS_SEND_PACKET,
-                                            ArgSpec.thisRef(),
-                                            ArgSpec.param(0),
-                                            ArgSpec.nullConst()
-                                    )
-                            );
+                            mb.with(element);
                         }
                     } else {
                         mb.with(element);
@@ -274,11 +253,61 @@ public final class NmsConnectionPatch extends ClassPatch {
         );
     }
 
+    private static boolean isTargetGuardMethod(MethodModel method, boolean isGameConnection, boolean isRawConnection) {
+        int flags = method.flags().flagsMask();
+        if ((flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_BRIDGE | ClassFile.ACC_SYNTHETIC)) != 0) {
+            return false;
+        }
+        String name = method.methodName().stringValue();
+        var mtd = method.methodTypeSymbol();
+        if (!mtd.returnType().equals(ConstantDescs.CD_void)) {
+            return false;
+        }
+        if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
+            return true;
+        }
+        int paramCount = mtd.parameterCount();
+        if ((flags & ClassFile.ACC_PUBLIC) == 0
+                || paramCount < 1
+                || mtd.parameterType(0).isPrimitive()) {
+            return false;
+        }
+        if ((name.equals("sendPacket") || name.equals("send")) && paramCount <= 3) {
+            return true;
+        }
+        if (isRawConnection) {
+            if (name.equals("sendPacketAndScheduleNettyTask") && paramCount == 3) {
+                return true;
+            }
+            if ((name.equals("handle") && paramCount == 1)
+                    || (name.equals("a") && (paramCount == 2 || paramCount == 3))) {
+                return isPacketDescriptor(mtd.parameterType(0).descriptorString());
+            }
+            if (name.equals("close") && paramCount == 1) {
+                return true;
+            }
+        }
+        return name.equals("disconnect") || name.equals("disconnectAsync");
+    }
+
+    private static boolean hasChannelWriteCall(MethodModel method) {
+        return method.code().map(NmsConnectionPatch::containsChannelWriteCall).orElse(false);
+    }
+
+    private static boolean containsChannelWriteCall(CodeModel code) {
+        for (CodeElement element : code) {
+            if (CodeTransforms.isChannelWriteCall(element)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isPacketDescriptor(String descriptor) {
         return descriptor.startsWith("Lnet/minecraft/") && descriptor.endsWith("/Packet;");
     }
 
-    public boolean handleSendPacket(Object connectionObj, Object packetObj) {
+    public boolean handleSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
         if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || connectionObj == null) {
             return false;
         }
@@ -289,7 +318,8 @@ public final class NmsConnectionPatch extends ClassPatch {
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
                 pluginRegistry,
                 selfClassLoader,
-                connectionObj.getClass()
+                connectionObj.getClass(),
+                callerClassObj
         );
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
@@ -303,7 +333,7 @@ public final class NmsConnectionPatch extends ClassPatch {
         return false;
     }
 
-    public boolean handleDisconnect(Object connectionObj, Object reasonObj) {
+    public boolean handleDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
         if (!pluginRegistry.hasHookedPlugins() || connectionObj == null) {
             return false;
         }
@@ -314,7 +344,8 @@ public final class NmsConnectionPatch extends ClassPatch {
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
                 pluginRegistry,
                 selfClassLoader,
-                connectionObj.getClass()
+                connectionObj.getClass(),
+                callerClassObj
         );
         if (caller == null) {
             return false;

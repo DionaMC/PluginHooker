@@ -1,12 +1,14 @@
 package dev.diona.pluginhooker.agent;
 
 import dev.diona.pluginhooker.config.HookConfig;
+import dev.diona.pluginhooker.patch.ClassHierarchySupport;
 import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.patch.impl.BukkitApiPatch;
 import dev.diona.pluginhooker.patch.impl.BukkitEventPatch;
 import dev.diona.pluginhooker.patch.impl.BukkitLookupPatch;
 import dev.diona.pluginhooker.patch.impl.NettyPipelinePatch;
+import dev.diona.pluginhooker.patch.impl.NettyPipelinePatch.WriteContextScope;
 import dev.diona.pluginhooker.patch.impl.NmsConnectionPatch;
 import dev.diona.pluginhooker.patch.impl.PacketEventsPatch;
 import dev.diona.pluginhooker.patch.impl.ProtocolLibPatch;
@@ -131,6 +133,7 @@ public final class PatchManager {
                 }
             }
             transformedClasses.clear();
+            ClassHierarchySupport.clear();
             patches.forEach(ClassPatch::reset);
         }
         BridgeInjector.unbind();
@@ -189,12 +192,13 @@ public final class PatchManager {
             case HookIds.GUARD_ENTITY_VELOCITY -> bukkitApiPatch.handleEntityVelocity(arg0, arg1);
             case HookIds.GUARD_PLAYER_SEND_MESSAGE -> bukkitApiPatch.handlePlayerSendMessage(arg0, arg1);
             case HookIds.GUARD_PLAYER_CLOSE_INVENTORY -> bukkitApiPatch.handlePlayerCloseInventory(arg0);
-            case HookIds.GUARD_NMS_SEND_PACKET -> nmsConnectionPatch.handleSendPacket(arg0, arg1);
-            case HookIds.GUARD_NMS_DISCONNECT -> nmsConnectionPatch.handleDisconnect(arg0, arg1);
+            case HookIds.GUARD_NMS_SEND_PACKET -> nmsConnectionPatch.handleSendPacket(arg0, arg1, arg2);
+            case HookIds.GUARD_NMS_DISCONNECT -> nmsConnectionPatch.handleDisconnect(arg0, arg1, arg2);
             case HookIds.GUARD_PROTOCOLLIB_SEND_PACKET -> protocolLibPatch.handleSendOrReceivePacket(arg0, arg1);
             case HookIds.GUARD_PACKETEVENTS_SEND_PACKET -> packetEventsPatch.handleSendPacket(arg0, arg1, arg2);
-            case HookIds.GUARD_NETTY_WRITE_BYTEBUF -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, false);
-            case HookIds.GUARD_NETTY_WRITE_BYTEBUF_TAIL -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, true);
+            case HookIds.GUARD_NETTY_WRITE_BYTEBUF -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, WriteContextScope.ANY);
+            case HookIds.GUARD_NETTY_WRITE_BYTEBUF_TAIL -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, WriteContextScope.TAIL_ONLY);
+            case HookIds.GUARD_NETTY_WRITE_BYTEBUF_NON_TAIL -> nettyPipelinePatch.handleWriteByteBuf(arg0, arg1, arg2, WriteContextScope.NON_TAIL_ONLY);
             case HookIds.GUARD_NETTY_CLOSE -> nettyPipelinePatch.handleChannelClose(arg0, arg1);
             default -> false;
         };
@@ -217,6 +221,7 @@ public final class PatchManager {
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER -> packetEventsPatch.handleListenerUnregister(arg0);
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER_ALL -> packetEventsPatch.handleUnregisterAllListeners(arg0);
             case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> nmsConnectionPatch.handleConnectionInit(arg0);
+            case HookIds.NOTIFY_NMS_INTERNAL_WRITE -> nettyPipelinePatch.setInternalNmsWrite(arg0 != null);
             default -> {
             }
         }

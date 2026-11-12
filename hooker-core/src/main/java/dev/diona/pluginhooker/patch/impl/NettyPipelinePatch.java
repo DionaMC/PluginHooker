@@ -24,6 +24,7 @@ import io.netty.channel.ChannelInboundHandler;
 import io.netty.channel.ChannelOutboundHandler;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.FastThreadLocal;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.plugin.Plugin;
 
@@ -114,11 +115,24 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     };
 
+    public enum WriteContextScope {
+        ANY,
+        TAIL_ONLY,
+        NON_TAIL_ONLY
+    }
+
     private final Logger logger;
     private final HookConfig config;
     private final PluginRegistryImpl pluginRegistry;
     private final PlayerRegistryImpl playerRegistry;
     private final ClassLoader selfClassLoader;
+
+    private final FastThreadLocal<Boolean> internalNmsWrite = new FastThreadLocal<>() {
+        @Override
+        protected Boolean initialValue() {
+            return Boolean.FALSE;
+        }
+    };
 
     private final ConcurrentMap<ChannelHandlerContext, Plugin> contextToPlugin =
             new MapMaker().weakKeys().makeMap();
@@ -155,6 +169,7 @@ public final class NettyPipelinePatch extends ClassPatch {
     public void reset() {
         contextToPlugin.clear();
         hasFallbackContexts = false;
+        internalNmsWrite.remove();
     }
 
     @Override
@@ -210,8 +225,10 @@ public final class NettyPipelinePatch extends ClassPatch {
                 String desc = methodOpt.map(m -> m.methodType().stringValue()).orElse("");
                 if (name.equals("write")
                         && desc.equals("(Ljava/lang/Object;)Lio/netty/channel/ChannelFuture;")) {
+                    // 1-arg write(Object) always delegates to 2-arg write(Object, ChannelPromise), so TailContext
+                    // is checked once at the 2-arg overload while non-tail contexts are checked once here
                     CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
-                            HookIds.GUARD_NETTY_WRITE_BYTEBUF,
+                            HookIds.GUARD_NETTY_WRITE_BYTEBUF_NON_TAIL,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
                             ArgSpec.nullConst(),
@@ -259,18 +276,32 @@ public final class NettyPipelinePatch extends ClassPatch {
         });
     }
 
+    public void setInternalNmsWrite(boolean active) {
+        if (!active || pluginRegistry.hasHookedPlugins()) {
+            internalNmsWrite.set(active ? Boolean.TRUE : Boolean.FALSE);
+        }
+    }
+
     /**
      * Intercepts direct {@code channel.write/writeAndFlush(msg[, promise])} and
      * {@code ctx.write/writeAndFlush(msg[, promise])} calls initiated by disabled plugins
      * for both raw {@link ByteBuf}s and NMS {@code Packet} instances (including calls via
      * standalone or shaded PacketEvents {@code ChannelHelper}).
      */
-    public boolean handleWriteByteBuf(Object ctxObj, Object msg, Object promiseObj, boolean requireTailContext) {
-        if (msg == null || !pluginRegistry.hasHookedPlugins()) {
+    public boolean handleWriteByteBuf(Object ctxObj, Object msg, Object promiseObj, WriteContextScope scope) {
+        if (ctxObj == null) {
             return false;
         }
         boolean isTail = TAIL_CONTEXT_CACHE.get(ctxObj.getClass());
-        if (requireTailContext && !isTail) {
+        if ((scope == WriteContextScope.TAIL_ONLY && !isTail)
+                || (scope == WriteContextScope.NON_TAIL_ONLY && isTail)) {
+            return false;
+        }
+        if (isTail && Boolean.TRUE.equals(internalNmsWrite.get())) {
+            internalNmsWrite.set(Boolean.FALSE);
+            return false;
+        }
+        if (msg == null || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
         if (!(msg instanceof ByteBuf) && !NMS_PACKET_CACHE.get(msg.getClass())) {

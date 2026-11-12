@@ -24,6 +24,7 @@ public final class HookIds {
     public static final int GUARD_NETTY_WRITE_BYTEBUF = 16;
     public static final int GUARD_NETTY_WRITE_BYTEBUF_TAIL = 17;
     public static final int GUARD_NETTY_CLOSE = 18;
+    public static final int GUARD_NETTY_WRITE_BYTEBUF_NON_TAIL = 19;
 
     // Return-value filter hooks
     public static final int FILTER_ONLINE_PLAYERS = 101;
@@ -37,6 +38,7 @@ public final class HookIds {
     public static final int NOTIFY_PACKETEVENTS_UNREGISTER = 203;
     public static final int NOTIFY_PACKETEVENTS_UNREGISTER_ALL = 204;
     public static final int NOTIFY_NMS_PLAYER_CONNECTION_INIT = 205;
+    public static final int NOTIFY_NMS_INTERNAL_WRITE = 206;
 
     private HookIds() {
     }

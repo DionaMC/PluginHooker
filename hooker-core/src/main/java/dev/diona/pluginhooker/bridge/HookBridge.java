@@ -18,6 +18,13 @@ public final class HookBridge {
      */
     public static volatile boolean HAS_HOOKED_PLUGINS;
 
+    /**
+     * C2-intrinsified single-hop caller resolver ({@code JVM_GetCallerClass}) invoked directly from
+     * instrumented NMS entry points to avoid {@link StackWalker#walk} on non-reflective calls.
+     */
+    public static final StackWalker CALLER_WALKER =
+            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
     private static final MethodType GUARD_TYPE =
             MethodType.methodType(boolean.class, int.class, Object.class, Object.class, Object.class);
     private static final MethodType FILTER_TYPE =

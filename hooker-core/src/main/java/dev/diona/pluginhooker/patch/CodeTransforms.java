@@ -69,6 +69,15 @@ public final class CodeTransforms {
                 cb.invokevirtual(owner, methodName, MethodTypeDesc.of(returnType));
             };
         }
+
+        static ArgSpec callerClass() {
+            ClassDesc swDesc = ClassDesc.of("java.lang.StackWalker");
+            MethodTypeDesc getCallerMtd = MethodTypeDesc.of(ConstantDescs.CD_Class);
+            return cb -> {
+                cb.getstatic(BRIDGE_DESC, "CALLER_WALKER", swDesc);
+                cb.invokevirtual(swDesc, "getCallerClass", getCallerMtd);
+            };
+        }
     }
 
     /**
@@ -340,5 +349,38 @@ public final class CodeTransforms {
                 cb.with(element);
             }
         };
+    }
+
+    /**
+     * Wraps {@code io.netty.channel.Channel#write} and {@code writeAndFlush} invocations inside raw NMS
+     * {@code Connection}/{@code NetworkManager} classes with one-shot notifications so {@code TailContext}
+     * recognizes server-dispatched NMS packet writes in O(1) without {@link StackWalker#walk}.
+     */
+    public static CodeTransform wrapNmsChannelWriteCalls(int notifyHookId) {
+        return (cb, element) -> {
+            if (isChannelWriteCall(element)) {
+                cb.ldc(notifyHookId);
+                cb.getstatic(ConstantDescs.CD_Boolean, "TRUE", ConstantDescs.CD_Boolean);
+                cb.aconst_null();
+                cb.invokestatic(BRIDGE_DESC, "onNotify", NOTIFY_MTD);
+                cb.with(element);
+                cb.ldc(notifyHookId);
+                cb.aconst_null();
+                cb.aconst_null();
+                cb.invokestatic(BRIDGE_DESC, "onNotify", NOTIFY_MTD);
+            } else {
+                cb.with(element);
+            }
+        };
+    }
+
+    public static boolean isChannelWriteCall(CodeElement element) {
+        if (!(element instanceof InvokeInstruction inv)
+                || inv.opcode() != Opcode.INVOKEINTERFACE
+                || !inv.owner().asInternalName().equals("io/netty/channel/Channel")) {
+            return false;
+        }
+        String name = inv.name().stringValue();
+        return name.equals("write") || name.equals("writeAndFlush");
     }
 }
