@@ -258,17 +258,24 @@ class NettyAndNmsSandboxTest {
                     .invoke(null, loginConn, "login_pkt");
             assertEquals(1, loginConn.sentPackets);
 
-            // 2. PLAY Connection resolved via channel fast-path AND via getPlayer().getBukkitEntity() fallback
+            // 2. PLAY Connection resolved via channel fast-path, NettyChannelProxy unwrap, AND entity fallback
+            Channel channelProxy = createSimulatedNettyChannelProxy(ch);
             net.minecraft.network.Connection channelBoundConn = new net.minecraft.network.Connection(ch, null);
+            net.minecraft.network.Connection proxyBoundConn = new net.minecraft.network.Connection(channelProxy, null);
             net.minecraft.network.Connection entityBoundConn = new net.minecraft.network.Connection(null, bukkitPlayer);
 
             try {
-                // Disabled plugin blocked on 1-arg send, 3-arg send, and disconnect across both resolution paths
+                // Disabled plugin blocked on 1-arg send, reflective send, 3-arg send, proxy-channel send, and disconnect
                 disabledActor.getMethod("directRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
                         .invoke(null, channelBoundConn, "diona_ping");
+                disabledActor.getMethod("reflectiveRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, channelBoundConn, "diona_reflective_ping");
+                disabledActor.getMethod("directRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, proxyBoundConn, "diona_proxy_ping");
                 disabledActor.getMethod("directRawConnectionSendThreeArg", net.minecraft.network.Connection.class, Object.class)
                         .invoke(null, entityBoundConn, "diona_ping_noflush");
                 assertEquals(0, channelBoundConn.sentPackets);
+                assertEquals(0, proxyBoundConn.sentPackets);
                 assertEquals(0, entityBoundConn.sentPackets);
 
                 disabledActor.getMethod("directRawConnectionDisconnect", net.minecraft.network.Connection.class, Object.class)
@@ -281,12 +288,31 @@ class NettyAndNmsSandboxTest {
                 channelBoundConn.send("server_bundle");
                 assertEquals(2, channelBoundConn.sentPackets);
 
-                // 3. Direct Netty channel.writeAndFlush(NMS Packet) blocked for disabled plugin, allowed for server/enabled
+                // 3. Direct Netty channel.writeAndFlush(NMS Packet) blocked for disabled plugin, allowed for server/enabled,
+                // and one-shot internalNmsWrite token does NOT leak into re-entrant writes inside downstream handlers
                 var pingPacket = new net.minecraft.network.Connection.SimulatedPingPayload(-31662);
+                var leakedNestedPacket = new net.minecraft.network.Connection.SimulatedPingPayload(-31661);
                 disabledActor.getMethod("directWriteNmsPacket", Channel.class, Object.class)
                         .invoke(null, ch, pingPacket);
                 ch.runPendingTasks();
                 assertNull(headReceivedWrite.get());
+
+                ch.pipeline().addAfter("pe-encoder-packetevents", "reentrant_probe", new ChannelDuplexHandler() {
+                    @Override
+                    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                        if (msg == pingPacket) {
+                            disabledActor.getMethod("directWriteNmsPacket", Channel.class, Object.class)
+                                    .invoke(null, ch, leakedNestedPacket);
+                        }
+                        super.write(ctx, msg, promise);
+                    }
+                });
+                channelBoundConn.send(pingPacket);
+                ch.runPendingTasks();
+                assertSame(pingPacket, ch.readOutbound());
+                assertNull(ch.readOutbound(), "Re-entrant disabled plugin write during server doSendPacket must still be blocked");
+                ch.pipeline().remove("reentrant_probe");
+                headReceivedWrite.set(null);
 
                 enabledActor.getMethod("directWriteNmsPacket", Channel.class, Object.class)
                         .invoke(null, ch, pingPacket);
@@ -348,5 +374,32 @@ class NettyAndNmsSandboxTest {
                 pluginRegistry.handlePluginDisable(sharedPe);
             }
         }
+    }
+
+    private static Channel createSimulatedNettyChannelProxy(Channel delegate) throws Exception {
+        java.lang.constant.ClassDesc proxyDesc =
+                java.lang.constant.ClassDesc.of("dev.diona.pluginhooker.NettyChannelProxy");
+        java.lang.constant.ClassDesc channelDesc =
+                java.lang.constant.ClassDesc.of("io.netty.channel.Channel");
+        byte[] bytes = java.lang.classfile.ClassFile.of().build(proxyDesc, clb -> {
+            clb.withFlags(java.lang.classfile.ClassFile.ACC_PUBLIC | java.lang.classfile.ClassFile.ACC_FINAL);
+            clb.withInterfaceSymbols(channelDesc);
+            clb.withField("delegate", channelDesc, java.lang.classfile.ClassFile.ACC_PRIVATE | java.lang.classfile.ClassFile.ACC_FINAL);
+            clb.withMethodBody(
+                    java.lang.constant.ConstantDescs.INIT_NAME,
+                    java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_void, channelDesc),
+                    java.lang.classfile.ClassFile.ACC_PUBLIC,
+                    cb -> {
+                        cb.aload(0);
+                        cb.invokespecial(java.lang.constant.ConstantDescs.CD_Object, java.lang.constant.ConstantDescs.INIT_NAME, java.lang.constant.ConstantDescs.MTD_void);
+                        cb.aload(0);
+                        cb.aload(1);
+                        cb.putfield(proxyDesc, "delegate", channelDesc);
+                        cb.return_();
+                    }
+            );
+        });
+        Class<?> proxyClass = java.lang.invoke.MethodHandles.lookup().defineClass(bytes);
+        return (Channel) proxyClass.getConstructor(Channel.class).newInstance(delegate);
     }
 }

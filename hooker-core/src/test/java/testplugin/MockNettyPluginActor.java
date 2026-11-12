@@ -64,6 +64,10 @@ public final class MockNettyPluginActor extends ChannelDuplexHandler {
         conn.send(packet, null, false);
     }
 
+    public static void reflectiveRawConnectionSend(net.minecraft.network.Connection conn, Object packet) throws Exception {
+        net.minecraft.network.Connection.class.getMethod("send", Object.class).invoke(conn, packet);
+    }
+
     public static void directRawConnectionDisconnect(net.minecraft.network.Connection conn, Object reason) {
         conn.disconnect(reason);
     }

@@ -61,6 +61,13 @@ public class Connection {
 
     public void send(Object packet, Object listener, boolean flush) {
         this.sentPackets++;
+        if (this.channel != null && packet instanceof Packet) {
+            doSendPacket(packet);
+        }
+    }
+
+    private void doSendPacket(Object packet) {
+        this.channel.writeAndFlush(packet, this.channel.voidPromise());
     }
 
     public void sendPacketAndScheduleNettyTask(Object packet, boolean flush, Runnable task) {

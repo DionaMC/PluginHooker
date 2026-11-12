@@ -21,10 +21,10 @@ public final class HookIds {
     public static final int GUARD_NMS_DISCONNECT = 13;
     public static final int GUARD_PROTOCOLLIB_SEND_PACKET = 14;
     public static final int GUARD_PACKETEVENTS_SEND_PACKET = 15;
-    public static final int GUARD_NETTY_WRITE_BYTEBUF = 16;
-    public static final int GUARD_NETTY_WRITE_BYTEBUF_TAIL = 17;
+    public static final int GUARD_NETTY_OUTBOUND_WRITE = 16;
+    public static final int GUARD_NETTY_OUTBOUND_WRITE_TAIL = 17;
     public static final int GUARD_NETTY_CLOSE = 18;
-    public static final int GUARD_NETTY_WRITE_BYTEBUF_NON_TAIL = 19;
+    public static final int GUARD_NETTY_OUTBOUND_WRITE_NON_TAIL = 19;
 
     // Return-value filter hooks
     public static final int FILTER_ONLINE_PLAYERS = 101;

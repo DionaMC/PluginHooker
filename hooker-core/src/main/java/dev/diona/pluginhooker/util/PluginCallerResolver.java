@@ -326,12 +326,14 @@ public final class PluginCallerResolver {
         });
     }
 
+    private static final Object CONTINUE_WALK = new Object();
+
     /**
      * Resolves the calling plugin for a direct {@code channel.write/writeAndFlush(msg)} or
      * {@code ctx.write/writeAndFlush(msg)} call (including calls routed through standalone or shaded
      * PacketEvents {@code ChannelHelper}).
      */
-    public static Plugin resolveDirectByteBufWriteCaller(
+    public static Plugin resolveDirectOutboundWriteCaller(
             PluginRegistry registry,
             ClassLoader selfLoader,
             boolean fromTailContext
@@ -352,17 +354,11 @@ public final class PluginCallerResolver {
                     if ((flags & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
                         continue;
                     }
-                    Plugin plugin = registry.getPluginByClassLoader(loader);
-                    if (plugin == null) {
-                        return null;
+                    Object step = resolveWriteLoaderStep(registry, loader, flags);
+                    if (step == CONTINUE_WALK) {
+                        continue;
                     }
-                    if (isSharedPacketFramework(plugin)) {
-                        if ((flags & (FLAG_PE_SEND_DELEGATE | FLAG_PE_CLOSE_DELEGATE)) != 0) {
-                            continue;
-                        }
-                        return null;
-                    }
-                    return registry.isHooked(plugin) ? plugin : null;
+                    return (Plugin) step;
                 }
                 return null;
             });
@@ -387,20 +383,25 @@ public final class PluginCallerResolver {
                 if (CODEC_FORWARDING_METHODS.contains(frame.getMethodName())) {
                     return null;
                 }
-                Plugin plugin = registry.getPluginByClassLoader(loader);
-                if (plugin == null) {
-                    return null;
+                Object step = resolveWriteLoaderStep(registry, loader, flags);
+                if (step == CONTINUE_WALK) {
+                    continue;
                 }
-                if (isSharedPacketFramework(plugin)) {
-                    if ((flags & (FLAG_PE_SEND_DELEGATE | FLAG_PE_CLOSE_DELEGATE)) != 0) {
-                        continue;
-                    }
-                    return null;
-                }
-                return registry.isHooked(plugin) ? plugin : null;
+                return (Plugin) step;
             }
             return null;
         });
+    }
+
+    private static Object resolveWriteLoaderStep(PluginRegistry registry, ClassLoader loader, int flags) {
+        Plugin plugin = registry.getPluginByClassLoader(loader);
+        if (plugin == null) {
+            return null;
+        }
+        if (isSharedPacketFramework(plugin)) {
+            return (flags & (FLAG_PE_SEND_DELEGATE | FLAG_PE_CLOSE_DELEGATE)) != 0 ? CONTINUE_WALK : null;
+        }
+        return registry.isHooked(plugin) ? plugin : null;
     }
 
     /**

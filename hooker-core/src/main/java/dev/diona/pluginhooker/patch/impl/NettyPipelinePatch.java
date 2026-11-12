@@ -227,35 +227,35 @@ public final class NettyPipelinePatch extends ClassPatch {
                         && desc.equals("(Ljava/lang/Object;)Lio/netty/channel/ChannelFuture;")) {
                     // 1-arg write(Object) always delegates to 2-arg write(Object, ChannelPromise), so TailContext
                     // is checked once at the 2-arg overload while non-tail contexts are checked once here
-                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
-                            HookIds.GUARD_NETTY_WRITE_BYTEBUF_NON_TAIL,
+                    CodeTransform outboundGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_OUTBOUND_WRITE_NON_TAIL,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
                             ArgSpec.nullConst(),
                             -1
                     );
-                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                    mb.transformCode(codeModel, outboundGuard.andThen(handlerCallsTransform));
                 } else if (name.equals("write")
                         && desc.equals("(Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
-                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
-                            HookIds.GUARD_NETTY_WRITE_BYTEBUF_TAIL,
+                    CodeTransform outboundGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_OUTBOUND_WRITE_TAIL,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
                             ArgSpec.param(1),
                             1
                     );
-                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                    mb.transformCode(codeModel, outboundGuard.andThen(handlerCallsTransform));
                 } else if (name.equals("writeAndFlush")
                         && desc.equals("(Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
                     // Note: 1-arg writeAndFlush(Object) always delegates to 2-arg writeAndFlush(Object, ChannelPromise)
-                    CodeTransform byteBufGuard = CodeTransforms.guardNettyChannelFutureEntry(
-                            HookIds.GUARD_NETTY_WRITE_BYTEBUF,
+                    CodeTransform outboundGuard = CodeTransforms.guardNettyChannelFutureEntry(
+                            HookIds.GUARD_NETTY_OUTBOUND_WRITE,
                             ArgSpec.thisRef(),
                             ArgSpec.param(0),
                             ArgSpec.param(1),
                             1
                     );
-                    mb.transformCode(codeModel, byteBufGuard.andThen(handlerCallsTransform));
+                    mb.transformCode(codeModel, outboundGuard.andThen(handlerCallsTransform));
                 } else if ((name.equals("close") || name.equals("disconnect"))
                         && desc.equals("(Lio/netty/channel/ChannelPromise;)Lio/netty/channel/ChannelFuture;")) {
                     // Note: 0-arg close() and disconnect() always delegate to their 1-arg ChannelPromise overloads
@@ -288,7 +288,7 @@ public final class NettyPipelinePatch extends ClassPatch {
      * for both raw {@link ByteBuf}s and NMS {@code Packet} instances (including calls via
      * standalone or shaded PacketEvents {@code ChannelHelper}).
      */
-    public boolean handleWriteByteBuf(Object ctxObj, Object msg, Object promiseObj, WriteContextScope scope) {
+    public boolean handleOutboundWrite(Object ctxObj, Object msg, Object promiseObj, WriteContextScope scope) {
         if (ctxObj == null) {
             return false;
         }
@@ -314,7 +314,7 @@ public final class NettyPipelinePatch extends ClassPatch {
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader, isTail);
+        Plugin caller = PluginCallerResolver.resolveDirectOutboundWriteCaller(pluginRegistry, selfClassLoader, isTail);
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
                 String desc = msg instanceof ByteBuf buf
