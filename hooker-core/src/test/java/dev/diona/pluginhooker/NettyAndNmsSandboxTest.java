@@ -17,6 +17,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.util.ReferenceCountUtil;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -203,5 +204,149 @@ class NettyAndNmsSandboxTest {
         ep.connection = null;
         assertNull(PlayerChannelResolver.getChannel(connectedPlayer));
         ch.finish();
+    }
+
+    @Test
+    void rawNmsConnectionSharedPeChannelOperatorAndDirectPacketWriteGuards() throws Exception {
+        try (ChildFirstActorLoader peLoader = new ChildFirstActorLoader(parentLoader, "testpe.");
+             ChildFirstActorLoader disabledLoader = new ChildFirstActorLoader(peLoader, "testplugin.");
+             ChildFirstActorLoader enabledLoader = new ChildFirstActorLoader(peLoader, "testplugin.")) {
+            Plugin sharedPe = SandboxTestFixtures.createMockPlugin(peLoader, "packetevents");
+            peLoader.setPlugin(sharedPe);
+            Plugin disabledPlugin = SandboxTestFixtures.createMockPlugin(disabledLoader, "DisabledDiona");
+            disabledLoader.setPlugin(disabledPlugin);
+            Plugin enabledPlugin = SandboxTestFixtures.createMockPlugin(enabledLoader, "EnabledVulcan");
+            enabledLoader.setPlugin(enabledPlugin);
+
+            pluginRegistry.registerPlugin(disabledPlugin, HookMode.WHITELIST);
+            pluginRegistry.registerPlugin(enabledPlugin, HookMode.WHITELIST);
+
+            Class<?> peOperatorClass = Class.forName("testpe.ChannelOperatorModernImpl", true, peLoader);
+            Class<?> disabledActor = Class.forName("testplugin.MockNettyPluginActor", true, disabledLoader);
+            Class<?> enabledActor = Class.forName("testplugin.MockNettyPluginActor", true, enabledLoader);
+
+            UUID playerUuid = UUID.randomUUID();
+            Player bukkitPlayer = SandboxTestFixtures.createStubPlayer(playerUuid, "Loyisa");
+            HookedPlayer hookedPlayer = playerRegistry.registerPlayer(bukkitPlayer);
+            hookedPlayer.enablePlugin(enabledPlugin);
+
+            AtomicReference<Object> headReceivedWrite = new AtomicReference<>();
+            ChannelDuplexHandler captureDownstream = new ChannelDuplexHandler() {
+                @Override
+                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                    headReceivedWrite.set(msg);
+                    super.write(ctx, msg, promise);
+                }
+            };
+            io.netty.handler.codec.MessageToMessageEncoder<String> multiOutputEncoder =
+                    new io.netty.handler.codec.MessageToMessageEncoder<>(String.class) {
+                        @Override
+                        protected void encode(ChannelHandlerContext ctx, String msg, java.util.List<Object> out) {
+                            out.add(Unpooled.copiedBuffer(msg.getBytes()));
+                            out.add(Unpooled.copiedBuffer(msg.getBytes()));
+                        }
+                    };
+
+            EmbeddedChannel ch = new EmbeddedChannel(captureDownstream);
+            ch.pipeline().addLast("pe-encoder-packetevents", new ChannelDuplexHandler());
+            ch.pipeline().addLast("multi_encoder", multiOutputEncoder);
+            ch.attr(PlayerChannelResolver.HOOKED_PLAYER_KEY).set(hookedPlayer);
+
+            // 1. Handshake/login Connection (null channel attr & null ServerPlayer) never NPEs
+            net.minecraft.network.Connection loginConn = new net.minecraft.network.Connection(null, null);
+            disabledActor.getMethod("directRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
+                    .invoke(null, loginConn, "login_pkt");
+            assertEquals(1, loginConn.sentPackets);
+
+            // 2. PLAY Connection resolved via channel fast-path AND via getPlayer().getBukkitEntity() fallback
+            net.minecraft.network.Connection channelBoundConn = new net.minecraft.network.Connection(ch, null);
+            net.minecraft.network.Connection entityBoundConn = new net.minecraft.network.Connection(null, bukkitPlayer);
+
+            try {
+                // Disabled plugin blocked on 1-arg send, 3-arg send, and disconnect across both resolution paths
+                disabledActor.getMethod("directRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, channelBoundConn, "diona_ping");
+                disabledActor.getMethod("directRawConnectionSendThreeArg", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, entityBoundConn, "diona_ping_noflush");
+                assertEquals(0, channelBoundConn.sentPackets);
+                assertEquals(0, entityBoundConn.sentPackets);
+
+                disabledActor.getMethod("directRawConnectionDisconnect", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, channelBoundConn, "false disconnect");
+                assertFalse(channelBoundConn.disconnected);
+
+                // Enabled plugin & server itself are allowed on raw Connection
+                enabledActor.getMethod("directRawConnectionSend", net.minecraft.network.Connection.class, Object.class)
+                        .invoke(null, channelBoundConn, "vulcan_ping");
+                channelBoundConn.send("server_bundle");
+                assertEquals(2, channelBoundConn.sentPackets);
+
+                // 3. Direct Netty channel.writeAndFlush(NMS Packet) blocked for disabled plugin, allowed for server/enabled
+                var pingPacket = new net.minecraft.network.Connection.SimulatedPingPayload(-31662);
+                disabledActor.getMethod("directWriteNmsPacket", Channel.class, Object.class)
+                        .invoke(null, ch, pingPacket);
+                ch.runPendingTasks();
+                assertNull(headReceivedWrite.get());
+
+                enabledActor.getMethod("directWriteNmsPacket", Channel.class, Object.class)
+                        .invoke(null, ch, pingPacket);
+                ch.runPendingTasks();
+                assertSame(pingPacket, headReceivedWrite.get());
+                headReceivedWrite.set(null);
+                ch.readOutbound();
+
+                // 4. Standalone packetevents ChannelOperatorModernImpl writeAndFlush / writeAndFlushInContext / close
+                ByteBuf blockedBuf1 = Unpooled.buffer(4).writeInt(-31662);
+                disabledActor.getMethod("writeViaSharedPeOperator", Class.class, Channel.class, Object.class)
+                        .invoke(null, peOperatorClass, ch, blockedBuf1);
+                ch.runPendingTasks();
+                assertNull(headReceivedWrite.get());
+                assertEquals(0, blockedBuf1.refCnt());
+
+                ByteBuf blockedBuf2 = Unpooled.buffer(4).writeInt(-31661);
+                disabledActor.getMethod(
+                        "writeInContextViaSharedPeOperator", Class.class, Channel.class, String.class, Object.class
+                ).invoke(null, peOperatorClass, ch, "pe-encoder-packetevents", blockedBuf2);
+                ch.runPendingTasks();
+                assertNull(headReceivedWrite.get());
+                assertEquals(0, blockedBuf2.refCnt());
+
+                disabledActor.getMethod("closeViaSharedPeOperator", Class.class, Channel.class)
+                        .invoke(null, peOperatorClass, ch);
+                ch.runPendingTasks();
+                assertTrue(ch.isOpen(), "ChannelOperatorModernImpl.close from disabled plugin must be blocked");
+
+                ByteBuf allowedBuf = Unpooled.buffer(4).writeInt(-31662);
+                enabledActor.getMethod("writeViaSharedPeOperator", Class.class, Channel.class, Object.class)
+                        .invoke(null, peOperatorClass, ch, allowedBuf);
+                ch.runPendingTasks();
+                assertSame(allowedBuf, headReceivedWrite.get());
+                headReceivedWrite.set(null);
+                ReferenceCountUtil.safeRelease(ch.readOutbound());
+
+                // 5. MessageToMessageEncoder writePromiseCombiner (non-void promise, >1 output) never false-blocks
+                // even when a disabled plugin frame sits deeper on the call stack
+                ChannelPromise bundlePromise = ch.newPromise();
+                Runnable serverBundleWrite = () -> ch.writeAndFlush("bundle", bundlePromise);
+                disabledActor.getMethod("triggerServerActionOnStack", Runnable.class)
+                        .invoke(null, serverBundleWrite);
+                ch.runPendingTasks();
+                assertTrue(bundlePromise.isSuccess());
+                assertNotNull(headReceivedWrite.get());
+                while (true) {
+                    Object out = ch.readOutbound();
+                    if (out == null) {
+                        break;
+                    }
+                    ReferenceCountUtil.safeRelease(out);
+                }
+            } finally {
+                ch.finish();
+                playerRegistry.unregisterPlayer(bukkitPlayer);
+                pluginRegistry.handlePluginDisable(disabledPlugin);
+                pluginRegistry.handlePluginDisable(enabledPlugin);
+                pluginRegistry.handlePluginDisable(sharedPe);
+            }
+        }
     }
 }

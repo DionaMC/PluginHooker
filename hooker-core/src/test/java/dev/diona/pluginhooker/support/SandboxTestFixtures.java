@@ -101,13 +101,26 @@ public final class SandboxTestFixtures {
     }
 
     public static final class ChildFirstActorLoader extends URLClassLoader {
+        private final String childFirstPrefix;
+        @SuppressWarnings("unused")
+        private Plugin plugin;
+
         public ChildFirstActorLoader(ClassLoader parent) {
+            this(parent, "testplugin.");
+        }
+
+        public ChildFirstActorLoader(ClassLoader parent, String childFirstPrefix) {
             super(new URL[]{SandboxTestFixtures.class.getProtectionDomain().getCodeSource().getLocation()}, parent);
+            this.childFirstPrefix = childFirstPrefix;
+        }
+
+        public void setPlugin(Plugin plugin) {
+            this.plugin = plugin;
         }
 
         @Override
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-            if (name.startsWith("testplugin.")) {
+            if (name.startsWith(childFirstPrefix)) {
                 synchronized (getClassLoadingLock(name)) {
                     Class<?> c = findLoadedClass(name);
                     if (c == null) {

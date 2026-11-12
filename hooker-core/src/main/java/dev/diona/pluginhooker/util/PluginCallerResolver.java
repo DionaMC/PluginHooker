@@ -32,17 +32,21 @@ public final class PluginCallerResolver {
     private static final int FLAG_PROTOCOLLIB_INTERNAL = 1 << 7;
     private static final int FLAG_PE_SEND_DELEGATE = 1 << 8;
     private static final int FLAG_PE_CLOSE_DELEGATE = 1 << 9;
+    private static final int FLAG_NETTY_CODEC_HANDLER = 1 << 10;
 
     private static final Set<String> PE_SEND_DELEGATE_SIMPLE_NAMES = Set.of(
             "ProtocolManagerImpl",
+            "ProtocolManagerAbstract",
             "ProtocolManager",
             "PlayerManagerImpl",
+            "PlayerManagerAbstract",
             "PlayerManager",
             "User"
     );
 
     private static final Set<String> PE_CLOSE_DELEGATE_SIMPLE_NAMES = Set.of(
             "ChannelOperatorImpl",
+            "ChannelOperatorModernImpl",
             "NettyChannelOperator",
             "ChannelOperator",
             "ChannelHelper",
@@ -50,6 +54,7 @@ public final class PluginCallerResolver {
     );
 
     private static final Set<String> CODEC_FORWARDING_METHODS = Set.of(
+            "write",
             "encode",
             "decode",
             "channelRead",
@@ -75,6 +80,10 @@ public final class PluginCallerResolver {
                 if (name.equals("io.netty.channel.AbstractChannelHandlerContext")) {
                     flags |= FLAG_ABSTRACT_HANDLER_CTX;
                 }
+                if (ChannelHandler.class.isAssignableFrom(clazz)
+                        && !name.startsWith("io.netty.channel.DefaultChannelPipeline$")) {
+                    flags |= FLAG_NETTY_CODEC_HANDLER;
+                }
             }
             if (ChannelHandler.class.isAssignableFrom(clazz)) {
                 flags |= FLAG_CHANNEL_HANDLER;
@@ -98,10 +107,13 @@ public final class PluginCallerResolver {
                     flags |= FLAG_PROTOCOLLIB_DELEGATE;
                 }
             }
-            if (PE_SEND_DELEGATE_SIMPLE_NAMES.contains(simpleName)) {
+            if (PE_SEND_DELEGATE_SIMPLE_NAMES.contains(simpleName)
+                    || name.contains(".packetevents.manager.protocol.")
+                    || name.contains(".packetevents.manager.player.")) {
                 flags |= FLAG_PE_SEND_DELEGATE;
             }
-            if (PE_CLOSE_DELEGATE_SIMPLE_NAMES.contains(simpleName)) {
+            if (PE_CLOSE_DELEGATE_SIMPLE_NAMES.contains(simpleName)
+                    || name.contains(".packetevents.netty.channel.")) {
                 flags |= FLAG_PE_CLOSE_DELEGATE;
             }
             return flags;
@@ -304,8 +316,9 @@ public final class PluginCallerResolver {
     }
 
     /**
-     * Resolves the calling plugin for a direct {@code channel.write/writeAndFlush(ByteBuf)} or
-     * {@code ctx.write/writeAndFlush(ByteBuf)} call.
+     * Resolves the calling plugin for a direct {@code channel.write/writeAndFlush(msg)} or
+     * {@code ctx.write/writeAndFlush(msg)} call (including calls routed through standalone or shaded
+     * PacketEvents {@code ChannelHelper}).
      */
     public static Plugin resolveDirectByteBufWriteCaller(
             PluginRegistry registry,
@@ -324,10 +337,21 @@ public final class PluginCallerResolver {
                     if (loader == null || loader == selfLoader) {
                         continue;
                     }
-                    if ((CLASS_FLAGS.get(callerClass) & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
+                    int flags = CLASS_FLAGS.get(callerClass);
+                    if ((flags & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
                         continue;
                     }
-                    return resolveHookedPluginFromLoader(registry, loader);
+                    Plugin plugin = registry.getPluginByClassLoader(loader);
+                    if (plugin == null) {
+                        return null;
+                    }
+                    if (isSharedPacketFramework(plugin)) {
+                        if ((flags & (FLAG_PE_SEND_DELEGATE | FLAG_PE_CLOSE_DELEGATE)) != 0) {
+                            continue;
+                        }
+                        return null;
+                    }
+                    return registry.isHooked(plugin) ? plugin : null;
                 }
                 return null;
             });
@@ -343,13 +367,26 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 int flags = CLASS_FLAGS.get(callerClass);
+                if ((flags & FLAG_NETTY_CODEC_HANDLER) != 0) {
+                    return null;
+                }
                 if ((flags & (FLAG_NETTY | FLAG_SELF_PACKAGE)) != 0) {
                     continue;
                 }
-                if ((flags & FLAG_CHANNEL_HANDLER) != 0 || CODEC_FORWARDING_METHODS.contains(frame.getMethodName())) {
+                if (CODEC_FORWARDING_METHODS.contains(frame.getMethodName())) {
                     return null;
                 }
-                return resolveHookedPluginFromLoader(registry, loader);
+                Plugin plugin = registry.getPluginByClassLoader(loader);
+                if (plugin == null) {
+                    return null;
+                }
+                if (isSharedPacketFramework(plugin)) {
+                    if ((flags & (FLAG_PE_SEND_DELEGATE | FLAG_PE_CLOSE_DELEGATE)) != 0) {
+                        continue;
+                    }
+                    return null;
+                }
+                return registry.isHooked(plugin) ? plugin : null;
             }
             return null;
         });

@@ -12,7 +12,9 @@ import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.KickReasonSerializer;
+import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
+import io.netty.channel.Channel;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -28,61 +30,139 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
- * Hooks NMS {@code PlayerConnection}, {@code ServerCommonPacketListenerImpl}, and {@code ServerGamePacketListenerImpl}
+ * Hooks NMS {@code PlayerConnection}, {@code NetworkManager}, {@code Connection},
+ * {@code ServerCommonPacketListenerImpl}, and {@code ServerGamePacketListenerImpl}
  * across Spigot 1.8.8 ~ Paper 26.3 to:
  * <ul>
  *   <li>Register players and bind their Netty channel at connection {@code <init>} before {@code JOIN_GAME}</li>
- *   <li>Block direct/reflective {@code sendPacket}/{@code send} calls from disabled plugins without {@code StackWalker.walk}</li>
- *   <li>Block direct/reflective {@code disconnect}/{@code disconnectAsync} kicks from disabled plugins</li>
+ *   <li>Block direct/reflective {@code sendPacket}/{@code send}/{@code handle} calls from disabled plugins</li>
+ *   <li>Block direct/reflective {@code disconnect}/{@code disconnectAsync}/{@code close} kicks from disabled plugins</li>
  * </ul>
  */
 @RequiredArgsConstructor
 public final class NmsConnectionPatch extends ClassPatch {
 
-    private static final ClassValue<MethodHandle> NMS_CONNECTION_PLAYER_GETTER = new ClassValue<>() {
+    private record ConnectionAccessor(MethodHandle channelGetter, MethodHandle playerGetter) {
+    }
+
+    private static final MethodHandle NON_NULL_TEST;
+    private static final MethodHandle NULL_PLAYER_CONSTANT;
+
+    static {
+        try {
+            NON_NULL_TEST = MethodHandles.lookup().findStatic(
+                    Objects.class,
+                    "nonNull",
+                    MethodType.methodType(boolean.class, Object.class)
+            );
+            NULL_PLAYER_CONSTANT = MethodHandles.dropArguments(
+                    MethodHandles.constant(Player.class, null),
+                    0,
+                    Object.class
+            );
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static final ClassValue<ConnectionAccessor> CONNECTION_ACCESSOR = new ClassValue<>() {
         @Override
-        protected MethodHandle computeValue(Class<?> connectionClass) {
+        protected ConnectionAccessor computeValue(Class<?> connectionClass) {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            for (Method m : connectionClass.getMethods()) {
-                if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0) {
-                    continue;
-                }
-                if (Player.class.isAssignableFrom(m.getReturnType())) {
+            return new ConnectionAccessor(
+                    findChannelGetter(lookup, connectionClass),
+                    findPlayerGetter(lookup, connectionClass)
+            );
+        }
+    };
+
+    private static MethodHandle findChannelGetter(MethodHandles.Lookup lookup, Class<?> connectionClass) {
+        for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!Modifier.isStatic(f.getModifiers()) && Channel.class.isAssignableFrom(f.getType())) {
                     try {
-                        m.setAccessible(true);
-                        return lookup.unreflect(m).asType(MethodType.methodType(Player.class, Object.class));
+                        f.setAccessible(true);
+                        return lookup.unreflectGetter(f).asType(MethodType.methodType(Channel.class, Object.class));
                     } catch (ReflectiveOperationException ignored) {
                     }
                 }
             }
-            for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
-                for (Field f : c.getDeclaredFields()) {
-                    if (Modifier.isStatic(f.getModifiers())) {
-                        continue;
-                    }
-                    for (Method m : f.getType().getMethods()) {
-                        if (m.getName().equals("getBukkitEntity")
-                                && m.getParameterCount() == 0
-                                && Player.class.isAssignableFrom(m.getReturnType())) {
-                            try {
-                                f.setAccessible(true);
-                                m.setAccessible(true);
-                                MethodHandle fieldGetter = lookup.unreflectGetter(f);
-                                MethodHandle entityGetter = lookup.unreflect(m);
-                                return MethodHandles.filterReturnValue(fieldGetter, entityGetter)
-                                        .asType(MethodType.methodType(Player.class, Object.class));
-                            } catch (ReflectiveOperationException ignored) {
-                            }
-                        }
+        }
+        return null;
+    }
+
+    private static MethodHandle findPlayerGetter(MethodHandles.Lookup lookup, Class<?> connectionClass) {
+        // 1. Direct zero-arg method returning Player (e.g. PlayerConnection#getPlayer, ServerGamePacketListenerImpl#getCraftPlayer)
+        for (Method m : connectionClass.getMethods()) {
+            if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0) {
+                continue;
+            }
+            if (Player.class.isAssignableFrom(m.getReturnType())) {
+                try {
+                    m.setAccessible(true);
+                    return lookup.unreflect(m).asType(MethodType.methodType(Player.class, Object.class));
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        // 2. Zero-arg method returning an NMS entity with getBukkitEntity(): Player (e.g. Connection#getPlayer -> ServerPlayer)
+        for (Method m : connectionClass.getMethods()) {
+            if (Modifier.isStatic(m.getModifiers()) || m.getParameterCount() != 0 || m.getReturnType().isPrimitive()) {
+                continue;
+            }
+            MethodHandle toPlayer = findBukkitEntityMethod(lookup, m.getReturnType());
+            if (toPlayer != null) {
+                try {
+                    m.setAccessible(true);
+                    return chainNonNullToPlayer(lookup.unreflect(m), toPlayer);
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        // 3. Instance field whose type has getBukkitEntity(): Player or a zero-arg Player getter
+        for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) {
+                    continue;
+                }
+                MethodHandle toPlayer = findBukkitEntityMethod(lookup, f.getType());
+                if (toPlayer != null) {
+                    try {
+                        f.setAccessible(true);
+                        return chainNonNullToPlayer(lookup.unreflectGetter(f), toPlayer);
+                    } catch (ReflectiveOperationException ignored) {
                     }
                 }
             }
-            return null;
         }
-    };
+        return null;
+    }
+
+    private static MethodHandle findBukkitEntityMethod(MethodHandles.Lookup lookup, Class<?> entityType) {
+        for (Method m : entityType.getMethods()) {
+            if (m.getName().equals("getBukkitEntity")
+                    && m.getParameterCount() == 0
+                    && Player.class.isAssignableFrom(m.getReturnType())) {
+                try {
+                    m.setAccessible(true);
+                    return lookup.unreflect(m);
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    private static MethodHandle chainNonNullToPlayer(MethodHandle firstGetter, MethodHandle toPlayerGetter) {
+        MethodHandle objFirst = firstGetter.asType(MethodType.methodType(Object.class, Object.class));
+        MethodHandle objSecond = toPlayerGetter.asType(MethodType.methodType(Player.class, Object.class));
+        MethodHandle guardedSecond = MethodHandles.guardWithTest(NON_NULL_TEST, objSecond, NULL_PLAYER_CONSTANT);
+        return MethodHandles.filterReturnValue(objFirst, guardedSecond);
+    }
 
     private final Logger logger;
     private final HookConfig config;
@@ -97,10 +177,15 @@ public final class NmsConnectionPatch extends ClassPatch {
 
     @Override
     public boolean matchesClass(String internalClassName) {
+        if (internalClassName.equals("net/minecraft/network/Connection")
+                || internalClassName.equals("net/minecraft/network/NetworkManager")) {
+            return true;
+        }
         if (!internalClassName.startsWith("net/minecraft/server/")) {
             return false;
         }
         return internalClassName.endsWith("/PlayerConnection")
+                || internalClassName.endsWith("/NetworkManager")
                 || internalClassName.equals("net/minecraft/server/network/ServerCommonPacketListenerImpl")
                 || internalClassName.equals("net/minecraft/server/network/ServerGamePacketListenerImpl");
     }
@@ -109,6 +194,8 @@ public final class NmsConnectionPatch extends ClassPatch {
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
         boolean isGameConnection = internalClassName.endsWith("/PlayerConnection")
                 || internalClassName.endsWith("/ServerGamePacketListenerImpl");
+        boolean isRawConnection = internalClassName.equals("net/minecraft/network/Connection")
+                || internalClassName.endsWith("/NetworkManager");
 
         return ClassTransform.transformingMethods(
                 method -> {
@@ -124,14 +211,26 @@ public final class NmsConnectionPatch extends ClassPatch {
                     if (isGameConnection && name.equals(ConstantDescs.INIT_NAME)) {
                         return true;
                     }
+                    int paramCount = mtd.parameterCount();
                     if ((flags & ClassFile.ACC_PUBLIC) == 0
-                            || mtd.parameterCount() < 1
+                            || paramCount < 1
                             || mtd.parameterType(0).isPrimitive()) {
                         return false;
                     }
-                    if ((name.equals("sendPacket") || name.equals("send"))
-                            && (mtd.parameterCount() == 1 || mtd.parameterCount() == 2)) {
+                    if ((name.equals("sendPacket") || name.equals("send")) && paramCount <= 3) {
                         return true;
+                    }
+                    if (isRawConnection) {
+                        if (name.equals("sendPacketAndScheduleNettyTask") && paramCount == 3) {
+                            return true;
+                        }
+                        if ((name.equals("handle") && paramCount == 1)
+                                || (name.equals("a") && (paramCount == 2 || paramCount == 3))) {
+                            return isPacketDescriptor(mtd.parameterType(0).descriptorString());
+                        }
+                        if (name.equals("close") && paramCount == 1) {
+                            return true;
+                        }
                     }
                     return name.equals("disconnect") || name.equals("disconnectAsync");
                 },
@@ -147,7 +246,7 @@ public final class NmsConnectionPatch extends ClassPatch {
                                             ArgSpec.nullConst()
                                     )
                             );
-                        } else if (name.equals("disconnect") || name.equals("disconnectAsync")) {
+                        } else if (name.equals("disconnect") || name.equals("disconnectAsync") || name.equals("close")) {
                             mb.transformCode(
                                     codeModel,
                                     CodeTransforms.guardVoidEntry(
@@ -175,12 +274,15 @@ public final class NmsConnectionPatch extends ClassPatch {
         );
     }
 
+    private static boolean isPacketDescriptor(String descriptor) {
+        return descriptor.startsWith("Lnet/minecraft/") && descriptor.endsWith("/Packet;");
+    }
+
     public boolean handleSendPacket(Object connectionObj, Object packetObj) {
         if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || connectionObj == null) {
             return false;
         }
-        Player bukkitPlayer = extractPlayer(connectionObj);
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        HookedPlayer hookedPlayer = resolveHookedPlayer(connectionObj);
         if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
@@ -194,7 +296,7 @@ public final class NmsConnectionPatch extends ClassPatch {
                 String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from sending NMS packet " + packetName
-                        + " to player " + bukkitPlayer.getName());
+                        + " to player " + hookedPlayer.getName());
             }
             return true;
         }
@@ -205,8 +307,7 @@ public final class NmsConnectionPatch extends ClassPatch {
         if (!pluginRegistry.hasHookedPlugins() || connectionObj == null) {
             return false;
         }
-        Player bukkitPlayer = extractPlayer(connectionObj);
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        HookedPlayer hookedPlayer = resolveHookedPlayer(connectionObj);
         if (hookedPlayer == null || (!hookedPlayer.hasAnyDisabledPlugin() && !config.bukkitApi().isCallKickEvent())) {
             return false;
         }
@@ -230,7 +331,7 @@ public final class NmsConnectionPatch extends ClassPatch {
 
         if (shouldBlock && config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
-                    + " from disconnecting player " + bukkitPlayer.getName()
+                    + " from disconnecting player " + hookedPlayer.getName()
                     + " via NMS (reason: " + reason + ")");
         }
         return shouldBlock;
@@ -253,8 +354,30 @@ public final class NmsConnectionPatch extends ClassPatch {
         }
     }
 
+    private HookedPlayer resolveHookedPlayer(Object connectionObj) {
+        ConnectionAccessor acc = CONNECTION_ACCESSOR.get(connectionObj.getClass());
+        if (acc.channelGetter() != null) {
+            try {
+                Channel ch = (Channel) acc.channelGetter().invokeExact(connectionObj);
+                if (ch != null) {
+                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+                    if (hp != null) {
+                        return hp;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        Player bukkitPlayer = extractPlayer(acc, connectionObj);
+        return playerRegistry.getPlayerFast(bukkitPlayer);
+    }
+
     private static Player extractPlayer(Object connectionObj) {
-        MethodHandle getter = NMS_CONNECTION_PLAYER_GETTER.get(connectionObj.getClass());
+        return extractPlayer(CONNECTION_ACCESSOR.get(connectionObj.getClass()), connectionObj);
+    }
+
+    private static Player extractPlayer(ConnectionAccessor acc, Object connectionObj) {
+        MethodHandle getter = acc.playerGetter();
         if (getter == null) {
             return null;
         }

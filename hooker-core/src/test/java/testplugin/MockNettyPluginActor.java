@@ -55,4 +55,42 @@ public final class MockNettyPluginActor extends ChannelDuplexHandler {
     public static void directNmsDisconnect(net.minecraft.server.test.PlayerConnection conn, String reason) {
         conn.disconnect(reason);
     }
+
+    public static void directRawConnectionSend(net.minecraft.network.Connection conn, Object packet) {
+        conn.send(packet);
+    }
+
+    public static void directRawConnectionSendThreeArg(net.minecraft.network.Connection conn, Object packet) {
+        conn.send(packet, null, false);
+    }
+
+    public static void directRawConnectionDisconnect(net.minecraft.network.Connection conn, Object reason) {
+        conn.disconnect(reason);
+    }
+
+    public static ChannelFuture directWriteNmsPacket(Channel ch, Object nmsPacket) {
+        return ch.writeAndFlush(nmsPacket);
+    }
+
+    public static Object writeViaSharedPeOperator(Class<?> peOperatorClass, Channel ch, Object msg) throws Exception {
+        return peOperatorClass.getMethod("writeAndFlush", Channel.class, Object.class).invoke(null, ch, msg);
+    }
+
+    public static Object writeInContextViaSharedPeOperator(
+            Class<?> peOperatorClass,
+            Channel ch,
+            String handlerName,
+            Object msg
+    ) throws Exception {
+        return peOperatorClass.getMethod("writeAndFlushInContext", Channel.class, String.class, Object.class)
+                .invoke(null, ch, handlerName, msg);
+    }
+
+    public static Object closeViaSharedPeOperator(Class<?> peOperatorClass, Channel ch) throws Exception {
+        return peOperatorClass.getMethod("close", Channel.class).invoke(null, ch);
+    }
+
+    public static void triggerServerActionOnStack(Runnable serverAction) {
+        serverAction.run();
+    }
 }

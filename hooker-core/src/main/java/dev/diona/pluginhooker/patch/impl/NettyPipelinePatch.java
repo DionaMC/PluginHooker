@@ -71,6 +71,31 @@ public final class NettyPipelinePatch extends ClassPatch {
         }
     };
 
+    private static final ClassValue<Boolean> NMS_PACKET_CACHE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> msgClass) {
+            for (Class<?> c = msgClass; c != null && c != Object.class; c = c.getSuperclass()) {
+                if (isNmsPacketTypeName(c.getName()) || hasNmsPacketInterface(c)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    private static boolean hasNmsPacketInterface(Class<?> clazz) {
+        for (Class<?> iface : clazz.getInterfaces()) {
+            if (isNmsPacketTypeName(iface.getName()) || hasNmsPacketInterface(iface)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNmsPacketTypeName(String name) {
+        return name.startsWith("net.minecraft.") && name.endsWith("Packet");
+    }
+
     private static final ClassValue<Boolean> EXCLUDED_HANDLER_CACHE = new ClassValue<>() {
         @Override
         protected Boolean computeValue(Class<?> handlerClass) {
@@ -235,16 +260,20 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     /**
-     * Intercepts direct {@code channel.write/writeAndFlush(ByteBuf[, promise])} and
-     * {@code ctx.write/writeAndFlush(ByteBuf[, promise])} calls initiated by disabled plugins
-     * (including completely obfuscated shaded PacketEvents).
+     * Intercepts direct {@code channel.write/writeAndFlush(msg[, promise])} and
+     * {@code ctx.write/writeAndFlush(msg[, promise])} calls initiated by disabled plugins
+     * for both raw {@link ByteBuf}s and NMS {@code Packet} instances (including calls via
+     * standalone or shaded PacketEvents {@code ChannelHelper}).
      */
     public boolean handleWriteByteBuf(Object ctxObj, Object msg, Object promiseObj, boolean requireTailContext) {
-        if (!(msg instanceof ByteBuf buf) || !pluginRegistry.hasHookedPlugins()) {
+        if (msg == null || !pluginRegistry.hasHookedPlugins()) {
             return false;
         }
         boolean isTail = TAIL_CONTEXT_CACHE.get(ctxObj.getClass());
         if (requireTailContext && !isTail) {
+            return false;
+        }
+        if (!(msg instanceof ByteBuf) && !NMS_PACKET_CACHE.get(msg.getClass())) {
             return false;
         }
         if (!(ctxObj instanceof ChannelHandlerContext ctx)) {
@@ -257,8 +286,11 @@ public final class NettyPipelinePatch extends ClassPatch {
         Plugin caller = PluginCallerResolver.resolveDirectByteBufWriteCaller(pluginRegistry, selfClassLoader, isTail);
         if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
             if (config.isDebug()) {
+                String desc = msg instanceof ByteBuf buf
+                        ? "raw ByteBuf (" + buf.readableBytes() + " bytes)"
+                        : "NMS packet " + msg.getClass().getSimpleName();
                 logger.info("[Debug] Blocked " + caller.getName()
-                        + " from writing raw ByteBuf (" + buf.readableBytes() + " bytes)"
+                        + " from writing " + desc
                         + " to player " + hookedPlayer.getName());
             }
             ReferenceCountUtil.safeRelease(msg);
