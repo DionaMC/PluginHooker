@@ -1,22 +1,14 @@
 package dev.diona.pluginhooker.patch;
 
-import com.google.common.collect.MapMaker;
-
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
-import java.lang.constant.ConstantDescs;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Base abstraction for a bytecode patch using the JDK 25 {@link ClassFile} API.
  */
 public abstract class ClassPatch {
-
-    private static final ConcurrentMap<ClassLoader, ClassHierarchyResolver> RESOLVER_CACHE =
-            new MapMaker().weakKeys().makeMap();
 
     /**
      * Checks whether this patch is enabled in the configuration.
@@ -37,10 +29,15 @@ public abstract class ClassPatch {
      * Checks whether this patch applies to a class its name does not identify, such as a subclass of a target. Only
      * asked for classes {@link #matchesClass} rejects.
      *
+     * @param loader            the defining class loader
      * @param internalClassName the JVM internal class name
      * @param classfileBuffer   the class bytes
      * @return true if this patch targets the class
      */
+    public boolean matchesClassFile(ClassLoader loader, String internalClassName, byte[] classfileBuffer) {
+        return matchesClassFile(internalClassName, classfileBuffer);
+    }
+
     public boolean matchesClassFile(String internalClassName, byte[] classfileBuffer) {
         return false;
     }
@@ -53,6 +50,12 @@ public abstract class ClassPatch {
      */
     public boolean matchesLoadedClass(Class<?> loadedClass) {
         return false;
+    }
+
+    /**
+     * Clears any runtime or inspection state held by this patch on instrumentation shutdown.
+     */
+    public void reset() {
     }
 
     /**
@@ -73,21 +76,9 @@ public abstract class ClassPatch {
      * @return the transformed class bytes
      */
     public final byte[] transform(ClassLoader loader, String internalClassName, byte[] classfileBuffer) {
-        ClassHierarchyResolver resolver = getHierarchyResolver(loader);
+        ClassModel model = ClassFile.of().parse(classfileBuffer);
+        ClassHierarchyResolver resolver = ClassHierarchySupport.resolverFor(loader, model);
         ClassFile cf = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(resolver));
-        ClassModel model = cf.parse(classfileBuffer);
-        ClassTransform transform = createTransform(internalClassName, model);
-        return cf.transformClass(model, transform);
-    }
-
-    private static ClassHierarchyResolver getHierarchyResolver(ClassLoader loader) {
-        ClassLoader effectiveLoader = loader != null ? loader : ClassLoader.getSystemClassLoader();
-        return RESOLVER_CACHE.computeIfAbsent(effectiveLoader, cl ->
-                ClassHierarchyResolver.ofResourceParsing(cl)
-                        .orElse(ClassHierarchyResolver.ofClassLoading(cl))
-                        .orElse(ClassHierarchyResolver.defaultResolver())
-                        .orElse(desc -> ClassHierarchyResolver.ClassHierarchyInfo.ofClass(ConstantDescs.CD_Object))
-                        .cached(ConcurrentHashMap::new)
-        );
+        return cf.transformClass(model, createTransform(internalClassName, model));
     }
 }
