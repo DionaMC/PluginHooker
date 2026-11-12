@@ -35,10 +35,6 @@ public abstract class ClassPatch {
      * @return true if this patch targets the class
      */
     public boolean matchesClassFile(ClassLoader loader, String internalClassName, byte[] classfileBuffer) {
-        return matchesClassFile(internalClassName, classfileBuffer);
-    }
-
-    public boolean matchesClassFile(String internalClassName, byte[] classfileBuffer) {
         return false;
     }
 

@@ -6,7 +6,7 @@ PluginHooker 是一个面向 Bukkit/Spigot/Paper (1.8.8 ~ 26.3) 的按玩家粒�
 
 ## 功能特性
 
-* **Hook Bukkit 事件**：拦截 `RegisteredListener#callEvent` 及其子类中未调用它的重写，结合无锁 `ClassValue` + `MethodHandle` 自动提取事件关联玩家。
+* **Hook Bukkit 事件**：拦截 `RegisteredListener#callEvent` 及其子类中非纯委托的重写实现，结合无锁 `ClassValue` + `MethodHandle` 自动提取事件关联玩家。
 * **Hook Bukkit 玩家与实体查询 API**：支持在 `Bukkit.getOnlinePlayers()`、`Bukkit.matchPlayer()`、`Bukkit.getPlayer(...)`、`World#getPlayers()`、`World#getPlayersSeeingChunk(...)`、`World#getEntities()`、`World#getLivingEntities()`、`World#getEntitiesByClass(...)` 及 `getNearbyEntities(...)` 中对未启用的受控插件隐藏指定玩家。
 * **Hook Bukkit 与 NMS 玩家副作用 API**：阻断未启用的受控插件对玩家调用 `Player#kickPlayer` / `Player#kick(Component)`、`Bukkit.dispatchCommand`、`Player#teleport` / `Player#teleportAsync`、`Player#setVelocity`、`Player#sendMessage`、`Player.Spigot#sendMessage`、`Bukkit.broadcast` 以及直接调用 NMS `PlayerConnection#sendPacket` / `ServerCommonPacketListenerImpl#send`。
 * **Hook NMS 连接生命周期**：直接插桩 `PlayerConnection.<init>` / `ServerGamePacketListenerImpl.<init>`，在服务端发出第一个 `JOIN_GAME` 包之前即完成玩家注册、Netty `Channel` 绑定并触发 `PlayerHookRegisterEvent`，通过 `channel.closeFuture()` 自动清理断线玩家，并对假人/Bot（如 `EmptyChannel`）实行 0 宽限期保护。
