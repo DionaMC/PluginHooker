@@ -127,6 +127,12 @@ public final class NettyPipelinePatch extends ClassPatch {
     }
 
     @Override
+    public void reset() {
+        contextToPlugin.clear();
+        hasFallbackContexts = false;
+    }
+
+    @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
         if (PIPELINE_CLASS.equals(internalClassName)) {
             return ClassTransform.transformingMethods(

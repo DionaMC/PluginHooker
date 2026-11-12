@@ -126,6 +126,12 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     @Override
+    public void reset() {
+        listenerToPlugin.clear();
+        hasFallbackListeners = false;
+    }
+
+    @Override
     protected ClassTransform createTransform(String internalClassName, ClassModel classModel) {
         if (internalClassName.endsWith(PROTOCOL_MANAGER_IMPL_SUFFIX)) {
             return ClassTransform.transformingMethodBodies(
