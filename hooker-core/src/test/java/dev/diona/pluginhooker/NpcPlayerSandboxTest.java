@@ -96,6 +96,11 @@ class NpcPlayerSandboxTest {
             public PluginRegistry getPluginRegistry() {
                 return pluginRegistry;
             }
+
+            @Override
+            public boolean isAllowed(Plugin plugin, Player player) {
+                return playerRegistry.isAllowed(plugin, player);
+            }
         });
 
         patchManager = new PatchManager(

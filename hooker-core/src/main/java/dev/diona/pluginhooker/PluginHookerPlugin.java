@@ -113,6 +113,11 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
     }
 
     @Override
+    public boolean isAllowed(Plugin plugin, Player player) {
+        return this.playerRegistry.isAllowed(plugin, player);
+    }
+
+    @Override
     public void onDisable() {
         this.patchManager.shutdown();
     }

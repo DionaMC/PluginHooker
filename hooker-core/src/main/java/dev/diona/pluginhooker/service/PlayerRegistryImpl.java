@@ -158,6 +158,20 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     }
 
     /**
+     * Evaluates whether {@code plugin} is currently allowed to interact with {@code player}.
+     */
+    public boolean isAllowed(Plugin plugin, Player player) {
+        if (plugin == null || player == null) {
+            return true;
+        }
+        HookMode mode = pluginRegistry.getHookMode(plugin);
+        if (mode == null) {
+            return true;
+        }
+        return isAllowed(player, getPlayer(player), plugin, mode);
+    }
+
+    /**
      * Fast pre-check before walking the call stack: returns true if at least one hooked plugin is currently
      * disabled for the resolved {@link Player} / {@link HookedPlayer} target.
      */
