@@ -248,19 +248,20 @@ public final class PacketEventsPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = resolveChannelPlayer(protocolManagerObj, channel);
-        if (hookedPlayer != null) {
-            if (!hookedPlayer.hasAnyDisabledPlugin()) {
-                return false;
-            }
-        } else if (!pluginRegistry.hasWhitelistPlugins()
-                || PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
+        boolean inspectChannel = hookedPlayer != null
+                ? hookedPlayer.hasAnyDisabledPlugin()
+                : (pluginRegistry.hasWhitelistPlugins() && !PlayerChannelResolver.isRealNetworkChannel(channel));
+        if (!inspectChannel) {
             return false;
         }
 
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
+        if (caller == null) {
+            return false;
+        }
         boolean blocked = hookedPlayer != null
-                ? (caller != null && !hookedPlayer.isPluginEnabled(caller))
-                : (caller != null && pluginRegistry.getHookMode(caller) == HookMode.WHITELIST);
+                ? !hookedPlayer.isPluginEnabled(caller)
+                : pluginRegistry.getHookMode(caller) == HookMode.WHITELIST;
         if (!blocked) {
             return false;
         }
@@ -278,7 +279,7 @@ public final class PacketEventsPatch extends ClassPatch {
         HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(channel);
         if (hookedPlayer == null
                 && protocolManagerObj instanceof ProtocolManager pm
-                && PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
+                && PlayerChannelResolver.isRealNetworkChannel(channel)) {
             User user = pm.getUser(channel);
             if (user != null && user.getUUID() != null) {
                 hookedPlayer = playerRegistry.getPlayer(user.getUUID());

@@ -68,7 +68,7 @@ public final class NmsConnectionResolver {
         }
         try {
             Channel ch = (Channel) acc.channelGetter().invokeExact(connectionObj);
-            return ch != null ? PlayerChannelResolver.getHookedPlayer(PlayerChannelResolver.unwrapChannelProxy(ch)) : null;
+            return PlayerChannelResolver.getHookedPlayer(ch);
         } catch (Throwable ignored) {
             return null;
         }

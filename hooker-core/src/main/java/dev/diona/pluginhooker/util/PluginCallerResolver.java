@@ -21,6 +21,7 @@ public final class PluginCallerResolver {
             Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE),
             8
     );
+    private static final Object CONTINUE_WALK = new Object();
 
     private static final int FLAG_SELF_PACKAGE = 1;
     private static final int FLAG_NETTY = 1 << 1;
@@ -224,41 +225,45 @@ public final class PluginCallerResolver {
     }
 
     /**
-     * Returns true if {@code directCallerObj} comes from a bootstrap-loaded reflection frame
-     * (or is absent), meaning {@link #resolveReflectiveNmsCaller} must walk the stack to find
-     * the real caller.
+     * O(1) fast-reject predicate for instrumented NMS connection entry points using the C2-intrinsified
+     * {@link StackWalker#getCallerClass()} result. Returns {@code true} when {@code directCallerObj} is
+     * guaranteed not to be a hooked plugin (e.g. vanilla server / self-delegation), avoiding any
+     * {@code ClassValue}, {@code MethodHandle}, or player-map lookup on 99.9999% of server packets.
      */
-    public static boolean isReflectiveNmsCall(Object directCallerObj) {
-        return !(directCallerObj instanceof Class<?> directCaller) || directCaller.getClassLoader() == null;
-    }
-
-    /**
-     * O(1) zero-walk resolver for non-reflective NMS connection calls using the C2-intrinsified
-     * {@link StackWalker#getCallerClass()} result. Rejects vanilla server calls in ~1 ns via
-     * pointer comparison without touching {@code ClassValue}, {@code MethodHandle}, or player maps.
-     */
-    public static Plugin resolveFastDirectNmsCaller(
+    public static boolean isNonHookedDirectNmsCaller(
             PluginRegistry registry,
             ClassLoader selfLoader,
             Class<?> connectionClass,
-            Class<?> directCaller
+            Object directCallerObj
     ) {
+        if (!(directCallerObj instanceof Class<?> directCaller)) {
+            return false;
+        }
         if (directCaller.isAssignableFrom(connectionClass)) {
-            return null;
+            return true;
         }
         ClassLoader loader = directCaller.getClassLoader();
-        return loader == null || loader == selfLoader ? null : resolveHookedPluginFromLoader(registry, loader);
+        if (loader == null) {
+            return false;
+        }
+        return loader == selfLoader || resolveHookedPluginFromLoader(registry, loader) == null;
     }
 
     /**
-     * Fallback stack-walking resolver used only when an instrumented NMS connection method was invoked
-     * reflectively via {@code Method.invoke} or {@code MethodHandle} ({@code directCaller.getClassLoader() == null}).
+     * Resolves the hooked plugin calling an instrumented NMS connection method, using {@code directCallerObj}
+     * directly in O(1) for normal calls and falling back to stack walking only for bootstrap-loaded reflection frames.
      */
-    public static Plugin resolveReflectiveNmsCaller(
+    public static Plugin resolveNmsCaller(
             PluginRegistry registry,
             ClassLoader selfLoader,
-            Class<?> connectionClass
+            Class<?> connectionClass,
+            Object directCallerObj
     ) {
+        if (directCallerObj instanceof Class<?> directCaller && directCaller.getClassLoader() != null) {
+            return directCaller.isAssignableFrom(connectionClass) || directCaller.getClassLoader() == selfLoader
+                    ? null
+                    : resolveHookedPluginFromLoader(registry, directCaller.getClassLoader());
+        }
         if (!registry.hasHookedPlugins()) {
             return null;
         }
@@ -278,10 +283,7 @@ public final class PluginCallerResolver {
                     skippedConnectionEntry = true;
                     continue;
                 }
-                if (loader == selfLoader) {
-                    return null;
-                }
-                return resolveHookedPluginFromLoader(registry, loader);
+                return loader == selfLoader ? null : resolveHookedPluginFromLoader(registry, loader);
             }
             return null;
         });
@@ -292,28 +294,12 @@ public final class PluginCallerResolver {
      * {@code receiveClientPacket}, or {@code sendWirePacket}.
      */
     public static Plugin resolveDirectProtocolLibCaller(PluginRegistry registry, ClassLoader selfLoader) {
-        if (!registry.hasHookedPlugins()) {
-            return null;
-        }
-        return CLASS_STACK_WALKER.walk(frames -> {
-            var iterator = frames.iterator();
-            while (iterator.hasNext()) {
-                Class<?> callerClass = iterator.next().getDeclaringClass();
-                ClassLoader loader = callerClass.getClassLoader();
-                if (loader == null || loader == selfLoader) {
-                    continue;
-                }
-                int flags = CLASS_FLAGS.get(callerClass);
-                if ((flags & (FLAG_SELF_PACKAGE | FLAG_PROTOCOLLIB_DELEGATE)) != 0) {
-                    continue;
-                }
-                if ((flags & (FLAG_PROTOCOLLIB_INTERNAL | FLAG_NETTY)) != 0) {
-                    return null;
-                }
-                return resolveHookedPluginFromLoader(registry, loader);
-            }
-            return null;
-        });
+        return resolveDirectFrameworkSendCaller(
+                registry,
+                selfLoader,
+                FLAG_SELF_PACKAGE | FLAG_PROTOCOLLIB_DELEGATE,
+                FLAG_PROTOCOLLIB_INTERNAL | FLAG_NETTY
+        );
     }
 
     /**
@@ -321,6 +307,20 @@ public final class PluginCallerResolver {
      * {@code writePacket}, or {@code receivePacket} (for both standalone and shaded PacketEvents).
      */
     public static Plugin resolveDirectPacketEventsSendCaller(PluginRegistry registry, ClassLoader selfLoader) {
+        return resolveDirectFrameworkSendCaller(
+                registry,
+                selfLoader,
+                FLAG_SELF_PACKAGE | FLAG_PE_SEND_DELEGATE,
+                FLAG_NETTY | FLAG_PE_INJECTOR
+        );
+    }
+
+    private static Plugin resolveDirectFrameworkSendCaller(
+            PluginRegistry registry,
+            ClassLoader selfLoader,
+            int skipFlags,
+            int stopFlags
+    ) {
         if (!registry.hasHookedPlugins()) {
             return null;
         }
@@ -333,10 +333,10 @@ public final class PluginCallerResolver {
                     continue;
                 }
                 int flags = CLASS_FLAGS.get(callerClass);
-                if ((flags & (FLAG_SELF_PACKAGE | FLAG_PE_SEND_DELEGATE)) != 0) {
+                if ((flags & skipFlags) != 0) {
                     continue;
                 }
-                if ((flags & (FLAG_NETTY | FLAG_PE_INJECTOR)) != 0) {
+                if ((flags & stopFlags) != 0) {
                     return null;
                 }
                 return resolveHookedPluginFromLoader(registry, loader);
@@ -344,8 +344,6 @@ public final class PluginCallerResolver {
             return null;
         });
     }
-
-    private static final Object CONTINUE_WALK = new Object();
 
     /**
      * Resolves the calling plugin for a direct {@code channel.write/writeAndFlush(msg)} or

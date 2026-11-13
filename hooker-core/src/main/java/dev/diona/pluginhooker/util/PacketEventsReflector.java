@@ -146,55 +146,46 @@ public final class PacketEventsReflector {
     public static HookedPlayer resolveEventPlayer(Object event, PlayerRegistryImpl playerRegistry) {
         if (event instanceof ProtocolPacketEvent ppe) {
             Object channelObj = ppe.getChannel();
-            if (channelObj instanceof Channel ch) {
-                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            if (ppe.getPlayer() instanceof Player p) {
-                return playerRegistry.getPlayer(p);
-            }
-            if (channelObj instanceof Channel ch
-                    && !PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(ch))) {
-                return null;
+            HookedPlayer direct = resolveChannelOrBukkitPlayer(channelObj, ppe.getPlayer(), playerRegistry);
+            if (direct != null || ppe.getPlayer() instanceof Player || isNonRealChannel(channelObj)) {
+                return direct;
             }
             User user = ppe.getUser();
-            if (user != null && user.getUUID() != null) {
-                return playerRegistry.getPlayer(user.getUUID());
-            }
-            return null;
+            return user != null ? playerRegistry.getPlayer(user.getUUID()) : null;
         }
 
         ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
         try {
             Object channelObj = accessors.getChannel() != null ? accessors.getChannel().invokeExact(event) : null;
-            if (channelObj instanceof Channel ch) {
-                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                if (hp != null) {
-                    return hp;
-                }
-            }
-            if (accessors.getPlayer() != null) {
-                Object playerObj = accessors.getPlayer().invokeExact(event);
-                if (playerObj instanceof Player p) {
-                    return playerRegistry.getPlayer(p);
-                }
-            }
-            if (channelObj instanceof Channel ch
-                    && !PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(ch))) {
-                return null;
+            Object playerObj = accessors.getPlayer() != null ? accessors.getPlayer().invokeExact(event) : null;
+            HookedPlayer direct = resolveChannelOrBukkitPlayer(channelObj, playerObj, playerRegistry);
+            if (direct != null || playerObj instanceof Player || isNonRealChannel(channelObj)) {
+                return direct;
             }
             if (accessors.getUser() != null) {
-                Object userObj = accessors.getUser().invokeExact(event);
-                UUID uuid = extractShadedUserUuid(userObj);
-                if (uuid != null) {
-                    return playerRegistry.getPlayer(uuid);
-                }
+                return playerRegistry.getPlayer(extractShadedUserUuid(accessors.getUser().invokeExact(event)));
             }
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    private static HookedPlayer resolveChannelOrBukkitPlayer(
+            Object channelObj,
+            Object playerObj,
+            PlayerRegistryImpl playerRegistry
+    ) {
+        if (channelObj instanceof Channel ch) {
+            HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+            if (hp != null) {
+                return hp;
+            }
+        }
+        return playerObj instanceof Player p ? playerRegistry.getPlayer(p) : null;
+    }
+
+    private static boolean isNonRealChannel(Object channelObj) {
+        return channelObj instanceof Channel ch && !PlayerChannelResolver.isRealNetworkChannel(ch);
     }
 
     /**

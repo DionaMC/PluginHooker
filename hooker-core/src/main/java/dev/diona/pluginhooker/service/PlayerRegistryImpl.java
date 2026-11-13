@@ -1,14 +1,11 @@
 package dev.diona.pluginhooker.service;
 
-import dev.diona.pluginhooker.PluginHookerPlugin;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
 import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import io.netty.channel.Channel;
-import lombok.RequiredArgsConstructor;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -16,14 +13,15 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * Thread-safe implementation of {@link PlayerRegistry}.
  */
-@RequiredArgsConstructor
 public final class PlayerRegistryImpl implements PlayerRegistry {
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
@@ -31,6 +29,23 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     private final AtomicInteger disabledOverridePlayerCount = new AtomicInteger();
     private final PluginRegistryImpl pluginRegistry;
     private final HookConfig config;
+    private final Consumer<Runnable> channelCloseCleanupScheduler;
+
+    public PlayerRegistryImpl(PluginRegistryImpl pluginRegistry, HookConfig config) {
+        this(pluginRegistry, config, Runnable::run);
+    }
+
+    public PlayerRegistryImpl(
+            PluginRegistryImpl pluginRegistry,
+            HookConfig config,
+            Consumer<Runnable> channelCloseCleanupScheduler
+    ) {
+        this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry");
+        this.config = Objects.requireNonNull(config, "config");
+        this.channelCloseCleanupScheduler = Objects.requireNonNull(
+                channelCloseCleanupScheduler, "channelCloseCleanupScheduler"
+        );
+    }
 
     @Override
     public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
@@ -62,41 +77,13 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             PlayerChannelResolver.bindPlayerToChannel(
                     channel,
                     hookedPlayer,
-                    (closedChannel, closedPlayer) -> scheduleChannelCloseCleanup(closedChannel, uuid, closedPlayer)
+                    (closedChannel, closedPlayer) -> channelCloseCleanupScheduler.accept(() -> {
+                        PlayerChannelResolver.unbindPlayerFromChannel(closedChannel, closedPlayer);
+                        removeRegisteredPlayer(uuid, closedPlayer);
+                    })
             );
         }
         return hookedPlayer;
-    }
-
-    private void scheduleChannelCloseCleanup(Channel closedChannel, UUID uuid, HookedPlayer closedPlayer) {
-        PluginHookerPlugin selfPlugin = PluginHookerPlugin.getInstance();
-        if (selfPlugin != null && Bukkit.getServer() != null && selfPlugin.isEnabled()) {
-            try {
-                // Defer fallback cleanup past the next main-thread tick so disconnect teardown events
-                // (InventoryCloseEvent, VehicleExitEvent, PlayerQuitEvent) still observe the player's
-                // HookedPlayer state before PluginLifecycleListener#onPlayerQuit unregisters at MONITOR.
-                Bukkit.getScheduler().runTaskLater(
-                        selfPlugin,
-                        () -> cleanupClosedChannel(closedChannel, uuid, closedPlayer),
-                        20L
-                );
-                return;
-            } catch (RuntimeException ignored) {
-                // Fall through to immediate cleanup if plugin/server is shutting down
-            }
-        }
-        cleanupClosedChannel(closedChannel, uuid, closedPlayer);
-    }
-
-    private void cleanupClosedChannel(Channel closedChannel, UUID uuid, HookedPlayer closedPlayer) {
-        PlayerChannelResolver.unbindPlayerFromChannel(closedChannel, closedPlayer);
-        if (players.remove(uuid, closedPlayer) && closedPlayer instanceof HookedPlayerImpl impl) {
-            impl.markUnregistered();
-        }
-        String closedName = closedPlayer.getName();
-        if (closedName != null) {
-            playersByLowerName.remove(closedName.toLowerCase(Locale.ROOT), closedPlayer);
-        }
     }
 
     @Override
@@ -104,32 +91,21 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return;
         }
-        HookedPlayerImpl[] removedRef = new HookedPlayerImpl[1];
-        players.computeIfPresent(bukkitPlayer.getUniqueId(), (id, existing) -> {
-            if (existing.getBukkitPlayer() == bukkitPlayer) {
-                existing.markUnregistered();
-                removedRef[0] = existing;
-                return null;
-            }
-            return existing;
-        });
-        HookedPlayerImpl removed = removedRef[0];
-        if (removed != null) {
-            String name = bukkitPlayer.getName();
-            if (name != null) {
-                playersByLowerName.remove(name.toLowerCase(Locale.ROOT), removed);
-            }
+        UUID uuid = bukkitPlayer.getUniqueId();
+        HookedPlayerImpl existing = players.get(uuid);
+        if (existing != null && existing.getBukkitPlayer() == bukkitPlayer) {
+            removeRegisteredPlayer(uuid, existing);
         }
-        Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
-        if (channel != null) {
-            if (removed != null) {
-                PlayerChannelResolver.unbindPlayerFromChannel(channel, removed);
-            } else {
-                HookedPlayer channelBound = PlayerChannelResolver.getHookedPlayer(channel);
-                if (channelBound != null && channelBound.getBukkitPlayer() == bukkitPlayer) {
-                    PlayerChannelResolver.unbindPlayerFromChannel(channel, channelBound);
-                }
-            }
+        PlayerChannelResolver.unbindChannelForPlayer(PlayerChannelResolver.getChannel(bukkitPlayer), bukkitPlayer);
+    }
+
+    private void removeRegisteredPlayer(UUID uuid, HookedPlayer target) {
+        if (players.remove(uuid, target) && target instanceof HookedPlayerImpl impl) {
+            impl.markUnregistered();
+        }
+        String name = target.getName();
+        if (name != null) {
+            playersByLowerName.remove(name.toLowerCase(Locale.ROOT), target);
         }
     }
 

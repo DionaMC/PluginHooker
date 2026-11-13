@@ -38,7 +38,11 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
         this.hookConfig.load(this);
 
         this.pluginRegistry = new PluginRegistryImpl(this.hookConfig);
-        this.playerRegistry = new PlayerRegistryImpl(this.pluginRegistry, this.hookConfig);
+        this.playerRegistry = new PlayerRegistryImpl(
+                this.pluginRegistry,
+                this.hookConfig,
+                this::scheduleDisconnectCleanup
+        );
         this.pluginRegistry.setPlayerRegistry(this.playerRegistry);
 
         PluginHookerAPI.setProvider(this);
@@ -110,6 +114,17 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
                 getLogger().info("Updated configured plugin mode: " + target.getName() + " [" + mode + "]");
             }
         }
+    }
+
+    private void scheduleDisconnectCleanup(Runnable cleanupTask) {
+        if (isEnabled() && Bukkit.getServer() != null) {
+            try {
+                Bukkit.getScheduler().runTaskLater(this, cleanupTask, 20L);
+                return;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        cleanupTask.run();
     }
 
     @Override

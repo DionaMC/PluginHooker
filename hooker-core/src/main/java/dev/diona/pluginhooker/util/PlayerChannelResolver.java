@@ -94,16 +94,19 @@ public final class PlayerChannelResolver {
     /**
      * Returns true if the given channel is a real Netty network channel
      * (not null and not a plugin dummy/embedded channel such as {@code EmptyChannel}).
+     * Automatically unwraps ProtocolLib {@code NettyChannelProxy} instances.
      */
     public static boolean isRealNetworkChannel(Channel channel) {
-        return channel != null && REAL_CHANNEL_CACHE.get(channel.getClass());
+        Channel unwrapped = unwrapChannelProxy(channel);
+        return unwrapped != null && REAL_CHANNEL_CACHE.get(unwrapped.getClass());
     }
 
     /**
      * Returns true if the given channel is an open real Netty network channel.
      */
     public static boolean isOpenRealNetworkChannel(Channel channel) {
-        return isRealNetworkChannel(channel) && channel.isOpen();
+        Channel unwrapped = unwrapChannelProxy(channel);
+        return unwrapped != null && REAL_CHANNEL_CACHE.get(unwrapped.getClass()) && unwrapped.isOpen();
     }
 
     /**
@@ -115,21 +118,22 @@ public final class PlayerChannelResolver {
             HookedPlayer hookedPlayer,
             BiConsumer<Channel, HookedPlayer> onChannelClose
     ) {
-        if (!isRealNetworkChannel(channel)) {
+        Channel target = unwrapChannelProxy(channel);
+        if (target == null || !REAL_CHANNEL_CACHE.get(target.getClass())) {
             return;
         }
-        channel.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
+        target.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
         if (onChannelClose != null) {
-            if (!Boolean.TRUE.equals(channel.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
-                channel.closeFuture().addListener(future -> {
-                    HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).get();
-                    onChannelClose.accept(channel, bound != null ? bound : hookedPlayer);
+            if (!Boolean.TRUE.equals(target.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
+                target.closeFuture().addListener(future -> {
+                    HookedPlayer bound = target.attr(HOOKED_PLAYER_KEY).get();
+                    onChannelClose.accept(target, bound != null ? bound : hookedPlayer);
                 });
             }
-            if (!channel.isOpen()) {
-                HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).get();
+            if (!target.isOpen()) {
+                HookedPlayer bound = target.attr(HOOKED_PLAYER_KEY).get();
                 if (bound != null) {
-                    onChannelClose.accept(channel, bound);
+                    onChannelClose.accept(target, bound);
                 }
             }
         }
@@ -139,19 +143,34 @@ public final class PlayerChannelResolver {
      * Conditionally unbinds {@code expected} from the given Netty {@link Channel}.
      */
     public static void unbindPlayerFromChannel(Channel channel, HookedPlayer expected) {
-        if (channel != null && expected != null) {
-            channel.attr(HOOKED_PLAYER_KEY).compareAndSet(expected, null);
+        Channel target = unwrapChannelProxy(channel);
+        if (target != null && expected != null) {
+            target.attr(HOOKED_PLAYER_KEY).compareAndSet(expected, null);
         }
     }
 
     /**
-     * Retrieves the {@link HookedPlayer} bound to the given Netty {@link Channel} in O(1) time.
+     * Unbinds any {@link HookedPlayer} on {@code channel} whose {@link HookedPlayer#getBukkitPlayer()}
+     * matches {@code bukkitPlayer}.
+     */
+    public static void unbindChannelForPlayer(Channel channel, Player bukkitPlayer) {
+        Channel target = unwrapChannelProxy(channel);
+        if (target == null || bukkitPlayer == null) {
+            return;
+        }
+        HookedPlayer bound = target.attr(HOOKED_PLAYER_KEY).get();
+        if (bound != null && bound.getBukkitPlayer() == bukkitPlayer) {
+            target.attr(HOOKED_PLAYER_KEY).compareAndSet(bound, null);
+        }
+    }
+
+    /**
+     * Retrieves the {@link HookedPlayer} bound to the given Netty {@link Channel} in O(1) time
+     * (automatically unwrapping ProtocolLib {@code NettyChannelProxy} instances).
      */
     public static HookedPlayer getHookedPlayer(Channel channel) {
-        if (channel == null) {
-            return null;
-        }
-        return channel.attr(HOOKED_PLAYER_KEY).get();
+        Channel target = unwrapChannelProxy(channel);
+        return target != null ? target.attr(HOOKED_PLAYER_KEY).get() : null;
     }
 
     /**
@@ -170,10 +189,10 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Unwraps ProtocolLib's {@code NettyChannelProxy} (if present) so we always return the underlying
+     * Unwraps ProtocolLib's {@code NettyChannelProxy} (if present) so we always inspect the underlying
      * Netty {@link Channel} instance.
      */
-    public static Channel unwrapChannelProxy(Channel channel) {
+    private static Channel unwrapChannelProxy(Channel channel) {
         if (channel == null) {
             return null;
         }
