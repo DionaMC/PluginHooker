@@ -196,6 +196,25 @@ public final class PacketEventsReflector {
         return null;
     }
 
+    /**
+     * Extracts the raw Bukkit {@link Player} (if any) from a standalone or shaded PacketEvents packet event.
+     */
+    public static Player extractEventBukkitPlayer(Object event) {
+        if (event instanceof ProtocolPacketEvent ppe) {
+            return ppe.getPlayer() instanceof Player p ? p : null;
+        }
+        ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
+        if (accessors.getPlayer() == null) {
+            return null;
+        }
+        try {
+            Object playerObj = accessors.getPlayer().invokeExact(event);
+            return playerObj instanceof Player p ? p : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static UUID extractShadedUserUuid(Object userObj) {
         if (userObj == null) {
             return null;

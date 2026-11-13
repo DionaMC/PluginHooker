@@ -9,6 +9,7 @@ import java.util.List;
 public class PacketSendEvent {
 
     private Object byteBuf;
+    private Object player;
     private boolean cancelled;
     private boolean needsReEncode;
     private Object lastUsedWrapper;
@@ -17,6 +18,15 @@ public class PacketSendEvent {
 
     public PacketSendEvent(Object byteBuf) {
         this.byteBuf = byteBuf;
+    }
+
+    public PacketSendEvent(Object byteBuf, Object player) {
+        this.byteBuf = byteBuf;
+        this.player = player;
+    }
+
+    public Object getPlayer() {
+        return player;
     }
 
     public void call(MockShadedListener listener) {

@@ -161,42 +161,13 @@ class NettyAndNmsSandboxTest {
 
     @Test
     void compositeChannelExtractorResolvesAndGuardsNullHops() throws Exception {
-        java.lang.constant.ClassDesc desc = java.lang.constant.ClassDesc.of("dev.diona.pluginhooker.StubCraftPlayerWithHandle");
-        java.lang.constant.ClassDesc epDesc = java.lang.constant.ClassDesc.of(
-                net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer.class.getName()
-        );
-        byte[] bytes = java.lang.classfile.ClassFile.of().build(desc, clb -> {
-            clb.withFlags(java.lang.classfile.ClassFile.ACC_PUBLIC | java.lang.classfile.ClassFile.ACC_FINAL);
-            clb.withInterfaceSymbols(java.lang.constant.ClassDesc.of("org.bukkit.entity.Player"));
-            clb.withField("handle", epDesc, java.lang.classfile.ClassFile.ACC_PUBLIC);
-            clb.withMethodBody(
-                    java.lang.constant.ConstantDescs.INIT_NAME,
-                    java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_void, epDesc),
-                    java.lang.classfile.ClassFile.ACC_PUBLIC,
-                    cb -> {
-                        cb.aload(0);
-                        cb.invokespecial(java.lang.constant.ConstantDescs.CD_Object, java.lang.constant.ConstantDescs.INIT_NAME, java.lang.constant.ConstantDescs.MTD_void);
-                        cb.aload(0);
-                        cb.aload(1);
-                        cb.putfield(desc, "handle", epDesc);
-                        cb.return_();
-                    }
-            );
-            clb.withMethodBody("getHandle", java.lang.constant.MethodTypeDesc.of(epDesc), java.lang.classfile.ClassFile.ACC_PUBLIC, cb -> {
-                cb.aload(0);
-                cb.getfield(desc, "handle", epDesc);
-                cb.areturn();
-            });
-        });
-        Class<?> craftPlayerStubClass = java.lang.invoke.MethodHandles.lookup().defineClass(bytes);
-
         EmbeddedChannel ch = new EmbeddedChannel(new ChannelDuplexHandler());
         net.minecraft.server.test.PlayerConnection conn = new net.minecraft.server.test.PlayerConnection(null);
         conn.networkManager = new net.minecraft.server.test.PlayerConnection.SimulatedNetworkManager(ch);
         var ep = new net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer(conn);
-        Player connectedPlayer = (Player) craftPlayerStubClass
-                .getConstructor(net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer.class)
-                .newInstance(ep);
+        Player connectedPlayer = SandboxTestFixtures.createStubPlayerWithEntity(
+                UUID.randomUUID(), "ChannelTestPlayer", ep
+        );
 
         assertSame(ch, PlayerChannelResolver.getChannel(connectedPlayer));
 

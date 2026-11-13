@@ -58,18 +58,30 @@ public final class SandboxTestFixtures {
     }
 
     public static Player createStubPlayer(UUID uuid, String name) throws Exception {
+        return createStubPlayerWithEntity(uuid, name, null);
+    }
+
+    public static Player createStubPlayerWithEntity(
+            UUID uuid,
+            String name,
+            net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer handle
+    ) throws Exception {
         Class<?> clazz = stubPlayerClass;
         if (clazz == null) {
             ClassDesc stubDesc = ClassDesc.of("dev.diona.pluginhooker.support.GeneratedStubPlayer");
             ClassDesc uuidDesc = ClassDesc.of("java.util.UUID");
+            ClassDesc epDesc = ClassDesc.of(
+                    net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer.class.getName()
+            );
             byte[] bytes = ClassFile.of().build(stubDesc, clb -> {
                 clb.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_FINAL);
                 clb.withInterfaceSymbols(ClassDesc.of("org.bukkit.entity.Player"));
                 clb.withField("uuid", uuidDesc, ClassFile.ACC_PRIVATE | ClassFile.ACC_FINAL);
                 clb.withField("name", ConstantDescs.CD_String, ClassFile.ACC_PRIVATE | ClassFile.ACC_FINAL);
+                clb.withField("handle", epDesc, ClassFile.ACC_PUBLIC);
                 clb.withMethodBody(
                         ConstantDescs.INIT_NAME,
-                        MethodTypeDesc.of(ConstantDescs.CD_void, uuidDesc, ConstantDescs.CD_String),
+                        MethodTypeDesc.of(ConstantDescs.CD_void, uuidDesc, ConstantDescs.CD_String, epDesc),
                         ClassFile.ACC_PUBLIC,
                         cb -> {
                             cb.aload(0);
@@ -80,6 +92,9 @@ public final class SandboxTestFixtures {
                             cb.aload(0);
                             cb.aload(2);
                             cb.putfield(stubDesc, "name", ConstantDescs.CD_String);
+                            cb.aload(0);
+                            cb.aload(3);
+                            cb.putfield(stubDesc, "handle", epDesc);
                             cb.return_();
                         }
                 );
@@ -93,11 +108,22 @@ public final class SandboxTestFixtures {
                     cb.getfield(stubDesc, "name", ConstantDescs.CD_String);
                     cb.areturn();
                 });
+                clb.withMethodBody("getHandle", MethodTypeDesc.of(epDesc), ClassFile.ACC_PUBLIC, cb -> {
+                    cb.aload(0);
+                    cb.getfield(stubDesc, "handle", epDesc);
+                    cb.areturn();
+                });
             });
             clazz = MethodHandles.lookup().defineClass(bytes);
             stubPlayerClass = clazz;
         }
-        return (Player) clazz.getConstructor(UUID.class, String.class).newInstance(uuid, name);
+        return (Player) clazz
+                .getConstructor(
+                        UUID.class,
+                        String.class,
+                        net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer.class
+                )
+                .newInstance(uuid, name, handle);
     }
 
     public static final class ChildFirstActorLoader extends URLClassLoader {

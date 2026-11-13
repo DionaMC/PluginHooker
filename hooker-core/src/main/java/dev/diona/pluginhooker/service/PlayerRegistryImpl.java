@@ -2,6 +2,7 @@ package dev.diona.pluginhooker.service;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import io.netty.channel.Channel;
@@ -35,10 +36,10 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return null;
         }
         Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
-        boolean realChannel = PlayerChannelResolver.isRealNetworkChannel(channel);
-        if (realChannel && !channel.isOpen()) {
+        if (channel != null && (!PlayerChannelResolver.isRealNetworkChannel(channel) || !channel.isOpen())) {
             return null;
         }
+        boolean realChannel = channel != null;
         long graceMillis = realChannel ? config.getJoinGraceMillis() : 0L;
         UUID uuid = bukkitPlayer.getUniqueId();
         HookedPlayerImpl hookedPlayer = players.compute(uuid, (id, existing) -> {
@@ -122,6 +123,66 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return pluginRegistry.hasHookedPlugins();
         }
         return !players.isEmpty() && pluginRegistry.hasWhitelistPlugins();
+    }
+
+    /**
+     * O(1) fast check returning whether any hooked plugin can currently be blocked for a target player
+     * (either via explicit per-player overrides or via {@link HookMode#WHITELIST}, including untracked NPC/bot players).
+     */
+    public boolean canBlockAnyPlayerAction() {
+        if (pluginRegistry.hasWhitelistPlugins()) {
+            return true;
+        }
+        return disabledOverridePlayerCount.get() > 0 && pluginRegistry.hasHookedPlugins();
+    }
+
+    /**
+     * Returns true if the given {@link Plugin} (with known non-null {@link HookMode}) is allowed to interact
+     * with the resolved {@link Player} / {@link HookedPlayer}.
+     * <ul>
+     *   <li>{@code bukkitPlayer == null} or temporary proxy: allowed ({@code true})</li>
+     *   <li>Tracked {@link HookedPlayer}: delegates to {@link HookedPlayerImpl#isAllowed}</li>
+     *   <li>Untracked valid {@link Player} (e.g. NPC / bot without a real network channel): blocked in {@link HookMode#WHITELIST}</li>
+     * </ul>
+     */
+    public static boolean isPlayerAllowed(
+            Player bukkitPlayer,
+            HookedPlayer hookedPlayer,
+            Plugin plugin,
+            HookMode mode
+    ) {
+        if (hookedPlayer != null) {
+            return HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode);
+        }
+        return mode != HookMode.WHITELIST || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer);
+    }
+
+    /**
+     * Fast check before walking the call stack: returns true if at least one hooked plugin is disabled
+     * for the given {@link Player} (either a tracked {@link HookedPlayer} with disabled plugins or an
+     * untracked non-temporary NPC/bot when {@link PluginRegistryImpl#hasWhitelistPlugins()} is true).
+     */
+    public boolean hasDisabledPluginForPlayer(Player bukkitPlayer, HookedPlayer hookedPlayer) {
+        if (hookedPlayer != null) {
+            return hookedPlayer.hasAnyDisabledPlugin();
+        }
+        return pluginRegistry.hasWhitelistPlugins()
+                && !PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer);
+    }
+
+    /**
+     * Returns true if the given {@link Plugin} is disabled for the target {@link Player}
+     * (supporting both tracked {@link HookedPlayer}s and untracked NPC/bot {@link Player}s in {@link HookMode#WHITELIST}).
+     */
+    public boolean isPluginDisabledForPlayer(Player bukkitPlayer, HookedPlayer hookedPlayer, Plugin plugin) {
+        if (plugin == null) {
+            return false;
+        }
+        if (hookedPlayer != null) {
+            return !hookedPlayer.isPluginEnabled(plugin);
+        }
+        return !PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)
+                && pluginRegistry.getHookMode(plugin) == HookMode.WHITELIST;
     }
 
     @Override

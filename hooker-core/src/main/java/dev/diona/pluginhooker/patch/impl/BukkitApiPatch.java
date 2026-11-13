@@ -13,6 +13,7 @@ import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.CommandTargetResolver;
 import dev.diona.pluginhooker.util.KickReasonSerializer;
+import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.command.CommandSender;
@@ -265,11 +266,15 @@ public final class BukkitApiPatch extends ClassPatch {
     }
 
     public boolean handlePlayerKick(Object playerObj, Object reasonObj) {
-        if (!(playerObj instanceof Player bukkitPlayer)) {
+        if (!pluginRegistry.hasHookedPlugins()
+                || !(playerObj instanceof Player bukkitPlayer)
+                || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (hookedPlayer == null) {
+        boolean callKickEvent = hookedPlayer != null && config.bukkitApi().isCallKickEvent();
+        if (!callKickEvent && (!config.bukkitApi().isBlockDisabledKick()
+                || !playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer))) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
@@ -277,14 +282,16 @@ public final class BukkitApiPatch extends ClassPatch {
             return false;
         }
 
-        boolean enabled = hookedPlayer.isPluginEnabled(caller);
+        boolean enabled = !playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller);
         boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
         String reason = KickReasonSerializer.serialize(reasonObj);
-        boolean shouldBlock = BukkitEvents.fireCancellable(
-                config.bukkitApi().isCallKickEvent(),
-                defaultBlock,
-                () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
-        );
+        boolean shouldBlock = hookedPlayer != null
+                ? BukkitEvents.fireCancellable(
+                        callKickEvent,
+                        defaultBlock,
+                        () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
+                )
+                : defaultBlock;
 
         if (shouldBlock && config.isDebug()) {
             logger.info("[Debug] Blocked " + caller.getName()
@@ -375,15 +382,16 @@ public final class BukkitApiPatch extends ClassPatch {
 
     private Plugin resolveDisabledCallerForPlayer(Object playerObj, boolean blockEnabled) {
         if (!blockEnabled
-                || !playerRegistry.hasAnyPlayerWithDisabledPlugin()
-                || !(playerObj instanceof Player bukkitPlayer)) {
+                || !playerRegistry.canBlockAnyPlayerAction()
+                || !(playerObj instanceof Player bukkitPlayer)
+                || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return null;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
+        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
             return null;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        return caller != null && !hookedPlayer.isPluginEnabled(caller) ? caller : null;
+        return playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller) ? caller : null;
     }
 }

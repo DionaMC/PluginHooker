@@ -14,6 +14,7 @@ import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
+import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import dev.diona.pluginhooker.util.ProtocolLibReadOnly;
 import lombok.RequiredArgsConstructor;
@@ -100,15 +101,17 @@ public final class ProtocolLibPatch extends ClassPatch {
     }
 
     public boolean handleSendOrReceivePacket(Object playerObj, Object packetObj) {
-        if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || !(playerObj instanceof Player bukkitPlayer)) {
+        if (!playerRegistry.canBlockAnyPlayerAction()
+                || !(playerObj instanceof Player bukkitPlayer)
+                || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return false;
         }
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
+        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        if (playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller)) {
             if (config.isDebug()) {
                 String packetDesc = packetObj != null ? packetObj.toString() : "null";
                 logger.info("[Debug] Blocked " + caller.getName()
@@ -138,9 +141,10 @@ public final class ProtocolLibPatch extends ClassPatch {
             return false;
         }
 
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(event.getPlayer());
+        Player bukkitPlayer = event.getPlayer();
+        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
         if (hookedPlayer == null) {
-            return false;
+            return !PlayerRegistryImpl.isPlayerAllowed(bukkitPlayer, null, plugin, mode);
         }
 
         if (!HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode)) {

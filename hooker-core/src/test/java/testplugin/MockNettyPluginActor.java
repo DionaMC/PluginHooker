@@ -97,4 +97,8 @@ public final class MockNettyPluginActor extends ChannelDuplexHandler {
     public static void triggerServerActionOnStack(Runnable serverAction) {
         serverAction.run();
     }
+
+    public static boolean invokeGuard(int hookId, Object a0, Object a1, Object a2) {
+        return dev.diona.pluginhooker.bridge.HookBridge.checkGuard(hookId, a0, a1, a2);
+    }
 }

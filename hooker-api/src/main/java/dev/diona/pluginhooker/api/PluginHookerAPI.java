@@ -2,6 +2,7 @@ package dev.diona.pluginhooker.api;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.api.player.PlayerRegistry;
+import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.api.plugin.PluginRegistry;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -61,11 +62,18 @@ public final class PluginHookerAPI {
      * @return true if allowed
      */
     public static boolean isAllowed(Plugin plugin, Player player) {
-        if (plugin == null || !getPluginRegistry().isHooked(plugin)) {
+        if (plugin == null || player == null) {
+            return true;
+        }
+        HookMode mode = getPluginRegistry().getHookMode(plugin);
+        if (mode == null) {
             return true;
         }
         HookedPlayer hookedPlayer = getPlayer(player);
-        return hookedPlayer == null || hookedPlayer.isPluginEnabled(plugin);
+        if (hookedPlayer != null) {
+            return hookedPlayer.isPluginEnabled(plugin);
+        }
+        return mode != HookMode.WHITELIST;
     }
 
     private static Provider getProvider() {

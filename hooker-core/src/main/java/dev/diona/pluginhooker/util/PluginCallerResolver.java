@@ -33,6 +33,7 @@ public final class PluginCallerResolver {
     private static final int FLAG_PE_SEND_DELEGATE = 1 << 8;
     private static final int FLAG_PE_CLOSE_DELEGATE = 1 << 9;
     private static final int FLAG_NETTY_CODEC_HANDLER = 1 << 10;
+    private static final int FLAG_PE_INJECTOR = 1 << 11;
 
     private static final Set<String> PE_SEND_DELEGATE_SIMPLE_NAMES = Set.of(
             "ProtocolManagerImpl",
@@ -115,6 +116,9 @@ public final class PluginCallerResolver {
             if (PE_CLOSE_DELEGATE_SIMPLE_NAMES.contains(simpleName)
                     || name.contains(".packetevents.netty.channel.")) {
                 flags |= FLAG_PE_CLOSE_DELEGATE;
+            }
+            if (name.contains(".packetevents.injector.")) {
+                flags |= FLAG_PE_INJECTOR;
             }
             return flags;
         }
@@ -317,7 +321,7 @@ public final class PluginCallerResolver {
                 if ((flags & (FLAG_SELF_PACKAGE | FLAG_PE_SEND_DELEGATE)) != 0) {
                     continue;
                 }
-                if ((flags & (FLAG_NETTY | FLAG_CHANNEL_HANDLER)) != 0) {
+                if ((flags & (FLAG_NETTY | FLAG_PE_INJECTOR)) != 0) {
                     return null;
                 }
                 return resolveHookedPluginFromLoader(registry, loader);

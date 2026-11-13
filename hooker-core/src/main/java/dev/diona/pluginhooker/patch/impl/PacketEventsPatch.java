@@ -26,6 +26,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.util.ReferenceCountUtil;
 import lombok.RequiredArgsConstructor;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.classfile.ClassModel;
@@ -256,7 +257,24 @@ public final class PacketEventsPatch extends ClassPatch {
                 }
             }
         }
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
+        if (hookedPlayer == null) {
+            if (!pluginRegistry.hasWhitelistPlugins()
+                    || PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
+                return false;
+            }
+            Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
+            if (caller != null && pluginRegistry.getHookMode(caller) == HookMode.WHITELIST) {
+                if (config.isDebug()) {
+                    int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
+                    logger.info("[Debug] Blocked " + caller.getName()
+                            + " from sending PacketEvents packet (" + bytes + " bytes) to untracked channel");
+                }
+                ReferenceCountUtil.safeRelease(byteBufObj);
+                return true;
+            }
+            return false;
+        }
+        if (!hookedPlayer.hasAnyDisabledPlugin()) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
@@ -292,6 +310,12 @@ public final class PacketEventsPatch extends ClassPatch {
 
         HookedPlayer hookedPlayer = PacketEventsReflector.resolveEventPlayer(event, playerRegistry);
         if (hookedPlayer == null) {
+            if (active.mode() == HookMode.WHITELIST) {
+                Player bukkitPlayer = PacketEventsReflector.extractEventBukkitPlayer(event);
+                if (!PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+                    return true;
+                }
+            }
             return false;
         }
 

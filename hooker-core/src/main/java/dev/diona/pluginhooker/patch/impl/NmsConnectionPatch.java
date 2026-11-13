@@ -182,11 +182,14 @@ public final class NmsConnectionPatch extends ClassPatch {
     }
 
     public boolean handleSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
-        if (!playerRegistry.hasAnyPlayerWithDisabledPlugin() || connectionObj == null) {
+        if (!playerRegistry.canBlockAnyPlayerAction() || connectionObj == null) {
             return false;
         }
         HookedPlayer hookedPlayer = NmsConnectionResolver.resolveHookedPlayer(connectionObj, playerRegistry);
-        if (hookedPlayer == null || !hookedPlayer.hasAnyDisabledPlugin()) {
+        Player bukkitPlayer = hookedPlayer != null
+                ? hookedPlayer.getBukkitPlayer()
+                : (pluginRegistry.hasWhitelistPlugins() ? NmsConnectionResolver.extractPlayer(connectionObj) : null);
+        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
@@ -195,12 +198,13 @@ public final class NmsConnectionPatch extends ClassPatch {
                 connectionObj.getClass(),
                 callerClassObj
         );
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
+        if (playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller)) {
             if (config.isDebug()) {
                 String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
+                String targetName = hookedPlayer != null ? hookedPlayer.getName() : bukkitPlayer.getName();
                 logger.info("[Debug] Blocked " + caller.getName()
                         + " from sending NMS packet " + packetName
-                        + " to player " + hookedPlayer.getName());
+                        + " to player " + targetName);
             }
             return true;
         }
@@ -212,7 +216,12 @@ public final class NmsConnectionPatch extends ClassPatch {
             return false;
         }
         HookedPlayer hookedPlayer = NmsConnectionResolver.resolveHookedPlayer(connectionObj, playerRegistry);
-        if (hookedPlayer == null || (!hookedPlayer.hasAnyDisabledPlugin() && !config.bukkitApi().isCallKickEvent())) {
+        Player bukkitPlayer = hookedPlayer != null
+                ? hookedPlayer.getBukkitPlayer()
+                : (pluginRegistry.hasWhitelistPlugins() ? NmsConnectionResolver.extractPlayer(connectionObj) : null);
+        boolean callKickEvent = hookedPlayer != null && config.bukkitApi().isCallKickEvent();
+        if (!callKickEvent && (!config.bukkitApi().isBlockDisabledKick()
+                || !playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer))) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
@@ -225,18 +234,21 @@ public final class NmsConnectionPatch extends ClassPatch {
             return false;
         }
 
-        boolean enabled = hookedPlayer.isPluginEnabled(caller);
+        boolean enabled = !playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller);
         boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
         String reason = KickReasonSerializer.serialize(reasonObj);
-        boolean shouldBlock = BukkitEvents.fireCancellable(
-                config.bukkitApi().isCallKickEvent(),
-                defaultBlock,
-                () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
-        );
+        boolean shouldBlock = hookedPlayer != null
+                ? BukkitEvents.fireCancellable(
+                        callKickEvent,
+                        defaultBlock,
+                        () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
+                )
+                : defaultBlock;
 
         if (shouldBlock && config.isDebug()) {
+            String targetName = hookedPlayer != null ? hookedPlayer.getName() : bukkitPlayer.getName();
             logger.info("[Debug] Blocked " + caller.getName()
-                    + " from disconnecting player " + hookedPlayer.getName()
+                    + " from disconnecting player " + targetName
                     + " via NMS (reason: " + reason + ")");
         }
         return shouldBlock;

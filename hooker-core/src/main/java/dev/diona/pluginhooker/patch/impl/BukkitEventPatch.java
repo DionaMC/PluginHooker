@@ -8,7 +8,6 @@ import dev.diona.pluginhooker.patch.ClassPatch;
 import dev.diona.pluginhooker.patch.CodeTransforms;
 import dev.diona.pluginhooker.patch.CodeTransforms.ArgSpec;
 import dev.diona.pluginhooker.patch.HookIds;
-import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
@@ -142,7 +141,7 @@ public final class BukkitEventPatch extends ClassPatch {
         );
         HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
 
-        if (hookedPlayer != null && !HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode)) {
+        if (!PlayerRegistryImpl.isPlayerAllowed(bukkitPlayer, hookedPlayer, plugin, mode)) {
             return true;
         }
         return BukkitEvents.fireCancellable(
