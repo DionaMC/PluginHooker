@@ -1,6 +1,5 @@
 package dev.diona.pluginhooker.patch.impl;
 
-import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.event.PluginDispatchCommandEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.config.HookConfig;
@@ -12,7 +11,7 @@ import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
 import dev.diona.pluginhooker.util.CommandTargetResolver;
-import dev.diona.pluginhooker.util.KickReasonSerializer;
+import dev.diona.pluginhooker.util.KickGuardSupport;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
@@ -271,34 +270,14 @@ public final class BukkitApiPatch extends ClassPatch {
                 || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        boolean callKickEvent = hookedPlayer != null && config.bukkitApi().isCallKickEvent();
-        if (!callKickEvent && (!config.bukkitApi().isBlockDisabledKick()
-                || !playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer))) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        if (!KickGuardSupport.shouldInspectKick(bukkitPlayer, hookedPlayer, config.bukkitApi(), playerRegistry)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        if (caller == null) {
-            return false;
-        }
-
-        boolean enabled = !playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller);
-        boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
-        String reason = KickReasonSerializer.serialize(reasonObj);
-        boolean shouldBlock = hookedPlayer != null
-                ? BukkitEvents.fireCancellable(
-                        callKickEvent,
-                        defaultBlock,
-                        () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
-                )
-                : defaultBlock;
-
-        if (shouldBlock && config.isDebug()) {
-            logger.info("[Debug] Blocked " + caller.getName()
-                    + " from kicking player " + bukkitPlayer.getName()
-                    + " (reason: " + reason + ")");
-        }
-        return shouldBlock;
+        return KickGuardSupport.evaluateKick(
+                caller, bukkitPlayer, hookedPlayer, reasonObj, config, playerRegistry, logger, "kicking"
+        );
     }
 
     public boolean handleDispatchCommand(Object senderObj, Object commandLineObj) {
@@ -381,17 +360,14 @@ public final class BukkitApiPatch extends ClassPatch {
     }
 
     private Plugin resolveDisabledCallerForPlayer(Object playerObj, boolean blockEnabled) {
-        if (!blockEnabled
-                || !playerRegistry.canBlockAnyPlayerAction()
-                || !(playerObj instanceof Player bukkitPlayer)
-                || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+        if (!blockEnabled || !playerRegistry.canBlockAnyPlayerAction() || !(playerObj instanceof Player player)) {
             return null;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
+        if (!playerRegistry.hasDisabledPlugins(player, hookedPlayer)) {
             return null;
         }
         Plugin caller = PluginCallerResolver.resolveHookedCaller(pluginRegistry, selfClassLoader);
-        return playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller) ? caller : null;
+        return playerRegistry.isPluginDisabled(player, hookedPlayer, caller) ? caller : null;
     }
 }

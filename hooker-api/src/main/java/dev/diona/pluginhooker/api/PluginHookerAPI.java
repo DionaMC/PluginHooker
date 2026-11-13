@@ -73,7 +73,8 @@ public final class PluginHookerAPI {
         if (hookedPlayer != null) {
             return hookedPlayer.isPluginEnabled(plugin);
         }
-        return mode != HookMode.WHITELIST;
+        return mode != HookMode.WHITELIST
+                || player.getClass().getName().startsWith("com.comphenix.protocol.injector.");
     }
 
     private static Provider getProvider() {

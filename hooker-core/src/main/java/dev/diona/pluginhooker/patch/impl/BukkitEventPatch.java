@@ -139,9 +139,9 @@ public final class BukkitEventPatch extends ClassPatch {
                 event,
                 config.bukkit().isUseReflectionToGetPlayer()
         );
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
 
-        if (!PlayerRegistryImpl.isPlayerAllowed(bukkitPlayer, hookedPlayer, plugin, mode)) {
+        if (!PlayerRegistryImpl.isAllowed(bukkitPlayer, hookedPlayer, plugin, mode)) {
             return true;
         }
         return BukkitEvents.fireCancellable(

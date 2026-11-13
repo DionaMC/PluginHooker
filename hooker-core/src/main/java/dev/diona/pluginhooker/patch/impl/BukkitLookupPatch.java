@@ -206,7 +206,7 @@ public final class BukkitLookupPatch extends ClassPatch {
             return returnValue;
         }
 
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(player);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
         if (hookedPlayer == null
                 || !hookedPlayer.hasAnyDisabledPlugin()
                 || hookedPlayer.isInJoinGracePeriod()) {
@@ -260,14 +260,14 @@ public final class BukkitLookupPatch extends ClassPatch {
     }
 
     private boolean isPlayerRestrictable(Player player) {
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(player);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
         return hookedPlayer != null
                 && hookedPlayer.hasAnyDisabledPlugin()
                 && !hookedPlayer.isInJoinGracePeriod();
     }
 
     private boolean isPlayerHiddenFrom(Player player, Plugin caller) {
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(player);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
         return hookedPlayer != null
                 && !hookedPlayer.isPluginEnabled(caller)
                 && !hookedPlayer.isInJoinGracePeriod();

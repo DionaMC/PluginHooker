@@ -36,7 +36,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return null;
         }
         Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
-        if (channel != null && (!PlayerChannelResolver.isRealNetworkChannel(channel) || !channel.isOpen())) {
+        if (channel != null && !PlayerChannelResolver.isOpenRealNetworkChannel(channel)) {
             return null;
         }
         boolean realChannel = channel != null;
@@ -145,7 +145,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
      *   <li>Untracked valid {@link Player} (e.g. NPC / bot without a real network channel): blocked in {@link HookMode#WHITELIST}</li>
      * </ul>
      */
-    public static boolean isPlayerAllowed(
+    public static boolean isAllowed(
             Player bukkitPlayer,
             HookedPlayer hookedPlayer,
             Plugin plugin,
@@ -158,11 +158,10 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     }
 
     /**
-     * Fast check before walking the call stack: returns true if at least one hooked plugin is disabled
-     * for the given {@link Player} (either a tracked {@link HookedPlayer} with disabled plugins or an
-     * untracked non-temporary NPC/bot when {@link PluginRegistryImpl#hasWhitelistPlugins()} is true).
+     * Fast pre-check before walking the call stack: returns true if at least one hooked plugin is currently
+     * disabled for the resolved {@link Player} / {@link HookedPlayer} target.
      */
-    public boolean hasDisabledPluginForPlayer(Player bukkitPlayer, HookedPlayer hookedPlayer) {
+    public boolean hasDisabledPlugins(Player bukkitPlayer, HookedPlayer hookedPlayer) {
         if (hookedPlayer != null) {
             return hookedPlayer.hasAnyDisabledPlugin();
         }
@@ -171,18 +170,19 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     }
 
     /**
-     * Returns true if the given {@link Plugin} is disabled for the target {@link Player}
-     * (supporting both tracked {@link HookedPlayer}s and untracked NPC/bot {@link Player}s in {@link HookMode#WHITELIST}).
+     * Returns true if {@code plugin} is currently disabled for the resolved {@link Player} / {@link HookedPlayer}
+     * target (supporting both tracked {@link HookedPlayer}s and untracked NPC/bot {@link Player}s in
+     * {@link HookMode#WHITELIST}).
      */
-    public boolean isPluginDisabledForPlayer(Player bukkitPlayer, HookedPlayer hookedPlayer, Plugin plugin) {
+    public boolean isPluginDisabled(Player bukkitPlayer, HookedPlayer hookedPlayer, Plugin plugin) {
         if (plugin == null) {
             return false;
         }
         if (hookedPlayer != null) {
             return !hookedPlayer.isPluginEnabled(plugin);
         }
-        return !PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)
-                && pluginRegistry.getHookMode(plugin) == HookMode.WHITELIST;
+        return pluginRegistry.getHookMode(plugin) == HookMode.WHITELIST
+                && !PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer);
     }
 
     @Override
@@ -195,7 +195,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return hookedPlayer;
         }
         Channel channel = PlayerChannelResolver.getChannel(player);
-        if (PlayerChannelResolver.isRealNetworkChannel(channel) && channel.isOpen()) {
+        if (PlayerChannelResolver.isOpenRealNetworkChannel(channel)) {
             return registerPlayer(player);
         }
         return null;
@@ -204,17 +204,6 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     @Override
     public HookedPlayer getPlayer(UUID uuid) {
         return uuid != null ? players.get(uuid) : null;
-    }
-
-    /**
-     * Fast-path lookup that checks the UUID map first before falling back to channel validation/registration.
-     */
-    public HookedPlayer getPlayerFast(Player player) {
-        if (player == null) {
-            return null;
-        }
-        HookedPlayerImpl cached = players.get(player.getUniqueId());
-        return cached != null ? cached : getPlayer(player);
     }
 
     @Override

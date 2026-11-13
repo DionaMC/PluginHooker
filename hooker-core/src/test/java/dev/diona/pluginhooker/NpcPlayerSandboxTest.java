@@ -38,8 +38,6 @@ import org.junit.jupiter.api.Test;
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
-import java.lang.constant.MethodTypeDesc;
-import java.lang.invoke.MethodHandles;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
@@ -141,7 +139,6 @@ class NpcPlayerSandboxTest {
             // Bot player with dummy channel must NOT register as HookedPlayer
             assertNull(playerRegistry.registerPlayer(botPlayer));
             assertNull(playerRegistry.getPlayer(botPlayer));
-            assertNull(playerRegistry.getPlayerFast(botPlayer));
             assertFalse(PluginHookerAPI.isAllowed(wlPlugin, botPlayer));
             assertTrue(PluginHookerAPI.isAllowed(blPlugin, botPlayer));
 
@@ -284,8 +281,10 @@ class NpcPlayerSandboxTest {
                 assertTrue(HookBridge.checkGuard(HookIds.GUARD_PROTOCOLLIB_INBOUND, botPlibEvent, wlPlibListener, null));
                 assertFalse(HookBridge.checkGuard(HookIds.GUARD_PROTOCOLLIB_INBOUND, botPlibEvent, blPlibListener, null));
 
-                // ProtocolLib temporary player proxy MUST NOT be blocked on events or PacketEvent
+                // ProtocolLib temporary player proxy MUST NOT be blocked or throw on getUniqueId()
                 Player tempPlayer = createTemporaryPlayerStub();
+                assertNull(playerRegistry.getPlayer(tempPlayer));
+                assertTrue(PluginHookerAPI.isAllowed(wlPlugin, tempPlayer));
                 Event tempEvent = (Event) Class.forName("testplugin.TestPlayerEvent", true, wlLoader)
                         .getConstructor(Player.class)
                         .newInstance(tempPlayer);

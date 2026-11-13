@@ -244,9 +244,37 @@ public final class PacketEventsPatch extends ClassPatch {
     }
 
     public boolean handleSendPacket(Object protocolManagerObj, Object channelObj, Object byteBufObj) {
-        if (!pluginRegistry.hasHookedPlugins() || !(channelObj instanceof Channel channel)) {
+        if (!playerRegistry.canBlockAnyPlayerAction() || !(channelObj instanceof Channel channel)) {
             return false;
         }
+        HookedPlayer hookedPlayer = resolveChannelPlayer(protocolManagerObj, channel);
+        if (hookedPlayer != null) {
+            if (!hookedPlayer.hasAnyDisabledPlugin()) {
+                return false;
+            }
+        } else if (!pluginRegistry.hasWhitelistPlugins()
+                || PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
+            return false;
+        }
+
+        Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
+        boolean blocked = hookedPlayer != null
+                ? (caller != null && !hookedPlayer.isPluginEnabled(caller))
+                : (caller != null && pluginRegistry.getHookMode(caller) == HookMode.WHITELIST);
+        if (!blocked) {
+            return false;
+        }
+        if (config.isDebug()) {
+            int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
+            String target = hookedPlayer != null ? "player " + hookedPlayer.getName() : "untracked channel";
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from sending PacketEvents packet (" + bytes + " bytes) to " + target);
+        }
+        ReferenceCountUtil.safeRelease(byteBufObj);
+        return true;
+    }
+
+    private HookedPlayer resolveChannelPlayer(Object protocolManagerObj, Channel channel) {
         HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(channel);
         if (hookedPlayer == null && protocolManagerObj instanceof ProtocolManager pm) {
             User user = pm.getUser(channel);
@@ -257,38 +285,7 @@ public final class PacketEventsPatch extends ClassPatch {
                 }
             }
         }
-        if (hookedPlayer == null) {
-            if (!pluginRegistry.hasWhitelistPlugins()
-                    || PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
-                return false;
-            }
-            Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
-            if (caller != null && pluginRegistry.getHookMode(caller) == HookMode.WHITELIST) {
-                if (config.isDebug()) {
-                    int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
-                    logger.info("[Debug] Blocked " + caller.getName()
-                            + " from sending PacketEvents packet (" + bytes + " bytes) to untracked channel");
-                }
-                ReferenceCountUtil.safeRelease(byteBufObj);
-                return true;
-            }
-            return false;
-        }
-        if (!hookedPlayer.hasAnyDisabledPlugin()) {
-            return false;
-        }
-        Plugin caller = PluginCallerResolver.resolveDirectPacketEventsSendCaller(pluginRegistry, selfClassLoader);
-        if (caller != null && !hookedPlayer.isPluginEnabled(caller)) {
-            if (config.isDebug()) {
-                int bytes = byteBufObj instanceof ByteBuf buf ? buf.readableBytes() : -1;
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from sending PacketEvents packet (" + bytes + " bytes)"
-                        + " to player " + hookedPlayer.getName());
-            }
-            ReferenceCountUtil.safeRelease(byteBufObj);
-            return true;
-        }
-        return false;
+        return hookedPlayer;
     }
 
     public boolean handlePacketEvent(Object listener, Object event, boolean outbound) {
@@ -310,13 +307,10 @@ public final class PacketEventsPatch extends ClassPatch {
 
         HookedPlayer hookedPlayer = PacketEventsReflector.resolveEventPlayer(event, playerRegistry);
         if (hookedPlayer == null) {
-            if (active.mode() == HookMode.WHITELIST) {
-                Player bukkitPlayer = PacketEventsReflector.extractEventBukkitPlayer(event);
-                if (!PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
-                    return true;
-                }
-            }
-            return false;
+            Player bukkitPlayer = active.mode() == HookMode.WHITELIST
+                    ? PacketEventsReflector.extractEventBukkitPlayer(event)
+                    : null;
+            return !PlayerRegistryImpl.isAllowed(bukkitPlayer, null, active.plugin(), active.mode());
         }
 
         if (!HookedPlayerImpl.isAllowed(hookedPlayer, active.plugin(), active.mode())) {

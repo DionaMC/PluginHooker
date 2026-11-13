@@ -102,6 +102,13 @@ public final class PlayerChannelResolver {
     }
 
     /**
+     * Returns true if the given channel is an open real Netty network channel.
+     */
+    public static boolean isOpenRealNetworkChannel(Channel channel) {
+        return isRealNetworkChannel(channel) && channel.isOpen();
+    }
+
+    /**
      * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup,
      * and registers a cleanup callback on the channel's close future.
      */

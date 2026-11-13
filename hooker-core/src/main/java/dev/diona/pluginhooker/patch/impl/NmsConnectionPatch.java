@@ -1,7 +1,6 @@
 package dev.diona.pluginhooker.patch.impl;
 
 import dev.diona.pluginhooker.api.event.PlayerHookRegisterEvent;
-import dev.diona.pluginhooker.api.event.PlayerKickHookEvent;
 import dev.diona.pluginhooker.api.player.HookedPlayer;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.patch.ClassPatch;
@@ -11,7 +10,7 @@ import dev.diona.pluginhooker.patch.HookIds;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
-import dev.diona.pluginhooker.util.KickReasonSerializer;
+import dev.diona.pluginhooker.util.KickGuardSupport;
 import dev.diona.pluginhooker.util.NmsConnectionResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import lombok.RequiredArgsConstructor;
@@ -185,11 +184,13 @@ public final class NmsConnectionPatch extends ClassPatch {
         if (!playerRegistry.canBlockAnyPlayerAction() || connectionObj == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = NmsConnectionResolver.resolveHookedPlayer(connectionObj, playerRegistry);
-        Player bukkitPlayer = hookedPlayer != null
-                ? hookedPlayer.getBukkitPlayer()
-                : (pluginRegistry.hasWhitelistPlugins() ? NmsConnectionResolver.extractPlayer(connectionObj) : null);
-        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
+        HookedPlayer hookedPlayer = NmsConnectionResolver.resolveChannelHookedPlayer(connectionObj);
+        Player bukkitPlayer = null;
+        if (hookedPlayer == null) {
+            bukkitPlayer = NmsConnectionResolver.extractPlayer(connectionObj);
+            hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        }
+        if (!playerRegistry.hasDisabledPlugins(bukkitPlayer, hookedPlayer)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
@@ -198,30 +199,30 @@ public final class NmsConnectionPatch extends ClassPatch {
                 connectionObj.getClass(),
                 callerClassObj
         );
-        if (playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller)) {
-            if (config.isDebug()) {
-                String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
-                String targetName = hookedPlayer != null ? hookedPlayer.getName() : bukkitPlayer.getName();
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from sending NMS packet " + packetName
-                        + " to player " + targetName);
-            }
-            return true;
+        if (!playerRegistry.isPluginDisabled(bukkitPlayer, hookedPlayer, caller)) {
+            return false;
         }
-        return false;
+        if (config.isDebug()) {
+            String packetName = packetObj != null ? packetObj.getClass().getSimpleName() : "null";
+            String targetName = hookedPlayer != null ? hookedPlayer.getName() : bukkitPlayer.getName();
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from sending NMS packet " + packetName
+                    + " to player " + targetName);
+        }
+        return true;
     }
 
     public boolean handleDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
         if (!pluginRegistry.hasHookedPlugins() || connectionObj == null) {
             return false;
         }
-        HookedPlayer hookedPlayer = NmsConnectionResolver.resolveHookedPlayer(connectionObj, playerRegistry);
-        Player bukkitPlayer = hookedPlayer != null
-                ? hookedPlayer.getBukkitPlayer()
-                : (pluginRegistry.hasWhitelistPlugins() ? NmsConnectionResolver.extractPlayer(connectionObj) : null);
-        boolean callKickEvent = hookedPlayer != null && config.bukkitApi().isCallKickEvent();
-        if (!callKickEvent && (!config.bukkitApi().isBlockDisabledKick()
-                || !playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer))) {
+        HookedPlayer hookedPlayer = NmsConnectionResolver.resolveChannelHookedPlayer(connectionObj);
+        Player bukkitPlayer = null;
+        if (hookedPlayer == null) {
+            bukkitPlayer = NmsConnectionResolver.extractPlayer(connectionObj);
+            hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
+        }
+        if (!KickGuardSupport.shouldInspectKick(bukkitPlayer, hookedPlayer, config.bukkitApi(), playerRegistry)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
@@ -230,28 +231,9 @@ public final class NmsConnectionPatch extends ClassPatch {
                 connectionObj.getClass(),
                 callerClassObj
         );
-        if (caller == null) {
-            return false;
-        }
-
-        boolean enabled = !playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller);
-        boolean defaultBlock = !enabled && config.bukkitApi().isBlockDisabledKick();
-        String reason = KickReasonSerializer.serialize(reasonObj);
-        boolean shouldBlock = hookedPlayer != null
-                ? BukkitEvents.fireCancellable(
-                        callKickEvent,
-                        defaultBlock,
-                        () -> new PlayerKickHookEvent(caller, hookedPlayer, reason, reasonObj, enabled, defaultBlock)
-                )
-                : defaultBlock;
-
-        if (shouldBlock && config.isDebug()) {
-            String targetName = hookedPlayer != null ? hookedPlayer.getName() : bukkitPlayer.getName();
-            logger.info("[Debug] Blocked " + caller.getName()
-                    + " from disconnecting player " + targetName
-                    + " via NMS (reason: " + reason + ")");
-        }
-        return shouldBlock;
+        return KickGuardSupport.evaluateKick(
+                caller, bukkitPlayer, hookedPlayer, reasonObj, config, playerRegistry, logger, "disconnecting via NMS"
+        );
     }
 
     public void handleConnectionInit(Object connectionObj) {

@@ -9,7 +9,6 @@ import dev.diona.pluginhooker.listener.PluginLifecycleListener;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
-import io.netty.channel.Channel;
 import lombok.Getter;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
@@ -62,8 +61,7 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
 
         // Register real network online players if reloaded
         for (Player online : Bukkit.getOnlinePlayers()) {
-            Channel channel = PlayerChannelResolver.getChannel(online);
-            if (PlayerChannelResolver.isRealNetworkChannel(channel) && channel.isOpen()) {
+            if (PlayerChannelResolver.isOpenRealNetworkChannel(PlayerChannelResolver.getChannel(online))) {
                 this.playerRegistry.registerPlayer(online);
             }
         }

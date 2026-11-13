@@ -1,7 +1,6 @@
 package dev.diona.pluginhooker.util;
 
 import dev.diona.pluginhooker.api.player.HookedPlayer;
-import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import io.netty.channel.Channel;
 import org.bukkit.entity.Player;
 
@@ -58,26 +57,21 @@ public final class NmsConnectionResolver {
     }
 
     /**
-     * Resolves the {@link HookedPlayer} associated with an NMS connection or packet listener object,
-     * preferring the O(1) Netty {@link Channel} attribute fast path (with ProtocolLib proxy unwrapping)
-     * before falling back to compiled {@link Player} extraction.
+     * Resolves the {@link HookedPlayer} bound directly to the NMS connection's Netty {@link Channel}
+     * attribute in O(1) time (unwrapping ProtocolLib channel proxies if present), or {@code null} if
+     * the connection class has no direct {@link Channel} field or the channel is not bound.
      */
-    public static HookedPlayer resolveHookedPlayer(Object connectionObj, PlayerRegistryImpl playerRegistry) {
+    public static HookedPlayer resolveChannelHookedPlayer(Object connectionObj) {
         ConnectionAccessor acc = CONNECTION_ACCESSOR.get(connectionObj.getClass());
-        if (acc.channelGetter() != null) {
-            try {
-                Channel ch = (Channel) acc.channelGetter().invokeExact(connectionObj);
-                if (ch != null) {
-                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(PlayerChannelResolver.unwrapChannelProxy(ch));
-                    if (hp != null) {
-                        return hp;
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
+        if (acc.channelGetter() == null) {
+            return null;
         }
-        Player bukkitPlayer = extractPlayer(acc, connectionObj);
-        return playerRegistry.getPlayerFast(bukkitPlayer);
+        try {
+            Channel ch = (Channel) acc.channelGetter().invokeExact(connectionObj);
+            return ch != null ? PlayerChannelResolver.getHookedPlayer(PlayerChannelResolver.unwrapChannelProxy(ch)) : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     /**

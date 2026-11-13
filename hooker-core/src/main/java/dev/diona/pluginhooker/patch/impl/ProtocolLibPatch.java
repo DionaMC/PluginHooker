@@ -14,7 +14,6 @@ import dev.diona.pluginhooker.service.HookedPlayerImpl;
 import dev.diona.pluginhooker.service.PlayerRegistryImpl;
 import dev.diona.pluginhooker.service.PluginRegistryImpl;
 import dev.diona.pluginhooker.util.BukkitEvents;
-import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import dev.diona.pluginhooker.util.PluginCallerResolver;
 import dev.diona.pluginhooker.util.ProtocolLibReadOnly;
 import lombok.RequiredArgsConstructor;
@@ -101,26 +100,24 @@ public final class ProtocolLibPatch extends ClassPatch {
     }
 
     public boolean handleSendOrReceivePacket(Object playerObj, Object packetObj) {
-        if (!playerRegistry.canBlockAnyPlayerAction()
-                || !(playerObj instanceof Player bukkitPlayer)
-                || PlayerChannelResolver.isInvalidOrTemporaryPlayer(bukkitPlayer)) {
+        if (!playerRegistry.canBlockAnyPlayerAction() || !(playerObj instanceof Player player)) {
             return false;
         }
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
-        if (!playerRegistry.hasDisabledPluginForPlayer(bukkitPlayer, hookedPlayer)) {
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(player);
+        if (!playerRegistry.hasDisabledPlugins(player, hookedPlayer)) {
             return false;
         }
         Plugin caller = PluginCallerResolver.resolveDirectProtocolLibCaller(pluginRegistry, selfClassLoader);
-        if (playerRegistry.isPluginDisabledForPlayer(bukkitPlayer, hookedPlayer, caller)) {
-            if (config.isDebug()) {
-                String packetDesc = packetObj != null ? packetObj.toString() : "null";
-                logger.info("[Debug] Blocked " + caller.getName()
-                        + " from sending ProtocolLib packet (" + packetDesc + ")"
-                        + " to player " + bukkitPlayer.getName());
-            }
-            return true;
+        if (!playerRegistry.isPluginDisabled(player, hookedPlayer, caller)) {
+            return false;
         }
-        return false;
+        if (config.isDebug()) {
+            String packetDesc = packetObj != null ? packetObj.toString() : "null";
+            logger.info("[Debug] Blocked " + caller.getName()
+                    + " from sending ProtocolLib packet (" + packetDesc + ")"
+                    + " to player " + player.getName());
+        }
+        return true;
     }
 
     public boolean handlePacket(Object eventObj, Object listenerObj, boolean outbound) {
@@ -142,9 +139,9 @@ public final class ProtocolLibPatch extends ClassPatch {
         }
 
         Player bukkitPlayer = event.getPlayer();
-        HookedPlayer hookedPlayer = playerRegistry.getPlayerFast(bukkitPlayer);
+        HookedPlayer hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
         if (hookedPlayer == null) {
-            return !PlayerRegistryImpl.isPlayerAllowed(bukkitPlayer, null, plugin, mode);
+            return !PlayerRegistryImpl.isAllowed(bukkitPlayer, null, plugin, mode);
         }
 
         if (!HookedPlayerImpl.isAllowed(hookedPlayer, plugin, mode)) {
