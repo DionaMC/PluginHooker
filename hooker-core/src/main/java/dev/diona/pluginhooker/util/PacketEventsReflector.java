@@ -145,17 +145,19 @@ public final class PacketEventsReflector {
      */
     public static HookedPlayer resolveEventPlayer(Object event, PlayerRegistryImpl playerRegistry) {
         if (event instanceof ProtocolPacketEvent ppe) {
-            if (ppe.getChannel() instanceof Channel ch) {
+            Object channelObj = ppe.getChannel();
+            if (channelObj instanceof Channel ch) {
                 HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
                 if (hp != null) {
                     return hp;
                 }
             }
             if (ppe.getPlayer() instanceof Player p) {
-                HookedPlayer hp = playerRegistry.getPlayer(p);
-                if (hp != null) {
-                    return hp;
-                }
+                return playerRegistry.getPlayer(p);
+            }
+            if (channelObj instanceof Channel ch
+                    && !PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(ch))) {
+                return null;
             }
             User user = ppe.getUser();
             if (user != null && user.getUUID() != null) {
@@ -166,23 +168,22 @@ public final class PacketEventsReflector {
 
         ShadedEventAccessors accessors = SHADED_EVENT_ACCESSORS.get(event.getClass());
         try {
-            if (accessors.getChannel() != null) {
-                Object channelObj = accessors.getChannel().invokeExact(event);
-                if (channelObj instanceof Channel ch) {
-                    HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
-                    if (hp != null) {
-                        return hp;
-                    }
+            Object channelObj = accessors.getChannel() != null ? accessors.getChannel().invokeExact(event) : null;
+            if (channelObj instanceof Channel ch) {
+                HookedPlayer hp = PlayerChannelResolver.getHookedPlayer(ch);
+                if (hp != null) {
+                    return hp;
                 }
             }
             if (accessors.getPlayer() != null) {
                 Object playerObj = accessors.getPlayer().invokeExact(event);
                 if (playerObj instanceof Player p) {
-                    HookedPlayer hp = playerRegistry.getPlayer(p);
-                    if (hp != null) {
-                        return hp;
-                    }
+                    return playerRegistry.getPlayer(p);
                 }
+            }
+            if (channelObj instanceof Channel ch
+                    && !PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(ch))) {
+                return null;
             }
             if (accessors.getUser() != null) {
                 Object userObj = accessors.getUser().invokeExact(event);

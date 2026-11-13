@@ -18,8 +18,10 @@ import dev.diona.pluginhooker.support.SandboxTestFixtures;
 import dev.diona.pluginhooker.support.SandboxTestFixtures.ChildFirstActorLoader;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -52,7 +54,9 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -120,8 +124,12 @@ class NpcPlayerSandboxTest {
     }
 
     private static Player createDummyChannelNpcPlayer(UUID uuid, String name, EmbeddedChannel dummyChannel) throws Exception {
+        return createChannelBackedPlayer(uuid, name, dummyChannel);
+    }
+
+    private static Player createChannelBackedPlayer(UUID uuid, String name, Channel channel) throws Exception {
         var conn = new net.minecraft.server.test.PlayerConnection(null);
-        conn.networkManager = new net.minecraft.server.test.PlayerConnection.SimulatedNetworkManager(dummyChannel);
+        conn.networkManager = new net.minecraft.server.test.PlayerConnection.SimulatedNetworkManager(channel);
         var ep = new net.minecraft.server.test.PlayerConnection.SimulatedEntityPlayer(conn);
         return SandboxTestFixtures.createStubPlayerWithEntity(uuid, name, ep);
     }
@@ -333,6 +341,55 @@ class NpcPlayerSandboxTest {
                 pluginRegistry.handlePluginDisable(blPlugin);
                 dummyChannel.finish();
             }
+        }
+    }
+
+    @Test
+    void isolatesSameUuidBotsAndOverlappingFastReconnectSessions() throws Exception {
+        UUID sharedUuid = UUID.randomUUID();
+        NioSocketChannel oldRealChannel = new NioSocketChannel();
+        NioSocketChannel newRealChannel = new NioSocketChannel();
+        EmbeddedChannel dummyBotChannel = new EmbeddedChannel(new ChannelDuplexHandler());
+
+        Player oldRealPlayer = createChannelBackedPlayer(sharedUuid, "Steve", oldRealChannel);
+        Player newRealPlayer = createChannelBackedPlayer(sharedUuid, "Steve", newRealChannel);
+        Player clonedUuidBot = createDummyChannelNpcPlayer(sharedUuid, "Steve", dummyBotChannel);
+
+        try (ChildFirstActorLoader wlLoader = new ChildFirstActorLoader(parentLoader)) {
+            Plugin wlPlugin = SandboxTestFixtures.createMockPlugin(wlLoader, "WhitelistAC");
+            pluginRegistry.registerPlugin(wlPlugin, HookMode.WHITELIST);
+
+            HookedPlayer oldHp = playerRegistry.registerPlayer(oldRealPlayer);
+            oldHp.enablePlugin(wlPlugin);
+            assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
+            assertTrue(PluginHookerAPI.isAllowed(wlPlugin, oldRealPlayer));
+
+            // 1. Bot cloning an online player's UUID & name must NEVER inherit the real player's HookedPlayer
+            assertNull(playerRegistry.getPlayer(clonedUuidBot));
+            assertFalse(PluginHookerAPI.isAllowed(wlPlugin, clonedUuidBot));
+            playerRegistry.unregisterPlayer(clonedUuidBot);
+            assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
+            assertSame(oldHp, playerRegistry.getPlayerByName("Steve"));
+
+            // 2. Fast reconnect: newRealPlayer registers before oldRealPlayer's quit/close teardown completes
+            HookedPlayer newHp = playerRegistry.registerPlayer(newRealPlayer);
+            assertNotSame(oldHp, newHp);
+            assertSame(newHp, playerRegistry.getPlayer(newRealPlayer));
+            assertSame(newHp, playerRegistry.getPlayerByName("Steve"));
+            assertFalse(PluginHookerAPI.isAllowed(wlPlugin, newRealPlayer), "Fresh session starts disabled in WHITELIST");
+
+            // Teardown events for oldRealPlayer still resolve oldHp via its bound channel without polluting newHp
+            assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
+            assertTrue(PluginHookerAPI.isAllowed(wlPlugin, oldRealPlayer));
+
+            // Late PlayerQuitEvent(oldRealPlayer) must unbind oldRealChannel WITHOUT removing newHp!
+            playerRegistry.unregisterPlayer(oldRealPlayer);
+            assertSame(newHp, playerRegistry.getPlayer(newRealPlayer));
+            assertSame(newHp, playerRegistry.getPlayerByName("Steve"));
+        } finally {
+            oldRealChannel.unsafe().closeForcibly();
+            newRealChannel.unsafe().closeForcibly();
+            dummyBotChannel.finish();
         }
     }
 

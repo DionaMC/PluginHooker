@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * Version-independent resolver for extracting a player's Netty {@link Channel} across Spigot 1.8.8 ~ 26.3.
@@ -113,7 +113,7 @@ public final class PlayerChannelResolver {
     public static void bindPlayerToChannel(
             Channel channel,
             HookedPlayer hookedPlayer,
-            Consumer<HookedPlayer> onChannelClose
+            BiConsumer<Channel, HookedPlayer> onChannelClose
     ) {
         if (!isRealNetworkChannel(channel)) {
             return;
@@ -122,26 +122,25 @@ public final class PlayerChannelResolver {
         if (onChannelClose != null) {
             if (!Boolean.TRUE.equals(channel.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
                 channel.closeFuture().addListener(future -> {
-                    HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).getAndSet(null);
-                    onChannelClose.accept(bound != null ? bound : hookedPlayer);
+                    HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).get();
+                    onChannelClose.accept(channel, bound != null ? bound : hookedPlayer);
                 });
             }
             if (!channel.isOpen()) {
-                HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).getAndSet(null);
+                HookedPlayer bound = channel.attr(HOOKED_PLAYER_KEY).get();
                 if (bound != null) {
-                    onChannelClose.accept(bound);
+                    onChannelClose.accept(channel, bound);
                 }
             }
         }
     }
 
     /**
-     * Unbinds the {@link HookedPlayer} from the player's Netty {@link Channel}.
+     * Conditionally unbinds {@code expected} from the given Netty {@link Channel}.
      */
-    public static void unbindPlayerFromChannel(Player bukkitPlayer) {
-        Channel channel = getChannel(bukkitPlayer);
-        if (channel != null) {
-            channel.attr(HOOKED_PLAYER_KEY).set(null);
+    public static void unbindPlayerFromChannel(Channel channel, HookedPlayer expected) {
+        if (channel != null && expected != null) {
+            channel.attr(HOOKED_PLAYER_KEY).compareAndSet(expected, null);
         }
     }
 

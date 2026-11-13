@@ -78,7 +78,7 @@ public final class PluginHookerPlugin extends JavaPlugin implements PluginHooker
         }
 
         Bukkit.getPluginManager().registerEvents(
-                new PluginLifecycleListener(this, this.hookConfig, this.pluginRegistry),
+                new PluginLifecycleListener(this, this.hookConfig, this.pluginRegistry, this.playerRegistry),
                 this
         );
     }

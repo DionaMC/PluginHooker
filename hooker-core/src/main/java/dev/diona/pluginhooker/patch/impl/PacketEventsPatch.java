@@ -276,13 +276,12 @@ public final class PacketEventsPatch extends ClassPatch {
 
     private HookedPlayer resolveChannelPlayer(Object protocolManagerObj, Channel channel) {
         HookedPlayer hookedPlayer = PlayerChannelResolver.getHookedPlayer(channel);
-        if (hookedPlayer == null && protocolManagerObj instanceof ProtocolManager pm) {
+        if (hookedPlayer == null
+                && protocolManagerObj instanceof ProtocolManager pm
+                && PlayerChannelResolver.isRealNetworkChannel(PlayerChannelResolver.unwrapChannelProxy(channel))) {
             User user = pm.getUser(channel);
             if (user != null && user.getUUID() != null) {
                 hookedPlayer = playerRegistry.getPlayer(user.getUUID());
-                if (hookedPlayer != null) {
-                    playerRegistry.registerPlayer(hookedPlayer.getBukkitPlayer());
-                }
             }
         }
         return hookedPlayer;
