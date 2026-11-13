@@ -48,7 +48,9 @@ public final class NmsConnectionPatch extends ClassPatch {
 
     @Override
     public boolean isEnabled() {
-        return config.bukkitApi().isEnabled();
+        // Always enabled because <init>/onDisconnect drive player session lifecycle and
+        // NOTIFY_NMS_INTERNAL_WRITE marks vanilla outbound writes for NettyPipelinePatch.
+        return true;
     }
 
     @Override
@@ -215,7 +217,8 @@ public final class NmsConnectionPatch extends ClassPatch {
     }
 
     public boolean handleSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {
-        if (!playerRegistry.canBlockAnyPlayerAction()
+        if (!config.bukkitApi().isEnabled()
+                || !playerRegistry.canBlockAnyPlayerAction()
                 || connectionObj == null
                 || PluginCallerResolver.isNonHookedDirectNmsCaller(
                         pluginRegistry, selfClassLoader, connectionObj.getClass(), callerClassObj)) {
@@ -246,7 +249,8 @@ public final class NmsConnectionPatch extends ClassPatch {
     }
 
     public boolean handleDisconnect(Object connectionObj, Object reasonObj, Object callerClassObj) {
-        if (!pluginRegistry.hasHookedPlugins()
+        if (!config.bukkitApi().isEnabled()
+                || !pluginRegistry.hasHookedPlugins()
                 || connectionObj == null
                 || PluginCallerResolver.isNonHookedDirectNmsCaller(
                         pluginRegistry, selfClassLoader, connectionObj.getClass(), callerClassObj)) {
