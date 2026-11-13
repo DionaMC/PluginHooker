@@ -99,14 +99,6 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Returns true if the given channel is an open real Netty network channel.
-     */
-    public static boolean isOpenRealNetworkChannel(Channel channel) {
-        Channel unwrapped = unwrapChannelProxy(channel);
-        return unwrapped != null && REAL_CHANNEL_CACHE.get(unwrapped.getClass()) && unwrapped.isOpen();
-    }
-
-    /**
      * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup.
      */
     public static void bindPlayerToChannel(Channel channel, HookedPlayer hookedPlayer) {

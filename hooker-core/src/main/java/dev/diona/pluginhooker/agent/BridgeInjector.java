@@ -78,7 +78,13 @@ public final class BridgeInjector {
 
         // Bind dispatchers on the Bootstrap ClassLoader copy
         Class<?> bootstrapBridge = Class.forName(BRIDGE_CLASS_NAME, true, null);
-        invokeBind(bootstrapBridge, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
+        bootstrapBridge.getMethod(
+                "bindDispatchers",
+                MethodHandle.class,
+                MethodHandle.class,
+                MethodHandle.class,
+                MethodHandle.class
+        ).invoke(null, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
         bootstrapBridge.getField("HAS_HOOKED_PLUGINS").setBoolean(null, HookBridge.HAS_HOOKED_PLUGINS);
 
         // Also bind on local class if loaded separately by a child-first PluginClassLoader
@@ -109,21 +115,5 @@ public final class BridgeInjector {
             }
         } catch (Throwable ignored) {
         }
-    }
-
-    private static void invokeBind(
-            Class<?> bridgeClass,
-            MethodHandle guardDispatcher,
-            MethodHandle filterDispatcher,
-            MethodHandle notifyDispatcher,
-            MethodHandle nettyDispatcher
-    ) throws ReflectiveOperationException {
-        bridgeClass.getMethod(
-                "bindDispatchers",
-                MethodHandle.class,
-                MethodHandle.class,
-                MethodHandle.class,
-                MethodHandle.class
-        ).invoke(null, guardDispatcher, filterDispatcher, notifyDispatcher, nettyDispatcher);
     }
 }

@@ -140,10 +140,6 @@ public final class PluginRegistryImpl implements PluginRegistry {
 
     public void refreshClassLoaderCache() {
         knownNonPluginLoaders.clear();
-        scanAndRegisterActivePlugins();
-    }
-
-    private void scanAndRegisterActivePlugins() {
         PluginClassLoaders.scanActivePlugins(this::registerPluginLoaders);
     }
 
@@ -171,7 +167,7 @@ public final class PluginRegistryImpl implements PluginRegistry {
             return direct;
         }
 
-        scanAndRegisterActivePlugins();
+        PluginClassLoaders.scanActivePlugins(this::registerPluginLoaders);
         Plugin afterRefresh = classLoaderToPlugin.get(classLoader);
         if (afterRefresh != null) {
             return afterRefresh;

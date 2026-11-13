@@ -81,7 +81,7 @@ public final class NmsConnectionPatch extends ClassPatch {
         return ClassTransform.transformingMethods(
                 method -> isTargetGuardMethod(method, isGameConnection, isRawConnection)
                         || isDisconnectCallbackMethod(method, !isRawConnection)
-                        || (isRawConnection && hasChannelWriteCall(method)),
+                        || (isRawConnection && method.code().map(NmsConnectionPatch::containsChannelWriteCall).orElse(false)),
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
                         var parentOpt = codeModel.parent();
@@ -190,17 +190,14 @@ public final class NmsConnectionPatch extends ClassPatch {
             }
             if ((name.equals("handle") && paramCount == 1)
                     || (name.equals("a") && (paramCount == 2 || paramCount == 3))) {
-                return isPacketDescriptor(mtd.parameterType(0).descriptorString());
+                String paramDesc = mtd.parameterType(0).descriptorString();
+                return paramDesc.startsWith("Lnet/minecraft/") && paramDesc.endsWith("/Packet;");
             }
             if (name.equals("close") && paramCount == 1) {
                 return true;
             }
         }
         return name.equals("disconnect") || name.equals("disconnectAsync");
-    }
-
-    private static boolean hasChannelWriteCall(MethodModel method) {
-        return method.code().map(NmsConnectionPatch::containsChannelWriteCall).orElse(false);
     }
 
     private static boolean containsChannelWriteCall(CodeModel code) {
@@ -210,10 +207,6 @@ public final class NmsConnectionPatch extends ClassPatch {
             }
         }
         return false;
-    }
-
-    private static boolean isPacketDescriptor(String descriptor) {
-        return descriptor.startsWith("Lnet/minecraft/") && descriptor.endsWith("/Packet;");
     }
 
     public boolean handleSendPacket(Object connectionObj, Object packetObj, Object callerClassObj) {

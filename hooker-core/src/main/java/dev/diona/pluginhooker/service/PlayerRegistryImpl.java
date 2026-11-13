@@ -36,7 +36,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             return null;
         }
         Channel channel = PlayerChannelResolver.getChannel(bukkitPlayer);
-        if (channel != null && !PlayerChannelResolver.isOpenRealNetworkChannel(channel)) {
+        if (channel != null && (!PlayerChannelResolver.isRealNetworkChannel(channel) || !channel.isOpen())) {
             return null;
         }
         boolean realChannel = channel != null;
@@ -204,7 +204,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
         if (channelPlayer != null && channelPlayer.getBukkitPlayer() == player) {
             return channelPlayer;
         }
-        if (PlayerChannelResolver.isOpenRealNetworkChannel(channel)) {
+        if (PlayerChannelResolver.isRealNetworkChannel(channel) && channel.isOpen()) {
             return registerPlayer(player);
         }
         return null;

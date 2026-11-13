@@ -84,11 +84,7 @@ public final class NmsConnectionResolver {
      * Extracts the Bukkit {@link Player} from an NMS connection or packet listener object.
      */
     public static Player extractPlayer(Object connectionObj) {
-        return extractPlayer(CONNECTION_ACCESSOR.get(connectionObj.getClass()), connectionObj);
-    }
-
-    private static Player extractPlayer(ConnectionAccessor acc, Object connectionObj) {
-        MethodHandle getter = acc.playerGetter();
+        MethodHandle getter = CONNECTION_ACCESSOR.get(connectionObj.getClass()).playerGetter();
         if (getter == null) {
             return null;
         }

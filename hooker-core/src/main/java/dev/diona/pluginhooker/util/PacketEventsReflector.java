@@ -146,8 +146,11 @@ public final class PacketEventsReflector {
     public static HookedPlayer resolveEventPlayer(Object event, PlayerRegistryImpl playerRegistry) {
         if (event instanceof ProtocolPacketEvent ppe) {
             Object channelObj = ppe.getChannel();
-            HookedPlayer direct = resolveChannelOrBukkitPlayer(channelObj, ppe.getPlayer(), playerRegistry);
-            if (direct != null || ppe.getPlayer() instanceof Player || isNonRealChannel(channelObj)) {
+            Object playerObj = ppe.getPlayer();
+            HookedPlayer direct = resolveChannelOrBukkitPlayer(channelObj, playerObj, playerRegistry);
+            if (direct != null
+                    || playerObj instanceof Player
+                    || (channelObj instanceof Channel ch && !PlayerChannelResolver.isRealNetworkChannel(ch))) {
                 return direct;
             }
             User user = ppe.getUser();
@@ -159,7 +162,9 @@ public final class PacketEventsReflector {
             Object channelObj = accessors.getChannel() != null ? accessors.getChannel().invokeExact(event) : null;
             Object playerObj = accessors.getPlayer() != null ? accessors.getPlayer().invokeExact(event) : null;
             HookedPlayer direct = resolveChannelOrBukkitPlayer(channelObj, playerObj, playerRegistry);
-            if (direct != null || playerObj instanceof Player || isNonRealChannel(channelObj)) {
+            if (direct != null
+                    || playerObj instanceof Player
+                    || (channelObj instanceof Channel ch && !PlayerChannelResolver.isRealNetworkChannel(ch))) {
                 return direct;
             }
             if (accessors.getUser() != null) {
@@ -182,10 +187,6 @@ public final class PacketEventsReflector {
             }
         }
         return playerObj instanceof Player p ? playerRegistry.getPlayer(p) : null;
-    }
-
-    private static boolean isNonRealChannel(Object channelObj) {
-        return channelObj instanceof Channel ch && !PlayerChannelResolver.isRealNetworkChannel(ch);
     }
 
     /**

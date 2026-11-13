@@ -25,7 +25,6 @@ import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 import org.bukkit.event.vehicle.VehicleEntityCollisionEvent;
 import org.bukkit.event.vehicle.VehicleExitEvent;
-import org.bukkit.projectiles.ProjectileSource;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;

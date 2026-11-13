@@ -172,15 +172,6 @@ public final class CodeTransforms {
     }
 
     /**
-     * Injects a guard check at the start of Netty's 1-arg {@code AbstractChannelHandlerContext#write(Object)}
-     * (returning {@code ChannelFuture}):
-     * {@code if (HookBridge.checkGuard(hookId, this, msg, null)) return this.newSucceededFuture();}
-     */
-    public static CodeTransform guardNettyChannelFutureEntry(int hookId, ArgSpec arg0, ArgSpec arg1, ArgSpec arg2) {
-        return guardNettyChannelFutureEntry(hookId, arg0, arg1, arg2, -1);
-    }
-
-    /**
      * Injects a guard check at the start of a Netty {@code AbstractChannelHandlerContext} outbound method
      * returning {@code ChannelFuture}. If {@code promiseParamIndex >= 0} and the passed {@code ChannelPromise}
      * argument is non-null, returns that promise directly; otherwise returns {@code this.newSucceededFuture()}.

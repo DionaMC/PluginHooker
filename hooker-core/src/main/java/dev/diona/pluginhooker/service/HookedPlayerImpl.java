@@ -153,10 +153,6 @@ public final class HookedPlayerImpl implements HookedPlayer {
         return joinGraceUntilMillis > 0L && System.currentTimeMillis() < joinGraceUntilMillis;
     }
 
-    public boolean hasExplicitlyDisabledPlugins() {
-        return hasDisabledOverrides;
-    }
-
     @Override
     public boolean hasAnyDisabledPlugin() {
         if (hasDisabledOverrides) {
