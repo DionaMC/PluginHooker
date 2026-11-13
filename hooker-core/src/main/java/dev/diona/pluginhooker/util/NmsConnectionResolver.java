@@ -24,6 +24,7 @@ public final class NmsConnectionResolver {
 
     private static final MethodHandle NON_NULL_TEST;
     private static final MethodHandle NULL_PLAYER_CONSTANT;
+    private static final MethodHandle NULL_CHANNEL_CONSTANT;
 
     static {
         try {
@@ -34,6 +35,11 @@ public final class NmsConnectionResolver {
             );
             NULL_PLAYER_CONSTANT = MethodHandles.dropArguments(
                     MethodHandles.constant(Player.class, null),
+                    0,
+                    Object.class
+            );
+            NULL_CHANNEL_CONSTANT = MethodHandles.dropArguments(
+                    MethodHandles.constant(Channel.class, null),
                     0,
                     Object.class
             );
@@ -94,7 +100,40 @@ public final class NmsConnectionResolver {
     }
 
     private static MethodHandle findChannelGetter(MethodHandles.Lookup lookup, Class<?> connectionClass) {
+        MethodHandle direct = findDirectChannelField(lookup, connectionClass);
+        if (direct != null) {
+            return direct;
+        }
+        // 1-hop NMS connection field (e.g. PlayerConnection.networkManager, ServerCommonPacketListenerImpl.connection)
         for (Class<?> c = connectionClass; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) {
+                    continue;
+                }
+                String typeName = f.getType().getName();
+                if (!typeName.startsWith("net.minecraft.")) {
+                    continue;
+                }
+                MethodHandle nestedChannel = findDirectChannelField(lookup, f.getType());
+                if (nestedChannel != null) {
+                    try {
+                        f.setAccessible(true);
+                        MethodHandle firstHop = lookup.unreflectGetter(f)
+                                .asType(MethodType.methodType(Object.class, Object.class));
+                        MethodHandle guardedChannel = MethodHandles.guardWithTest(
+                                NON_NULL_TEST, nestedChannel, NULL_CHANNEL_CONSTANT
+                        );
+                        return MethodHandles.filterReturnValue(firstHop, guardedChannel);
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static MethodHandle findDirectChannelField(MethodHandles.Lookup lookup, Class<?> ownerClass) {
+        for (Class<?> c = ownerClass; c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
                 if (!Modifier.isStatic(f.getModifiers()) && Channel.class.isAssignableFrom(f.getType())) {
                     try {

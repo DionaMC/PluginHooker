@@ -6,6 +6,7 @@ import dev.diona.pluginhooker.api.plugin.HookMode;
 import dev.diona.pluginhooker.config.HookConfig;
 import dev.diona.pluginhooker.util.PlayerChannelResolver;
 import io.netty.channel.Channel;
+import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -13,15 +14,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 /**
  * Thread-safe implementation of {@link PlayerRegistry}.
  */
+@RequiredArgsConstructor
 public final class PlayerRegistryImpl implements PlayerRegistry {
 
     private final Map<UUID, HookedPlayerImpl> players = new ConcurrentHashMap<>();
@@ -29,23 +29,6 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
     private final AtomicInteger disabledOverridePlayerCount = new AtomicInteger();
     private final PluginRegistryImpl pluginRegistry;
     private final HookConfig config;
-    private final Consumer<Runnable> channelCloseCleanupScheduler;
-
-    public PlayerRegistryImpl(PluginRegistryImpl pluginRegistry, HookConfig config) {
-        this(pluginRegistry, config, Runnable::run);
-    }
-
-    public PlayerRegistryImpl(
-            PluginRegistryImpl pluginRegistry,
-            HookConfig config,
-            Consumer<Runnable> channelCloseCleanupScheduler
-    ) {
-        this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry");
-        this.config = Objects.requireNonNull(config, "config");
-        this.channelCloseCleanupScheduler = Objects.requireNonNull(
-                channelCloseCleanupScheduler, "channelCloseCleanupScheduler"
-        );
-    }
 
     @Override
     public HookedPlayerImpl registerPlayer(Player bukkitPlayer) {
@@ -74,14 +57,7 @@ public final class PlayerRegistryImpl implements PlayerRegistry {
             playersByLowerName.put(name.toLowerCase(Locale.ROOT), hookedPlayer);
         }
         if (realChannel) {
-            PlayerChannelResolver.bindPlayerToChannel(
-                    channel,
-                    hookedPlayer,
-                    (closedChannel, closedPlayer) -> channelCloseCleanupScheduler.accept(() -> {
-                        PlayerChannelResolver.unbindPlayerFromChannel(closedChannel, closedPlayer);
-                        removeRegisteredPlayer(uuid, closedPlayer);
-                    })
-            );
+            PlayerChannelResolver.bindPlayerToChannel(channel, hookedPlayer);
         }
         return hookedPlayer;
     }

@@ -222,6 +222,7 @@ public final class PatchManager {
             case HookIds.NOTIFY_PACKETEVENTS_UNREGISTER_ALL -> packetEventsPatch.handleUnregisterAllListeners(arg0);
             case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT -> nmsConnectionPatch.handleConnectionInit(arg0);
             case HookIds.NOTIFY_NMS_INTERNAL_WRITE -> nettyPipelinePatch.setInternalNmsWrite(arg0 != null);
+            case HookIds.NOTIFY_NMS_PLAYER_CONNECTION_CLOSE -> nmsConnectionPatch.handleConnectionClose(arg0);
             default -> {
             }
         }

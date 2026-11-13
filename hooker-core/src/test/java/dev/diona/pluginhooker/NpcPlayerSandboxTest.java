@@ -359,7 +359,9 @@ class NpcPlayerSandboxTest {
             Plugin wlPlugin = SandboxTestFixtures.createMockPlugin(wlLoader, "WhitelistAC");
             pluginRegistry.registerPlugin(wlPlugin, HookMode.WHITELIST);
 
-            HookedPlayer oldHp = playerRegistry.registerPlayer(oldRealPlayer);
+            var oldConn = new net.minecraft.server.test.PlayerConnection(oldRealPlayer);
+            oldConn.networkManager = new net.minecraft.server.test.PlayerConnection.SimulatedNetworkManager(oldRealChannel);
+            HookedPlayer oldHp = playerRegistry.getPlayer(oldRealPlayer);
             oldHp.enablePlugin(wlPlugin);
             assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
             assertTrue(PluginHookerAPI.isAllowed(wlPlugin, oldRealPlayer));
@@ -371,8 +373,10 @@ class NpcPlayerSandboxTest {
             assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
             assertSame(oldHp, playerRegistry.getPlayerByName("Steve"));
 
-            // 2. Fast reconnect: newRealPlayer registers before oldRealPlayer's quit/close teardown completes
-            HookedPlayer newHp = playerRegistry.registerPlayer(newRealPlayer);
+            // 2. Fast reconnect: newRealPlayer registers before oldRealPlayer's NMS onDisconnect teardown completes
+            var newConn = new net.minecraft.server.test.PlayerConnection(newRealPlayer);
+            newConn.networkManager = new net.minecraft.server.test.PlayerConnection.SimulatedNetworkManager(newRealChannel);
+            HookedPlayer newHp = playerRegistry.getPlayer(newRealPlayer);
             assertNotSame(oldHp, newHp);
             assertSame(newHp, playerRegistry.getPlayer(newRealPlayer));
             assertSame(newHp, playerRegistry.getPlayerByName("Steve"));
@@ -382,10 +386,16 @@ class NpcPlayerSandboxTest {
             assertSame(oldHp, playerRegistry.getPlayer(oldRealPlayer));
             assertTrue(PluginHookerAPI.isAllowed(wlPlugin, oldRealPlayer));
 
-            // Late PlayerQuitEvent(oldRealPlayer) must unbind oldRealChannel WITHOUT removing newHp!
-            playerRegistry.unregisterPlayer(oldRealPlayer);
+            // Late NMS onDisconnect(oldConn) must unbind oldRealChannel WITHOUT removing newHp!
+            oldConn.onDisconnect("Timed out");
             assertSame(newHp, playerRegistry.getPlayer(newRealPlayer));
             assertSame(newHp, playerRegistry.getPlayerByName("Steve"));
+
+            // And when newConn itself finishes onDisconnect, newHp is synchronously unregistered with zero timers
+            newRealChannel.unsafe().closeForcibly();
+            newConn.onDisconnect("Quitting");
+            assertNull(playerRegistry.getPlayer(newRealPlayer));
+            assertNull(playerRegistry.getPlayerByName("Steve"));
         } finally {
             oldRealChannel.unsafe().closeForcibly();
             newRealChannel.unsafe().closeForcibly();

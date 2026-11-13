@@ -44,4 +44,8 @@ public class PlayerConnection {
     public void disconnect(String reason) {
         this.disconnected = true;
     }
+
+    public void onDisconnect(Object reason) {
+        this.disconnected = true;
+    }
 }

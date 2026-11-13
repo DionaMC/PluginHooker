@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
-import java.util.function.BiConsumer;
 
 /**
  * Version-independent resolver for extracting a player's Netty {@link Channel} across Spigot 1.8.8 ~ 26.3.
@@ -28,8 +27,6 @@ public final class PlayerChannelResolver {
 
     public static final AttributeKey<HookedPlayer> HOOKED_PLAYER_KEY =
             AttributeKey.valueOf("pluginhooker_hooked_player");
-    private static final AttributeKey<Boolean> CLOSE_LISTENER_BOUND_KEY =
-            AttributeKey.valueOf("pluginhooker_close_listener_bound");
 
     private static final ClassValue<Boolean> REAL_CHANNEL_CACHE = new ClassValue<>() {
         @Override
@@ -110,42 +107,12 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup,
-     * and registers a cleanup callback on the channel's close future.
+     * Binds a {@link HookedPlayer} directly onto the player's Netty {@link Channel} attributes for O(1) lookup.
      */
-    public static void bindPlayerToChannel(
-            Channel channel,
-            HookedPlayer hookedPlayer,
-            BiConsumer<Channel, HookedPlayer> onChannelClose
-    ) {
+    public static void bindPlayerToChannel(Channel channel, HookedPlayer hookedPlayer) {
         Channel target = unwrapChannelProxy(channel);
-        if (target == null || !REAL_CHANNEL_CACHE.get(target.getClass())) {
-            return;
-        }
-        target.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
-        if (onChannelClose != null) {
-            if (!Boolean.TRUE.equals(target.attr(CLOSE_LISTENER_BOUND_KEY).getAndSet(Boolean.TRUE))) {
-                target.closeFuture().addListener(future -> {
-                    HookedPlayer bound = target.attr(HOOKED_PLAYER_KEY).get();
-                    onChannelClose.accept(target, bound != null ? bound : hookedPlayer);
-                });
-            }
-            if (!target.isOpen()) {
-                HookedPlayer bound = target.attr(HOOKED_PLAYER_KEY).get();
-                if (bound != null) {
-                    onChannelClose.accept(target, bound);
-                }
-            }
-        }
-    }
-
-    /**
-     * Conditionally unbinds {@code expected} from the given Netty {@link Channel}.
-     */
-    public static void unbindPlayerFromChannel(Channel channel, HookedPlayer expected) {
-        Channel target = unwrapChannelProxy(channel);
-        if (target != null && expected != null) {
-            target.attr(HOOKED_PLAYER_KEY).compareAndSet(expected, null);
+        if (target != null && REAL_CHANNEL_CACHE.get(target.getClass())) {
+            target.attr(HOOKED_PLAYER_KEY).set(hookedPlayer);
         }
     }
 

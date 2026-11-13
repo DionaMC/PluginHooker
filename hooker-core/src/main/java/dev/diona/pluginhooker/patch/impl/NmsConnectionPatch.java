@@ -78,6 +78,7 @@ public final class NmsConnectionPatch extends ClassPatch {
 
         return ClassTransform.transformingMethods(
                 method -> isTargetGuardMethod(method, isGameConnection, isRawConnection)
+                        || isDisconnectCallbackMethod(method, !isRawConnection)
                         || (isRawConnection && hasChannelWriteCall(method)),
                 (mb, element) -> {
                     if (element instanceof CodeModel codeModel) {
@@ -85,10 +86,19 @@ public final class NmsConnectionPatch extends ClassPatch {
                         boolean guardTarget = parentOpt
                                 .map(m -> isTargetGuardMethod(m, isGameConnection, isRawConnection))
                                 .orElse(false);
+                        boolean disconnectCallback = parentOpt
+                                .map(m -> isDisconnectCallbackMethod(m, !isRawConnection))
+                                .orElse(false);
                         String name = parentOpt.map(m -> m.methodName().stringValue()).orElse("");
 
                         CodeTransform transform = null;
-                        if (guardTarget) {
+                        if (disconnectCallback) {
+                            transform = CodeTransforms.notifyBeforeReturn(
+                                    HookIds.NOTIFY_NMS_PLAYER_CONNECTION_CLOSE,
+                                    ArgSpec.thisRef(),
+                                    ArgSpec.nullConst()
+                            );
+                        } else if (guardTarget) {
                             if (name.equals(ConstantDescs.INIT_NAME)) {
                                 transform = CodeTransforms.notifyBeforeReturn(
                                         HookIds.NOTIFY_NMS_PLAYER_CONNECTION_INIT,
@@ -124,6 +134,30 @@ public final class NmsConnectionPatch extends ClassPatch {
                     }
                 }
         );
+    }
+
+    private static boolean isDisconnectCallbackMethod(MethodModel method, boolean isPacketListener) {
+        if (!isPacketListener) {
+            return false;
+        }
+        int flags = method.flags().flagsMask();
+        if ((flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_BRIDGE | ClassFile.ACC_SYNTHETIC)) != 0
+                || (flags & ClassFile.ACC_PUBLIC) == 0) {
+            return false;
+        }
+        var mtd = method.methodTypeSymbol();
+        if (!mtd.returnType().equals(ConstantDescs.CD_void) || mtd.parameterCount() != 1) {
+            return false;
+        }
+        String name = method.methodName().stringValue();
+        if (name.equals("onDisconnect")) {
+            return !mtd.parameterType(0).isPrimitive();
+        }
+        if (name.equals("a")) {
+            String paramDesc = mtd.parameterType(0).descriptorString();
+            return paramDesc.endsWith("/IChatBaseComponent;") || paramDesc.endsWith("/DisconnectionDetails;");
+        }
+        return false;
     }
 
     private static boolean isTargetGuardMethod(MethodModel method, boolean isGameConnection, boolean isRawConnection) {
@@ -248,6 +282,21 @@ public final class NmsConnectionPatch extends ClassPatch {
             if (hookedPlayer != null) {
                 BukkitEvents.fireIfReady(() -> new PlayerHookRegisterEvent(bukkitPlayer, hookedPlayer));
             }
+        }
+    }
+
+    public void handleConnectionClose(Object connectionObj) {
+        if (connectionObj == null) {
+            return;
+        }
+        HookedPlayer hookedPlayer = NmsConnectionResolver.resolveChannelHookedPlayer(connectionObj);
+        if (hookedPlayer != null) {
+            playerRegistry.unregisterPlayer(hookedPlayer.getBukkitPlayer());
+            return;
+        }
+        Player bukkitPlayer = NmsConnectionResolver.extractPlayer(connectionObj);
+        if (bukkitPlayer != null) {
+            playerRegistry.unregisterPlayer(bukkitPlayer);
         }
     }
 }
