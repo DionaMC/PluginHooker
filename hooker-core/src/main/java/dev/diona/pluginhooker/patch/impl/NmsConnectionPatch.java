@@ -184,21 +184,32 @@ public final class NmsConnectionPatch extends ClassPatch {
         if (!playerRegistry.canBlockAnyPlayerAction() || connectionObj == null) {
             return false;
         }
+        Class<?> connectionClass = connectionObj.getClass();
+        Plugin caller = null;
+        boolean reflectiveCall = PluginCallerResolver.isReflectiveNmsCall(callerClassObj);
+        if (!reflectiveCall) {
+            caller = PluginCallerResolver.resolveFastDirectNmsCaller(
+                    pluginRegistry, selfClassLoader, connectionClass, (Class<?>) callerClassObj
+            );
+            if (caller == null) {
+                return false;
+            }
+        }
+
         HookedPlayer hookedPlayer = NmsConnectionResolver.resolveChannelHookedPlayer(connectionObj);
         Player bukkitPlayer = null;
         if (hookedPlayer == null) {
             bukkitPlayer = NmsConnectionResolver.extractPlayer(connectionObj);
             hookedPlayer = playerRegistry.getPlayer(bukkitPlayer);
         }
-        if (!playerRegistry.hasDisabledPlugins(bukkitPlayer, hookedPlayer)) {
-            return false;
+        if (reflectiveCall) {
+            if (!playerRegistry.hasDisabledPlugins(bukkitPlayer, hookedPlayer)) {
+                return false;
+            }
+            caller = PluginCallerResolver.resolveReflectiveNmsCaller(
+                    pluginRegistry, selfClassLoader, connectionClass
+            );
         }
-        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
-                pluginRegistry,
-                selfClassLoader,
-                connectionObj.getClass(),
-                callerClassObj
-        );
         if (!playerRegistry.isPluginDisabled(bukkitPlayer, hookedPlayer, caller)) {
             return false;
         }
@@ -216,6 +227,18 @@ public final class NmsConnectionPatch extends ClassPatch {
         if (!pluginRegistry.hasHookedPlugins() || connectionObj == null) {
             return false;
         }
+        Class<?> connectionClass = connectionObj.getClass();
+        Plugin caller = null;
+        boolean reflectiveCall = PluginCallerResolver.isReflectiveNmsCall(callerClassObj);
+        if (!reflectiveCall) {
+            caller = PluginCallerResolver.resolveFastDirectNmsCaller(
+                    pluginRegistry, selfClassLoader, connectionClass, (Class<?>) callerClassObj
+            );
+            if (caller == null) {
+                return false;
+            }
+        }
+
         HookedPlayer hookedPlayer = NmsConnectionResolver.resolveChannelHookedPlayer(connectionObj);
         Player bukkitPlayer = null;
         if (hookedPlayer == null) {
@@ -225,12 +248,11 @@ public final class NmsConnectionPatch extends ClassPatch {
         if (!KickGuardSupport.shouldInspectKick(bukkitPlayer, hookedPlayer, config.bukkitApi(), playerRegistry)) {
             return false;
         }
-        Plugin caller = PluginCallerResolver.resolveDirectNmsCaller(
-                pluginRegistry,
-                selfClassLoader,
-                connectionObj.getClass(),
-                callerClassObj
-        );
+        if (reflectiveCall) {
+            caller = PluginCallerResolver.resolveReflectiveNmsCaller(
+                    pluginRegistry, selfClassLoader, connectionClass
+            );
+        }
         return KickGuardSupport.evaluateKick(
                 caller, bukkitPlayer, hookedPlayer, reasonObj, config, playerRegistry, logger, "disconnecting via NMS"
         );

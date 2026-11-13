@@ -8,7 +8,6 @@ import org.bukkit.entity.Player;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.invoke.MutableCallSite;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -65,23 +64,22 @@ public final class PlayerChannelResolver {
         }
     };
 
-    private static final MethodHandle BOOTSTRAP_EXTRACTOR;
-    private static final MutableCallSite CHANNEL_EXTRACTOR_SITE;
-    private static final MethodHandle CHANNEL_EXTRACTOR;
+    private static final MethodHandle NULL_CHANNEL_EXTRACTOR = MethodHandles.dropArguments(
+            MethodHandles.constant(Channel.class, null),
+            0,
+            Player.class
+    );
 
-    static {
-        try {
-            BOOTSTRAP_EXTRACTOR = MethodHandles.lookup().findStatic(
-                    PlayerChannelResolver.class,
-                    "resolveAndBindExtractor",
-                    MethodType.methodType(Channel.class, Player.class)
-            );
-            CHANNEL_EXTRACTOR_SITE = new MutableCallSite(BOOTSTRAP_EXTRACTOR);
-            CHANNEL_EXTRACTOR = CHANNEL_EXTRACTOR_SITE.dynamicInvoker();
-        } catch (ReflectiveOperationException e) {
-            throw new ExceptionInInitializerError(e);
+    private static final ClassValue<MethodHandle> CHANNEL_EXTRACTOR_CACHE = new ClassValue<>() {
+        @Override
+        protected MethodHandle computeValue(Class<?> playerClass) {
+            try {
+                return buildCompositeExtractor(playerClass);
+            } catch (Exception ignored) {
+                return NULL_CHANNEL_EXTRACTOR;
+            }
         }
-    }
+    };
 
     private PlayerChannelResolver() {
     }
@@ -158,32 +156,16 @@ public final class PlayerChannelResolver {
     }
 
     /**
-     * Extracts the Netty {@link Channel} for the given Bukkit {@link Player} via a C2-inlineable
-     * composite {@link MethodHandle}.
+     * Extracts the Netty {@link Channel} for the given Bukkit {@link Player} via a lock-free
+     * {@link ClassValue}-cached composite {@link MethodHandle}.
      */
     public static Channel getChannel(Player player) {
         if (isInvalidOrTemporaryPlayer(player)) {
             return null;
         }
         try {
-            return (Channel) CHANNEL_EXTRACTOR.invokeExact(player);
+            return (Channel) CHANNEL_EXTRACTOR_CACHE.get(player.getClass()).invokeExact(player);
         } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    @SuppressWarnings("unused")
-    private static synchronized Channel resolveAndBindExtractor(Player player) throws Throwable {
-        MethodHandle current = CHANNEL_EXTRACTOR_SITE.getTarget();
-        if (current != BOOTSTRAP_EXTRACTOR) {
-            return (Channel) current.invokeExact(player);
-        }
-        try {
-            MethodHandle compiled = buildCompositeExtractor(player.getClass());
-            CHANNEL_EXTRACTOR_SITE.setTarget(compiled);
-            MutableCallSite.syncAll(new MutableCallSite[]{CHANNEL_EXTRACTOR_SITE});
-            return (Channel) compiled.invokeExact(player);
-        } catch (Exception ignored) {
             return null;
         }
     }

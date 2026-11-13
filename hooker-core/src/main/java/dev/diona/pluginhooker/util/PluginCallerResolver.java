@@ -224,28 +224,43 @@ public final class PluginCallerResolver {
     }
 
     /**
-     * Resolves the direct plugin caller (including reflective {@code Method.invoke} / {@code MethodHandle} calls)
-     * of an instrumented NMS connection method such as {@code sendPacket}, {@code send}, or {@code disconnect}.
-     * Uses the C2-intrinsified {@code directCallerObj} ({@link StackWalker#getCallerClass()}) in O(1) without
-     * {@link StackWalker#walk}, falling back to stack walking only for bootstrap-loaded reflection frames.
+     * Returns true if {@code directCallerObj} comes from a bootstrap-loaded reflection frame
+     * (or is absent), meaning {@link #resolveReflectiveNmsCaller} must walk the stack to find
+     * the real caller.
      */
-    public static Plugin resolveDirectNmsCaller(
+    public static boolean isReflectiveNmsCall(Object directCallerObj) {
+        return !(directCallerObj instanceof Class<?> directCaller) || directCaller.getClassLoader() == null;
+    }
+
+    /**
+     * O(1) zero-walk resolver for non-reflective NMS connection calls using the C2-intrinsified
+     * {@link StackWalker#getCallerClass()} result. Rejects vanilla server calls in ~1 ns via
+     * pointer comparison without touching {@code ClassValue}, {@code MethodHandle}, or player maps.
+     */
+    public static Plugin resolveFastDirectNmsCaller(
             PluginRegistry registry,
             ClassLoader selfLoader,
             Class<?> connectionClass,
-            Object directCallerObj
+            Class<?> directCaller
+    ) {
+        if (directCaller.isAssignableFrom(connectionClass)) {
+            return null;
+        }
+        ClassLoader loader = directCaller.getClassLoader();
+        return loader == null || loader == selfLoader ? null : resolveHookedPluginFromLoader(registry, loader);
+    }
+
+    /**
+     * Fallback stack-walking resolver used only when an instrumented NMS connection method was invoked
+     * reflectively via {@code Method.invoke} or {@code MethodHandle} ({@code directCaller.getClassLoader() == null}).
+     */
+    public static Plugin resolveReflectiveNmsCaller(
+            PluginRegistry registry,
+            ClassLoader selfLoader,
+            Class<?> connectionClass
     ) {
         if (!registry.hasHookedPlugins()) {
             return null;
-        }
-        if (directCallerObj instanceof Class<?> directCaller) {
-            if (directCaller.isAssignableFrom(connectionClass)) {
-                return null;
-            }
-            ClassLoader loader = directCaller.getClassLoader();
-            if (loader != null) {
-                return loader == selfLoader ? null : resolveHookedPluginFromLoader(registry, loader);
-            }
         }
         return CLASS_STACK_WALKER.walk(frames -> {
             var iterator = frames.iterator();
